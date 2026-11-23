@@ -15,7 +15,8 @@ for i in 1 2 3 4 5; do   # new deployments can take a few seconds to propagate
   code=$(curl -s -o /dev/null -w '%{http_code}' "$url/api/health" || true)
   [[ "$code" == 200 ]] && break; sleep 2
 done
-health=$(curl -s "$url/api/health")
+health=$(curl -s "$url/api/health" || true)
+[[ -n "$health" ]] || { echo "FAIL $url/api/health unreachable (DNS, TLS or network)"; exit 1; }
 echo "health: $health"
 check "GET /api/health ok"     '[[ $(bun -p "JSON.parse(process.argv[1]).ok" "$health") == true ]]'
 [[ -z "$want" ]] || check "env is $want" '[[ $(bun -p "JSON.parse(process.argv[1]).env" "$health") == "$want" ]]'

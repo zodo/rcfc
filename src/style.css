@@ -499,3 +499,27 @@ pre {
   padding: 8px 10px;
   color: var(--muted);
 }
+
+/* sync */
+.sync-code {
+  display: block;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  user-select: all;
+}
+.qr {
+  width: 180px;
+  margin: 4px auto;
+  background: #fff;
+  padding: 8px;
+  border-radius: 12px;
+}
+.qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}

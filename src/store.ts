@@ -1,13 +1,21 @@
 // App state: the event log in IndexedDB (Dexie), its fold, and the RWKV engine.
 import Dexie, { type Table } from "dexie";
-import { Collection, EventFactory, type Card, type Preset } from "./domain/collection";
+import { Collection, EventFactory, eventOrder, type Card, type Preset } from "./domain/collection";
 import type { AppEvent, Review, ReviewPayload } from "./domain/events";
 import type { EntityId } from "./domain/ids";
 import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin, studyDay } from "./domain/rows";
 import { Engine } from "./engine/client";
 import type { InitResult } from "./engine/protocol";
+import { needsReplay } from "./domain/sync";
 
-type StoredEvent = AppEvent & { seq?: number };
+/** `remote`: came from the sync server, so it is never pushed back. */
+type StoredEvent = AppEvent & { seq?: number; remote?: 1 };
+
+export interface IngestResult {
+  added: number;
+  /** The model must replay from scratch (late review or rollover change): reload. */
+  replay: boolean;
+}
 
 class AppDb extends Dexie {
   events!: Table<StoredEvent, number>;
@@ -37,6 +45,10 @@ export class Store {
   readonly preds = new Map<EntityId, number>();
   private predAt = new Map<EntityId, number>();
   private configKey = "";
+  /** Called after every local write (sync pushes soon after). */
+  onLocalWrite: () => void = () => {};
+  /** In-memory RWKV state is behind the log until the app reloads (late sync). */
+  stale = false;
 
   private constructor(
     private db: AppDb,
@@ -81,7 +93,10 @@ export class Store {
   }
 
   private makeConfigKey(): string {
-    const roll = [...this.col.presets.values()].map((p) => `${p.preset_id}:${p.day_rollover_hour}`).sort();
+    // Only presets reviews were made under shape RWKV rows; another device's
+    // unused default preset arriving by sync must not force a replay.
+    const used = new Set(this.col.reviews.map((r) => r.payload.preset_id));
+    const roll = [...this.col.presets.values()].filter((p) => used.has(p.preset_id)).map((p) => `${p.preset_id}:${p.day_rollover_hour}`).sort();
     return `rows${ROWS_VERSION}|${roll.join(",")}`;
   }
 
@@ -99,6 +114,7 @@ export class Store {
     const fresh = events.filter((e) => !this.col.eventIds.has(e.event_id));
     await this.db.events.bulkAdd(fresh);
     for (const e of fresh) this.col.apply(e);
+    if (fresh.length) this.onLocalWrite();
     if (fresh.some((e) => e.type === "preset_updated") && this.configKey && this.makeConfigKey() !== this.configKey) {
       // A rollover change re-derives every row: reload replays from scratch.
       location.reload();
@@ -120,6 +136,7 @@ export class Store {
     });
     await this.db.events.add(ev);
     this.col.apply(ev);
+    this.onLocalWrite();
     const row = this.rows.push(ev, this.rolloverOf(ev.payload));
     const [p] = await this.engine.process(Float64Array.from(row), ev.event_id);
     return p;
@@ -213,7 +230,7 @@ export class Store {
   }
 
   async allEvents(): Promise<AppEvent[]> {
-    return (await this.db.events.orderBy("seq").toArray()).map(({ seq: _seq, ...e }) => e as AppEvent);
+    return (await this.db.events.orderBy("seq").toArray()).map(({ seq: _seq, remote: _remote, ...e }) => e as AppEvent);
   }
 
   /** Restore from a backup: adds unknown events (any type) and reloads. */
@@ -221,5 +238,59 @@ export class Store {
     const fresh = events.filter((e) => e && typeof e.event_id === "string" && !this.col.eventIds.has(e.event_id));
     await this.db.events.bulkAdd(fresh);
     return fresh.length;
+  }
+
+  // ---------- sync ----------
+
+  async getMeta<T>(key: string): Promise<T | undefined> {
+    return (await this.db.meta.get(key))?.value as T | undefined;
+  }
+
+  async setMeta(key: string, value: unknown): Promise<void> {
+    await this.db.meta.put({ key, value });
+  }
+
+  /**
+   * Local events after the push cursor, up to `limit` log entries. `upTo` is
+   * the last local seq scanned, to store as the new cursor once pushed (pulled
+   * events in that range are skipped, not re-sent).
+   */
+  async outbox(after: number, limit: number): Promise<{ events: AppEvent[]; upTo: number }> {
+    const rows = await this.db.events.where("seq").above(after).limit(limit).toArray();
+    const events = rows.filter((e) => !e.remote).map(({ seq: _seq, remote: _remote, ...e }) => e as AppEvent);
+    return { events, upTo: rows.length ? rows[rows.length - 1].seq! : after };
+  }
+
+  /** Mark every event local again, so joining another account pushes all of them. */
+  async markAllLocal(): Promise<void> {
+    await this.db.events.toCollection().modify((e) => {
+      delete e.remote;
+    });
+  }
+
+  /** Add events pulled from the server. Reviews feed RWKV when in order. */
+  async ingest(events: AppEvent[]): Promise<IngestResult> {
+    const seen = new Set<string>();
+    const fresh = events.filter((e) => !this.col.eventIds.has(e.event_id) && !seen.has(e.event_id) && seen.add(e.event_id));
+    if (!fresh.length) return { added: 0, replay: false };
+    await this.db.events.bulkAdd(fresh.map((e) => ({ ...e, remote: 1 as const })));
+    // Decide and apply synchronously, so a local answer cannot slip in between.
+    let replay = needsReplay(this.col.reviews[this.col.reviews.length - 1], fresh);
+    const reviews = fresh.filter((e): e is Review => e.type === "review").sort(eventOrder);
+    // Rows already processed used these rollover hours; a change re-derives them all.
+    const used = new Set(this.col.reviews.map((r) => r.payload.preset_id));
+    const hours = new Map([...used].map((id) => [id, this.col.presets.get(id)?.day_rollover_hour]));
+    for (const e of fresh) this.col.apply(e);
+    for (const [id, h] of hours) if (this.col.presets.get(id)?.day_rollover_hour !== h) replay = true;
+    if (replay) this.stale = true;
+    if (this.stale) return { added: fresh.length, replay: true };
+    if (reviews.length) {
+      const rows: number[] = [];
+      for (const r of reviews) this.rows.push(r, this.rolloverOf(r.payload), rows);
+      await this.engine.apply(Float64Array.from(rows), reviews[reviews.length - 1].event_id);
+      await this.engine.flush();
+      await this.predict(reviews.map((r) => this.col.cards.get(r.payload.card_id)).filter((c): c is Card => !!c));
+    }
+    return { added: fresh.length, replay };
   }
 }

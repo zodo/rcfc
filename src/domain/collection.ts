@@ -166,9 +166,16 @@ export class Collection {
     return p ?? { preset_id: d?.preset_id ?? 0, ...DEFAULT_PRESET };
   }
 
-  /** Any preset (there is one per user to start with). */
+  /**
+   * The preset settings edit and daily limits use. Every device creates one on
+   * first launch, so after pairing there can be several: pick the same one on
+   * every device (lowest id among presets that decks use, else lowest id).
+   */
   defaultPreset(): Preset | undefined {
-    return this.presets.values().next().value;
+    const used = new Set([...this.decks.values()].map((d) => d.preset_id));
+    const pick = (ps: Preset[]) => ps.sort((a, b) => a.preset_id - b.preset_id)[0];
+    const all = [...this.presets.values()];
+    return pick(all.filter((p) => used.has(p.preset_id))) ?? pick(all);
   }
 
   liveNotes(deckId?: EntityId): Note[] {

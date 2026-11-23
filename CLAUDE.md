@@ -52,6 +52,13 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 - Entity ids are random positive integers < 2^53 (`src/domain/ids.ts`), not full 64-bit: fit rwkv-srs `i64`, exact in JS, JSON-safe.
 - Importers are pure (text in, events out) and dedup on normalized front+back so re-imports are safe. Imported notes must not auto-queue enrichment.
 
+## Sync notes
+
+- The sync code (16 base32 chars, `src/domain/sync.ts`) is the account: no sign-in, whoever has it reads and writes that user's events. Every device gets one on first launch, so sync (and the server copy, which is the cloud backup) is always on. Pairing = `#k=<code>` link or QR in Settings, or typing the code; joining pushes this device's events to that account and pulls everything.
+- Worker: `POST /api/sync/push` (≤500 events, `INSERT OR IGNORE`), `GET /api/sync/pull?after=<seq>` (pages of 500), header `X-User-Code`. The server never reads payloads.
+- Client (`src/sync.ts`): push cursor = local Dexie seq; pulled events are stored with `remote: 1` and never pushed back. Pulled reviews that sort after everything processed feed RWKV incrementally; an older one (or a rollover change of a used preset) sets `store.stale` and the app reloads at the next safe moment (home screen) for a full replay.
+- Several presets can exist after pairing (each device makes a default): `defaultPreset()` picks deterministically (lowest id among presets decks use).
+
 ## RWKV notes
 
 - Review events store raw facts; `src/domain/rows.ts` derives RWKV inputs (day_offset from first review day, elapsed, state) following RWKV4Anki `review_rows.py`. Changing that derivation: bump `ROWS_VERSION` (forces a full replay).

@@ -10,11 +10,19 @@ import { canSpeak, speak } from "./ui/speech";
 import { swipeable } from "./ui/swipe";
 import { setupInstallPrompt } from "./ui/install";
 import { setupUpdates } from "./ui/update";
+import { formatSyncCode, pairingLink, parseSyncCode } from "./domain/sync";
+import { Sync, type SyncStatus } from "./sync";
+import { renderSVG } from "uqr";
 
 const root = document.getElementById("app")!;
 let store: Store;
+let sync: Sync;
 
 type Screen = "home" | "add" | "import" | "browse" | "settings";
+/** What is on screen, so sync knows when it may re-render or reload. */
+let current: Screen | "study" = "home";
+/** Pulled events need a full model replay; reload at the next safe moment (home). */
+let reloadPending = false;
 
 // ---------- shell ----------
 
@@ -33,6 +41,7 @@ function setKeys(f: ((e: KeyboardEvent) => void) | null) {
 }
 
 function page(active: Screen, title: string, ...body: (Node | string | null | false)[]) {
+  current = active;
   setKeys(null);
   clear(root);
   append(root, [h("header", { class: "top" }, h("h1", {}, title)), h("section", { class: "content" }, ...body), nav(active)]);
@@ -99,6 +108,7 @@ function newDeckForm(onDone: (id: EntityId) => void, from = "es") {
 // ---------- home ----------
 
 async function home() {
+  if (reloadPending) return location.reload();
   page("home", "rcfc", h("p", { class: "muted" }, "Loading…"));
   if (decks().length === 0) {
     page(
@@ -162,6 +172,7 @@ const HOT = 50;
 const REFRESH = 100;
 
 async function study(deckId?: EntityId) {
+  current = "study";
   clear(root);
   root.appendChild(h("p", { class: "muted center" }, "Preparing…"));
   const s: Session = { deckId, recent: [], sinceNew: 99, answered: 0, ahead: false, newQueue: [] };
@@ -362,6 +373,7 @@ function unsortedWords(deckId: EntityId): Card[] {
  * leaves it new, to be introduced under the daily limit.
  */
 function sortWords(deckId: EntityId) {
+  current = "study";
   const queue = unsortedWords(deckId);
   const total = queue.length;
   let known = 0;
@@ -714,12 +726,13 @@ function settings() {
       h("label", {}, "New day starts at (hour)", rollover),
       h("button", { class: "primary", type: "submit" }, "Save"),
     ),
+    syncBox(),
     h(
       "div",
       { class: "card-box" },
       h("h2", {}, "Your data"),
       storageOut,
-      h("p", { class: "muted small" }, "Everything lives on this device. Download a backup now and then."),
+      h("p", { class: "muted small" }, "A backup file is a copy you keep yourself, apart from sync."),
       h(
         "button",
         {
@@ -796,6 +809,96 @@ function settings() {
   );
 }
 
+// ---------- sync ----------
+
+function syncStatusText(st: SyncStatus): string {
+  if (st.state === "syncing") return "Syncing…";
+  if (st.state === "offline") return "Offline. Changes sync when you're back online.";
+  if (st.state === "error") return `Sync failed: ${st.error}`;
+  if (!st.lastOk) return "Not synced yet.";
+  const d = new Date(st.lastOk);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return `Synced ${sameDay ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}.`;
+}
+
+function syncBox() {
+  const link = pairingLink(location.origin, sync.code);
+  const status = h("p", { class: "muted small" }, syncStatusText(sync.status));
+  sync.onStatus = (st) => {
+    if (status.isConnected) status.textContent = syncStatusText(st);
+  };
+  const qr = h("div", { class: "qr", role: "img", "aria-label": "QR code of the pairing link" });
+  qr.innerHTML = renderSVG(link, { pixelSize: 4 });
+
+  const input = h("input", { name: "code", autocomplete: "off", autocapitalize: "characters", spellcheck: false, placeholder: "ABCD-EFGH-IJKL-MNOP" });
+  const hint = h("p", { class: "muted small" });
+  const join = h(
+    "form",
+    {
+      onsubmit: async (e: Event) => {
+        e.preventDefault();
+        const code = parseSyncCode(input.value);
+        if (!code) return void (hint.textContent = "That isn't a valid code. It has 16 letters and digits.");
+        if (code === sync.code) return void (hint.textContent = "This device already uses that code.");
+        if (!confirm(`Join ${formatSyncCode(code)}? Words on this device are added to that account, and its words come here.`)) return;
+        hint.textContent = "Joining…";
+        await sync.join(code);
+        location.reload();
+      },
+    },
+    h("label", {}, "Code from the other device", input),
+    hint,
+    h("button", { class: "secondary", type: "submit" }, "Join"),
+  );
+
+  return h(
+    "div",
+    { class: "card-box" },
+    h("h2", {}, "Sync"),
+    status,
+    h("p", { class: "muted small" }, "Every device with this code shares the same words, and the server keeps a copy. Anyone with the code can read and change them, so keep it private."),
+    h("code", { class: "sync-code" }, formatSyncCode(sync.code)),
+    qr,
+    h("p", { class: "muted small" }, "To add a device, scan this with its camera or open the link on it."),
+    h(
+      "div",
+      { class: "row2" },
+      h(
+        "button",
+        {
+          class: "secondary",
+          type: "button",
+          onclick: async () => {
+            try {
+              await navigator.clipboard.writeText(link);
+              toast("Link copied");
+            } catch {
+              prompt("Copy this link", link);
+            }
+          },
+        },
+        "Copy link",
+      ),
+      h("button", { class: "secondary", type: "button", onclick: () => void sync.now() }, "Sync now"),
+    ),
+    h("details", {}, h("summary", {}, "Use a code from another device"), join),
+  );
+}
+
+/** A pairing link (#k=CODE) opened on this device: join that account. */
+async function joinFromLink(): Promise<boolean> {
+  const code = parseSyncCode(location.hash);
+  if (!code) return false;
+  history.replaceState(null, "", location.pathname + location.search);
+  if (code === sync.code) return false;
+  const hasData = store.col.liveNotes().length > 0 || store.col.reviews.length > 0;
+  if (hasData && !confirm(`Join ${formatSyncCode(code)}? Words on this device are added to that account, and its words come here.`)) return false;
+  root.replaceChildren(h("p", { class: "muted center" }, "Getting your words from the other device…"));
+  await sync.join(code);
+  location.reload();
+  return true;
+}
+
 // ---------- boot ----------
 
 declare const __BUILD__: string;
@@ -815,7 +918,17 @@ async function boot() {
       if (document.visibilityState === "hidden") void store.engine.flush();
     });
     if (store.col.reviews.length || store.col.notes.size) void requestPersistence();
+    sync = await Sync.open(store);
+    if (await joinFromLink()) return;
+    sync.onPulled = () => {
+      if (current === "home") void home();
+    };
+    sync.onReplay = () => {
+      if (current === "home") location.reload();
+      else reloadPending = true;
+    };
     await home();
+    sync.start();
   } catch (e) {
     console.error(e);
     clear(root);
