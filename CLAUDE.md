@@ -29,6 +29,7 @@ Bun is the package manager, script runner and test runner (`bun.lock`; never use
 - `cd rwkv/engine && cargo test --release` engine goldens + checkpoint round trip; `cargo run --release --example bench` year-of-use benchmark
 - `bun run dev` local dev with local D1/R2 (`bun run db:migrate:local` first on a fresh checkout)
 - `bun run build` typecheck + build
+- `scripts/build-icons.sh` re-rasterize `public/icon.svg` into the committed PNG icons (manifest + iOS) after changing it
 - `bun test` unit tests (`bun:test`). `RCFC_DUOCARDS_EXPORT=/path/to/export.csv bun test` also runs the importer over a real export (never commit real exports: personal data)
 - `bun run deploy:preview` build → remote D1 migrations → deploy → smoke test; prints the URL
 - `bun run deploy:prod` same for production; refuses a dirty tree. **Only on explicit user request.**

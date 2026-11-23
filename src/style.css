@@ -183,14 +183,6 @@ button:disabled {
   font-size: 18px;
   line-height: 1;
 }
-.tip {
-  font-size: 13px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px dashed var(--line);
-  color: var(--muted);
-}
-
 /* nav */
 .nav {
   position: fixed;
@@ -254,15 +246,13 @@ button:disabled {
   gap: 10px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .due {
   color: var(--due);
 }
 .new {
   color: var(--new);
-}
-.legend {
-  margin: 0;
 }
 
 /* study */
@@ -477,4 +467,35 @@ pre {
 }
 .update-banner button {
   padding: 8px 14px;
+}
+
+.install-banner {
+  position: fixed;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(528px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
+  font-size: 14px;
+  z-index: 20;
+}
+.install-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.install-banner button {
+  padding: 8px 14px;
+}
+.install-banner .install-close {
+  padding: 8px 10px;
+  color: var(--muted);
 }

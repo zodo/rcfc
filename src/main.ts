@@ -8,6 +8,7 @@ import { Store } from "./store";
 import { append, clear, h, langName, langSelect, toast } from "./ui/h";
 import { canSpeak, speak } from "./ui/speech";
 import { swipeable } from "./ui/swipe";
+import { setupInstallPrompt } from "./ui/install";
 import { setupUpdates } from "./ui/update";
 
 const root = document.getElementById("app")!;
@@ -103,10 +104,9 @@ async function home() {
     page(
       "home",
       "Welcome",
-      h("p", {}, "Flashcards scheduled by RWKV, a neural memory model that runs on your device. Start with a deck, or bring your words from Duocards."),
+      h("p", {}, "Flashcards scheduled by RWKV, a neural memory model that runs on your device."),
       newDeckForm(() => home()),
       h("button", { class: "secondary wide", onclick: () => importScreen() }, "Import from Duocards"),
-      installTip(),
     );
     return;
   }
@@ -121,7 +121,7 @@ async function home() {
       "div",
       { class: "deck" },
       h("div", { class: "deck-main" }, h("div", { class: "deck-name" }, d.name), h("div", { class: "muted small" }, `${langName(d.lang_pair.from)} → ${langName(d.lang_pair.to)} · ${cards.length} cards`)),
-      h("div", { class: "counts" }, h("span", { class: "due", title: "due" }, String(due)), h("span", { class: "new", title: "new" }, String(fresh))),
+      h("div", { class: "counts" }, h("span", { class: "due" }, `${due} due`), h("span", { class: "new" }, `${fresh} new`)),
       h("button", { class: "primary", onclick: () => study(d.id) }, "Study"),
     );
   });
@@ -139,21 +139,12 @@ async function home() {
             "button",
             { class: "secondary wide sort-entry", onclick: () => sortWords(d.id) },
             h("strong", {}, `Already know some ${d.name} words?`),
-            h("span", { class: "muted small" }, `Swipe through ${n} unseen words: → I know it, ← teach me`),
+            h("span", { class: "muted small" }, `Swipe through ${n} unseen words`),
           )
         : null;
     }),
-    h("p", { class: "muted small legend" }, h("span", { class: "due" }, "■"), " due  ", h("span", { class: "new" }, "■"), " new today"),
     h("details", { class: "card-box" }, h("summary", {}, "New deck"), newDeckForm(() => home())),
-    installTip(),
   );
-}
-
-function installTip() {
-  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const standalone = matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone;
-  if (!ios || standalone) return null;
-  return h("p", { class: "tip" }, "On iPhone, tap Share → Add to Home Screen. Safari may delete data of websites you don't open for a while; installed apps keep it.");
 }
 
 // ---------- study ----------
@@ -212,7 +203,7 @@ function done(s: Session) {
       { class: "done" },
       h("div", { class: "big-emoji", "aria-hidden": "true" }, "✓"),
       h("h2", {}, s.answered ? "All caught up" : "Nothing due right now"),
-      h("p", { class: "muted" }, s.answered ? `${s.answered} ${s.answered === 1 ? "answer" : "answers"} this session. Come back later: the model will tell when a word is about to slip.` : "No words are below your target recall, and today's new words are done."),
+      h("p", { class: "muted" }, s.answered ? `${s.answered} ${s.answered === 1 ? "answer" : "answers"} this session. Come back later.` : "No words are below your target recall, and today's new words are done."),
       scopePreds(s).size > 0
         ? h(
             "button",
@@ -387,7 +378,7 @@ function sortWords(deckId: EntityId) {
         { class: "done" },
         h("div", { class: "big-emoji", "aria-hidden": "true" }, "✓"),
         h("h2", {}, queue.length ? "Paused" : "All sorted"),
-        h("p", { class: "muted" }, `${known} you know: the model will check them now and then. ${later} to learn: they come in ${store.preset().new_per_day} a day.`),
+        h("p", { class: "muted" }, `${known} you know. The model will check them now and then. ${later} to learn, ${store.preset().new_per_day} a day.`),
         queue.length ? h("p", { class: "muted small" }, `${queue.length} left to sort; continue any time from the Study tab.`) : null,
         h("button", { class: "primary wide", onclick: () => home() }, "Done"),
       ),
@@ -728,7 +719,7 @@ function settings() {
       { class: "card-box" },
       h("h2", {}, "Your data"),
       storageOut,
-      h("p", { class: "muted small" }, "Everything lives on this device until sync arrives. Download a backup now and then."),
+      h("p", { class: "muted small" }, "Everything lives on this device. Download a backup now and then."),
       h(
         "button",
         {
@@ -833,4 +824,5 @@ async function boot() {
 }
 
 setupUpdates();
+setupInstallPrompt();
 void boot();
