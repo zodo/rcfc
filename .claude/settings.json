@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm ci)",
+      "Bash(npm run dev)",
+      "Bash(npm run build)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run cf-typegen)",
+      "Bash(npm run db:migrate:local)",
+      "Bash(npm run cf)",
+      "Bash(npm run cf:bootstrap)",
+      "Bash(npm run deploy:preview)",
+      "Bash(npm run deploy:prod)",
+      "Bash(npm run check:deploy *)",
+      "Bash(scripts/cf.sh wrangler *)",
+      "Bash(scripts/check-deploy.sh *)",
+      "Bash(npx wrangler *)",
+      "Bash(npx vite *)",
+      "Bash(npx tsc *)",
+      "Bash(cargo build *)",
+      "Bash(cargo test *)",
+      "Bash(cargo check *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo fmt *)",
+      "Bash(cargo tree *)",
+      "Bash(rustup target add *)",
+      "Bash(rustup show *)"
+    ]
+  }
+}

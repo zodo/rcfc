@@ -1,0 +1,14 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  padding: 16px;
+  background: Canvas;
+  color: CanvasText;
+}
+pre {
+  white-space: pre-wrap;
+  font-size: 13px;
+}

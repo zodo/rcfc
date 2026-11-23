@@ -1,0 +1,48 @@
+// One Worker serves the PWA (static assets) and the API (/api/*).
+// Bindings are NOT inherited by named environments, so every env redeclares them.
+//   top level   -> local dev only (`npm run dev`), local D1/R2 state in .wrangler/
+//   preview     -> rcfc-preview, its own D1 + R2; safe to break
+//   production  -> rcfc, real user data
+// Resource ids are filled in by `npm run cf:bootstrap` (ids are not secrets).
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "rcfc-dev",
+  "account_id": "d3a7891a6e68b2acfeb352be27698849",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": { "APP_ENV": "dev" },
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "rcfc-dev", "database_id": "local", "migrations_dir": "migrations" }
+  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "rcfc-dev" }],
+  "env": {
+    "preview": {
+      "name": "rcfc-preview",
+      "workers_dev": true,
+      "vars": { "APP_ENV": "preview" },
+      "version_metadata": { "binding": "CF_VERSION_METADATA" },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "rcfc-preview", "database_id": "9bef4555-1e67-4c35-b99c-90db3fe995df", "migrations_dir": "migrations" }
+      ],
+      "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "rcfc-preview" }],
+      "ai": { "binding": "AI", "remote": true }
+    },
+    "production": {
+      "name": "rcfc",
+      "workers_dev": true,
+      "vars": { "APP_ENV": "production" },
+      "version_metadata": { "binding": "CF_VERSION_METADATA" },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "rcfc", "database_id": "788d85c1-6e68-49d1-a3fe-cb53c4733263", "migrations_dir": "migrations" }
+      ],
+      "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "rcfc" }],
+      "ai": { "binding": "AI", "remote": true }
+    }
+  }
+}

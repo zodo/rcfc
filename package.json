@@ -1,0 +1,25 @@
+{
+  "name": "rcfc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "typecheck": "tsc -p tsconfig.json && tsc -p worker/tsconfig.json",
+    "cf-typegen": "wrangler types worker/env.d.ts --env-interface Env",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "cf": "scripts/cf.sh",
+    "cf:bootstrap": "scripts/cf.sh scripts/bootstrap.sh",
+    "deploy:preview": "scripts/cf.sh scripts/deploy.sh preview",
+    "deploy:prod": "scripts/cf.sh scripts/deploy.sh production",
+    "check:deploy": "scripts/check-deploy.sh"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.70.1",
+    "@types/node": "^24.19.2",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vite-plugin-pwa": "2.0.0",
+    "wrangler": "4.166.0"
+  }
+}

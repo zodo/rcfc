@@ -1,0 +1,6 @@
+[toolchain]
+# Matches upstream rwkv-srs v0.1.1 (see docs/design.md, "RWKV in Wasm").
+channel = "1.97.0"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
+targets = ["wasm32-unknown-unknown"]
