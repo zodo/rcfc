@@ -1,20 +1,21 @@
-// App updates. The service worker installs a new version in the background;
-// we check on launch, when the app comes back to the foreground and hourly,
-// then offer a one-tap reload (never reload by surprise mid-session).
+// App updates. A new service worker installs in the background and takes over
+// at once (skipWaiting, so clients of any older version pick it up too). We
+// check on launch, when the app returns to the foreground and hourly, then
+// offer a one-tap reload instead of reloading by surprise mid-session.
 import { registerSW } from "virtual:pwa-register";
 import { h } from "./h";
 
 export function setupUpdates() {
   let banner: HTMLElement | null = null;
-  const updateSW = registerSW({
+  registerSW({
     immediate: true,
-    onNeedRefresh() {
+    onNeedReload() {
       if (banner) return;
       banner = h(
         "div",
         { class: "update-banner", role: "status" },
         h("span", {}, "A new version of rcfc is ready."),
-        h("button", { class: "primary", onclick: () => void updateSW(true) }, "Update"),
+        h("button", { class: "primary", onclick: () => location.reload() }, "Update"),
       );
       document.body.appendChild(banner);
     },
