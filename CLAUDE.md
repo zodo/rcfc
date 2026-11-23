@@ -24,6 +24,7 @@ Preview and production never share data. Bindings are not inherited by named env
 
 - `npm run dev` local dev with local D1/R2 (`npm run db:migrate:local` first on a fresh checkout)
 - `npm run build` typecheck + build
+- `npm test` unit tests (vitest). `RCFC_DUOCARDS_EXPORT=/path/to/export.csv npm test` also runs the importer over a real export (never commit real exports: personal data)
 - `npm run deploy:preview` build → remote D1 migrations → deploy → smoke test; prints the URL
 - `npm run deploy:prod` same for production; refuses a dirty tree. **Only on explicit user request.**
 - `npm run check:deploy -- preview|production|<url>` re-run the smoke test
@@ -39,6 +40,11 @@ Last deployed URLs are saved in `.wrangler/url-preview` and `.wrangler/url-produ
 - **API token**: `~/.config/rcfc/cloudflare.env` (mode 600) with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; takes precedence when present.
 
 Never print, copy or commit credentials. If cf.sh reports "not authenticated", ask the user to run `npx wrangler login` in their terminal (it needs a browser; you can't do it).
+
+## Domain notes
+
+- Entity ids are random positive integers < 2^53 (`src/domain/ids.ts`), not full 64-bit: fit rwkv-srs `i64`, exact in JS, JSON-safe.
+- Importers are pure (text in, events out) and dedup on normalized front+back so re-imports are safe. Imported notes must not auto-queue enrichment.
 
 ## Rust / Wasm
 
