@@ -189,7 +189,7 @@ function done(s: Session) {
       { class: "done" },
       h("div", { class: "big-emoji", "aria-hidden": "true" }, "✓"),
       h("h2", {}, s.answered ? "All caught up" : "Nothing due right now"),
-      h("p", { class: "muted" }, s.answered ? `${s.answered} answers this session. Come back later: the model will tell when a word is about to slip.` : "No words are below your target recall, and today's new words are done."),
+      h("p", { class: "muted" }, s.answered ? `${s.answered} ${s.answered === 1 ? "answer" : "answers"} this session. Come back later: the model will tell when a word is about to slip.` : "No words are below your target recall, and today's new words are done."),
       scopePreds(s).size > 0
         ? h(
             "button",
