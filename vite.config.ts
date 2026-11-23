@@ -21,7 +21,8 @@ export default defineConfig({
   plugins: [
     cloudflare(),
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "prompt",
+      injectRegister: false,
       manifest: {
         name: "Really Cool Flashcards",
         short_name: "rcfc",

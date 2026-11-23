@@ -8,6 +8,7 @@ import { Store } from "./store";
 import { append, clear, h, langName, langSelect, toast } from "./ui/h";
 import { canSpeak, speak } from "./ui/speech";
 import { swipeable } from "./ui/swipe";
+import { setupUpdates } from "./ui/update";
 
 const root = document.getElementById("app")!;
 let store: Store;
@@ -831,4 +832,5 @@ async function boot() {
   }
 }
 
+setupUpdates();
 void boot();
