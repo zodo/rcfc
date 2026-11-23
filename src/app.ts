@@ -1,6 +1,7 @@
 // App shell shared by the screens (src/screens/): the open store and sync,
 // which screen is showing, page chrome, keyboard handling and navigation.
 import type { EntityId } from "./domain/ids";
+import type { Pictures } from "./pictures";
 import type { Store } from "./store";
 import type { Sync } from "./sync";
 import { append, clear, h } from "./ui/h";
@@ -28,6 +29,7 @@ export const app = {
   /** Set once at boot, before any screen renders. */
   store: undefined as unknown as Store,
   sync: undefined as unknown as Sync,
+  pictures: undefined as unknown as Pictures,
   /** What is on screen, so sync knows when it may re-render or reload. */
   current: "home" as ScreenName,
   /** The model needs a full replay; reload at the next safe moment (home). */

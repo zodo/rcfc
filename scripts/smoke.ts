@@ -6,6 +6,7 @@
 //   bun run smoke                        dev server on :5199, then the checks
 //   bun run smoke http://localhost:5173  an already running dev server
 //   RCFC_HEADFUL=1 bun run smoke         watch it in a window
+//   RCFC_SHOTS=1 bun run smoke           also save screenshots of key screens to .wrangler/smoke/
 //   RCFC_TRACE=1 bun run smoke           log every click
 //
 // Browser: $RCFC_CHROMIUM, else Chromium.app, else Google Chrome. Uses the
@@ -204,13 +205,19 @@ function log(s: string) {
 
 const title = (s: Browser) => s.text("header.top h1");
 
+async function shot(s: Browser, name: string) {
+  if (!process.env.RCFC_SHOTS) return;
+  mkdirSync(".wrangler/smoke", { recursive: true });
+  await s.screenshot(`.wrangler/smoke/${name}.png`);
+}
+
 async function answerUntilDone(s: Browser, max: number): Promise<number> {
   let n = 0;
   for (; n < max; n++) {
     const state = await s.until<string>("a card or the end", `document.querySelector(".flashcard") ? "card" : document.querySelector(".done") ? "done" : ""`);
     if (state === "done") return n;
     await s.click("button", "Show answer");
-    await s.click("button.rate", n % 4 === 3 ? "Again" : "Good");
+    await s.click("button.rate", n % 4 === 3 ? "Again" : "Got it");
     // Wait for the next card to replace this one.
     await s.until("next screen", `!document.querySelector(".answer:not(.hidden)")`);
   }
@@ -235,6 +242,10 @@ async function run(s: Browser, url: string) {
     await s.click("button[type=submit]", "Add");
     await s.until(`toast for ${front}`, `document.getElementById("toast")?.textContent === 'Added "${front}"'`);
   }
+  log("the last word's picture is drawn on the add screen");
+  await s.until("picture", `document.querySelector(".last-added .cut img")?.src.startsWith("blob:") && document.querySelector(".last-added .cut img").naturalWidth > 0`, 90_000);
+  await s.until("picture sense", `document.querySelector(".last-added .pic-status")?.textContent.startsWith("Shows: ")`);
+  await shot(s, "add-picture");
   await s.type("input[name=front]", "hola");
   await s.type("input[name=back]", "hello");
   await s.click("button[type=submit]", "Add");
@@ -248,7 +259,12 @@ async function run(s: Browser, url: string) {
   await s.click(".deck button", "Study");
   const first = await s.until<string>("first card", `document.querySelector(".face.prompt")?.textContent`);
   if (first !== "hola") throw new Error(`first card is "${first}", expected "hola"`);
-  const answered = await answerUntilDone(s, 10);
+  await s.click("button", "Show answer");
+  await s.until("picture with the answer", `document.querySelector(".answer:not(.hidden) .cut img")?.naturalWidth > 0`, 30_000);
+  await shot(s, "study-picture");
+  await s.click("button.rate", "Got it");
+  await s.until("next screen", `!document.querySelector(".answer:not(.hidden)")`);
+  const answered = 1 + (await answerUntilDone(s, 10));
   if (answered < 2) throw new Error(`only ${answered} cards shown`);
   await s.click("button", "Done");
   await s.until("0 new", `document.querySelector(".counts .new")?.textContent === "0 new"`);

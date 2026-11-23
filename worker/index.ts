@@ -1,5 +1,6 @@
 // API Worker. Static assets (the PWA) are served by the assets binding;
 // only /api/* reaches this code (see run_worker_first in wrangler.jsonc).
+import { handlePictures, type AiRunner } from "./pictures";
 import { handleSync, json } from "./sync";
 
 async function health(env: Env): Promise<Response> {
@@ -31,6 +32,11 @@ export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/health") return health(env);
-    return (await handleSync(request, env.DB)) ?? json({ error: "not found" }, 404);
+    const budget = Number(env.PICTURE_NEURONS_PER_DAY) || undefined;
+    return (
+      (await handleSync(request, env.DB)) ??
+      (await handlePictures(request, { DB: env.DB, MEDIA: env.MEDIA, AI: env.AI as AiRunner | undefined, budget })) ??
+      json({ error: "not found" }, 404)
+    );
   },
 } satisfies ExportedHandler<Env>;

@@ -171,7 +171,7 @@ A Workers AI chat model returns strict JSON: `translation, part_of_speech, gende
 
 **Image**
 
-A fast Workers AI text-to-image model (FLUX class) prompted with the first example sentence, rendered at 512 or 1024 px, stored in R2 as WebP, referenced by `asset_attached`. Optional per card; the user can regenerate.
+Built (see CLAUDE.md, "Picture notes"). A small LLM (Granite 4.0 micro) writes one concrete scene for one meaning, chosen in code: the user's choice, else the meaning the example uses, else the first listed meaning. FLUX.2 klein 4B draws it at 768×512 JPEG in one house style, layered cut paper on white, stored in R2 and referenced by `asset_attached` (with the meaning, the user's extra details and the scene). Typed words get a picture right away; other words get one the first time they are studied. The user can redraw with another meaning or details, or remove it. A daily neuron cap keeps it inside the free tier. Reverse cards show the picture as part of the cue, forward cards with the answer.
 
 **Pronunciation**
 

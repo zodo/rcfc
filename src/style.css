@@ -523,3 +523,117 @@ pre {
   width: 100%;
   height: auto;
 }
+
+/* two answers: Again / Got it */
+.ratings.two {
+  grid-template-columns: 1fr 1fr;
+}
+.ratings.two .rate {
+  font-size: 18px;
+}
+
+/* pictures: a scissor-cut piece of paper glued onto the card */
+.cut {
+  width: 100%;
+  max-width: 420px;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.18)) drop-shadow(0 4px 6px rgb(0 0 0 / 0.16));
+  transform: rotate(-1.2deg);
+}
+.cut-r {
+  transform: rotate(1.4deg);
+}
+.cut img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  background: color-mix(in srgb, var(--line) 50%, transparent);
+  clip-path: polygon(0.6% 1.8%, 22% 0.4%, 47% 1.4%, 71% 0%, 99.2% 1.2%, 100% 34%, 99.1% 68%, 99.7% 98.6%, 74% 99.6%, 51% 98.4%, 26% 100%, 0.4% 98.9%, 1.2% 66%, 0% 33%);
+  -webkit-user-drag: none;
+}
+.flashcard .cut {
+  max-width: min(100%, 46dvh * 1.5);
+}
+.picture-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pic-media {
+  display: flex;
+  justify-content: center;
+}
+.pic-empty {
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  max-width: 420px;
+  border: 2px dashed var(--line);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+.pic-media.busy .pic-empty,
+.pic-media.busy .cut {
+  animation: pic-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pic-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+.pic-status {
+  margin: 0;
+  text-align: center;
+}
+.pic-adjust {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pic-adjust > summary {
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--accent);
+}
+.pic-adjust[open] > summary {
+  margin-bottom: 10px;
+}
+.pic-adjust > label,
+.pic-adjust > .chips {
+  margin-bottom: 10px;
+}
+.pic-adjust .row {
+  display: flex;
+  gap: 10px;
+}
+.pic-adjust .row > button {
+  flex: 1;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  padding: 6px 12px;
+  font-size: 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.chip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+button.link {
+  padding: 0;
+  color: var(--accent);
+  font-size: inherit;
+}
+.last-added h2 .muted {
+  font-weight: 400;
+}

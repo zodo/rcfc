@@ -1,4 +1,4 @@
-// Study: one card at a time, reveal, rate (buttons, keys or swipe).
+// Study: one card at a time, reveal, answer Again / Got it (buttons, arrow keys or swipe).
 import { app, errorText, fullScreen, go, setKeys } from "../app";
 import type { ReviewPayload } from "../domain/events";
 import type { EntityId } from "../domain/ids";
@@ -6,6 +6,7 @@ import type { Pick } from "../domain/scheduler";
 import { StudySession } from "../session";
 import { h, langName, toast } from "../ui/h";
 import { canSpeak, speak } from "../ui/speech";
+import { cutout } from "../ui/picture";
 import { swipeable } from "../ui/swipe";
 
 type Rating = ReviewPayload["rating"];
@@ -59,6 +60,10 @@ function showCard(s: StudySession, pick: Pick, due: number) {
   const prompt = forward ? note.fields.front : note.fields.back;
   const answer = forward ? note.fields.back : note.fields.front;
   const shownAt = performance.now();
+  // Reverse cards (translation → word): the picture is part of the cue.
+  // Forward cards: it comes with the answer. No picture yet: draw one for next time.
+  const pic = note.picture ? cutout(note.picture.key, forward ? "r" : "l") : null;
+  if (!note.picture) void app.pictures.ensure(note.id);
   let revealed = false;
 
   const say = () => speak(studied, lang.from);
@@ -74,16 +79,16 @@ function showCard(s: StudySession, pick: Pick, due: number) {
     "div",
     { class: "answer hidden" },
     h("div", { class: "divider" }),
+    forward ? pic : null,
     h("div", { class: "face" }, answer),
     note.fields.example ? h("div", { class: "example" }, note.fields.example) : null,
   );
   const reveal = h("button", { class: "primary wide big", onclick: () => doReveal() }, "Show answer");
-  const label = ["Again", "Hard", "Good", "Easy"];
   const ratings = h(
     "div",
     { class: "hidden" },
-    h("div", { class: "ratings" }, ...label.map((l, i) => h("button", { class: `rate r${i + 1}`, onclick: () => rate((i + 1) as Rating) }, l))),
-    h("p", { class: "muted small center swipe-hint" }, "or swipe the card: → Good, ← Again"),
+    h("div", { class: "ratings two" }, h("button", { class: "rate r1", onclick: () => rate(1) }, "← Again"), h("button", { class: "rate r3", onclick: () => rate(3) }, "Got it →")),
+    h("p", { class: "muted small center swipe-hint" }, "or swipe the card"),
   );
 
   function doReveal() {
@@ -120,8 +125,7 @@ function showCard(s: StudySession, pick: Pick, due: number) {
     if (!revealed && (e.key === " " || e.key === "Enter")) {
       e.preventDefault();
       doReveal();
-    } else if (revealed && ["1", "2", "3", "4"].includes(e.key)) rate(Number(e.key) as Rating);
-    else if (revealed && e.key === "ArrowRight") rate(3);
+    } else if (revealed && e.key === "ArrowRight") rate(3);
     else if (revealed && e.key === "ArrowLeft") rate(1);
   }
 
@@ -129,6 +133,7 @@ function showCard(s: StudySession, pick: Pick, due: number) {
     "div",
     { class: "flashcard" },
     h("div", { class: "muted small lang" }, forward ? `${langName(lang.from)} → ${langName(lang.to)}` : `${langName(lang.to)} → ${langName(lang.from)}`),
+    !forward ? pic : null,
     h("div", { class: "face prompt" }, prompt),
     forward ? speakBtn : null,
     back,

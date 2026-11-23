@@ -3,6 +3,7 @@ import { app, go, page } from "../app";
 import type { AppEvent } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import { clear, h } from "../ui/h";
+import { pictureEditor } from "../ui/picture";
 
 const LIST_MAX = 300;
 
@@ -77,5 +78,6 @@ export function edit(noteId: EntityId): void {
       ),
       h("button", { class: "secondary", type: "button", onclick: () => browse() }, "Cancel"),
     ),
+    h("div", { class: "card-box" }, h("h2", {}, "Picture"), pictureEditor(n.id)),
   );
 }

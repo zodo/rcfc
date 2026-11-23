@@ -21,12 +21,35 @@ export interface WriteResult {
   replay: boolean;
 }
 
+/** A picture to draw (src/pictures.ts). Local to this device; the result syncs as an event. */
+export interface PicJob {
+  note_id: EntityId;
+  sense?: string;
+  details?: string;
+  /** Redraw even if the note already has a picture. */
+  force?: boolean;
+  tries: number;
+  /** ms epoch; not retried before. */
+  not_before: number;
+  created: number;
+}
+
+/** A downloaded picture, kept for offline study. */
+export interface PicBlob {
+  key: string;
+  type: string;
+  data: ArrayBuffer;
+}
+
 class AppDb extends Dexie {
   events!: Table<StoredEvent, number>;
   meta!: Table<{ key: string; value: unknown }, string>;
+  pic_jobs!: Table<PicJob, EntityId>;
+  pic_blobs!: Table<PicBlob, string>;
   constructor(name: string, options?: DexieOptions) {
     super(name, options);
     this.version(1).stores({ events: "++seq, &event_id, type", meta: "key" });
+    this.version(2).stores({ pic_jobs: "note_id", pic_blobs: "key" });
   }
 }
 
@@ -238,6 +261,32 @@ export class Store {
     const fresh = events.filter((e) => e && typeof e.event_id === "string" && !this.col.eventIds.has(e.event_id));
     await this.db.events.bulkAdd(fresh);
     return fresh.length;
+  }
+
+  // ---------- pictures (src/pictures.ts) ----------
+
+  picJobs(): Promise<PicJob[]> {
+    return this.db.pic_jobs.toArray();
+  }
+
+  putPicJob(j: PicJob): Promise<unknown> {
+    return this.db.pic_jobs.put(j);
+  }
+
+  deletePicJob(noteId: EntityId): Promise<void> {
+    return this.db.pic_jobs.delete(noteId);
+  }
+
+  getPicBlob(key: string): Promise<PicBlob | undefined> {
+    return this.db.pic_blobs.get(key);
+  }
+
+  putPicBlob(b: PicBlob): Promise<unknown> {
+    return this.db.pic_blobs.put(b);
+  }
+
+  async picBlobKeys(): Promise<Set<string>> {
+    return new Set(await this.db.pic_blobs.toCollection().primaryKeys());
   }
 
   // ---------- sync ----------

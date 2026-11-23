@@ -10,6 +10,7 @@ import { settings } from "./screens/settings";
 import { sortWords } from "./screens/sort";
 import { study } from "./screens/study";
 import { joinFromLink } from "./screens/sync";
+import { Pictures } from "./pictures";
 import { Store } from "./store";
 import { Sync } from "./sync";
 import { clear, h } from "./ui/h";
@@ -39,13 +40,16 @@ async function boot() {
     });
     if (store.col.reviews.length || store.col.notes.size) void requestPersistence();
     app.sync = await Sync.open(store);
+    app.pictures = await Pictures.open(store, () => app.sync.code);
     if (await joinFromLink()) return;
     app.sync.onPulled = () => {
+      void app.pictures.prefetch();
       if (app.current === "home") void home();
     };
     app.sync.onReplay = reloadWhenSafe;
     await home();
     app.sync.start();
+    app.pictures.start();
   } catch (e) {
     console.error(e);
     clear(root);

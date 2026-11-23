@@ -1,6 +1,6 @@
 // Current state = fold over the event log. Pure and synchronous; the whole log
 // is folded at startup (cheap: ~100k events is well under a second).
-import type { AppEvent, CardTemplate, EventEnvelope, LangPair, NoteFields, NoteSource, PresetUpdatedPayload, Review } from "./events";
+import type { AppEvent, AssetAttachedPayload, CardTemplate, EventEnvelope, LangPair, NoteFields, NoteSource, PresetUpdatedPayload, Review } from "./events";
 import { newEntityId, uuidv7, type EntityId } from "./ids";
 
 export interface Deck {
@@ -19,9 +19,15 @@ export interface Note {
   lang_pair: LangPair;
   source?: NoteSource;
   deleted: boolean;
+  /** Current picture, if any. */
+  picture?: Picture;
+  /** The user removed the picture: never draw one automatically. */
+  noPicture?: boolean;
   /** Fold order, for stable "oldest first". */
   order: number;
 }
+
+export type Picture = Omit<AssetAttachedPayload, "note_id" | "kind" | "r2_key"> & { key: string };
 
 export interface Card {
   id: EntityId;
@@ -104,6 +110,15 @@ export class Collection {
         const list = this.cardsByNote.get(e.payload.note_id) ?? [];
         list.push(e.payload.card_id);
         this.cardsByNote.set(e.payload.note_id, list);
+        break;
+      }
+      case "asset_attached": {
+        const n = this.notes.get(e.payload.note_id);
+        if (n && e.payload.kind === "image" && this.wins(`note:${n.id}:image`, e)) {
+          const { r2_key, sense, details, scene } = e.payload;
+          n.picture = r2_key ? { key: r2_key, sense, details, scene } : undefined;
+          n.noPicture = !r2_key;
+        }
         break;
       }
       case "review": {

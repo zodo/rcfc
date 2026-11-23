@@ -98,6 +98,23 @@ export interface ReviewPayload {
   tz_offset_min: number;
 }
 
+/**
+ * A picture for a note (`r2_key` null = removed). Last write wins per note.
+ * `sense`, `details` and `scene` are what it was drawn from, so a redraw keeps
+ * the user's corrections and the edit screen can say what it shows.
+ */
+export interface AssetAttachedPayload {
+  note_id: EntityId;
+  kind: "image";
+  r2_key: string | null;
+  /** The meaning drawn (e.g. "bench" for "bank, bench"). */
+  sense?: string;
+  /** Extra prompt details the user typed. */
+  details?: string;
+  /** The scene the image model was given. */
+  scene?: string;
+}
+
 export type PresetUpdated = EventEnvelope<"preset_updated", PresetUpdatedPayload>;
 export type DeckCreated = EventEnvelope<"deck_created", DeckCreatedPayload>;
 export type DeckRenamed = EventEnvelope<"deck_renamed", DeckRenamedPayload>;
@@ -106,6 +123,7 @@ export type NoteEdited = EventEnvelope<"note_edited", NoteEditedPayload>;
 export type NoteDeleted = EventEnvelope<"note_deleted", NoteDeletedPayload>;
 export type CardCreated = EventEnvelope<"card_created", CardCreatedPayload>;
 export type Review = EventEnvelope<"review", ReviewPayload>;
+export type AssetAttached = EventEnvelope<"asset_attached", AssetAttachedPayload>;
 
 export type AppEvent =
   | PresetUpdated
@@ -115,6 +133,7 @@ export type AppEvent =
   | NoteEdited
   | NoteDeleted
   | CardCreated
-  | Review;
+  | Review
+  | AssetAttached;
 
 export type EventType = AppEvent["type"];
