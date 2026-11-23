@@ -15,8 +15,8 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
 | Env | Worker | D1 / R2 | Use |
 |---|---|---|---|
 | dev | (local only) | `.wrangler/state` | `npm run dev` |
-| preview | `rcfc-preview` | `rcfc-preview` | deploy freely to show work |
-| production | `rcfc` | `rcfc` | real user data |
+| preview | `rcfc-preview` → https://rcfc-preview.zzodoo.workers.dev | `rcfc-preview` | deploy freely to show work |
+| production | `rcfc` → https://rcfc.zzodoo.workers.dev | `rcfc` | real user data |
 
 Preview and production never share data. Bindings are not inherited by named envs, so add any new binding to all three blocks in `wrangler.jsonc`, then `npm run cf-typegen`.
 
