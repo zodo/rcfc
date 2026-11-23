@@ -7,3 +7,4 @@ build/
 *.log
 .wrangler/
 dev-dist/
+rwkv/engine/target/

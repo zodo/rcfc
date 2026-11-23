@@ -1,0 +1,25 @@
+[package]
+name = "rcfc-rwkv"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+description = "Minimal RWKV-SRS V1 inference (RWKV-P) for the rcfc PWA; checked against upstream rwkv-srs v0.1.1"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.130"
+
+[dev-dependencies]
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
