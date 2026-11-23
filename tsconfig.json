@@ -21,6 +21,7 @@
   "include": [
     "src",
     "test",
+    "scripts/*.ts",
     "vite.config.ts"
   ]
 }

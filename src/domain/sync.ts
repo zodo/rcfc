@@ -3,6 +3,10 @@
 import { eventOrder } from "./collection";
 import type { AppEvent, Review } from "./events";
 
+/** Most events per push request, and per pull page (server and client agree). */
+export const PUSH_MAX = 500;
+export const PULL_PAGE = 500;
+
 /** RFC 4648 base32 alphabet: no 0/1/8/9, so codes survive being read aloud or typed. */
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 /** 16 chars × 5 bits = 80 bits: unguessable, and the code is the whole account. */

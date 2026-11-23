@@ -154,6 +154,10 @@ async function handle(m: Request): Promise<unknown> {
       unsaved = 0;
       await clearCheckpoint();
       return null;
+    case "rekey":
+      configKey = m.configKey;
+      scheduleFlush(1);
+      return null;
     case "apply": {
       need().apply(m.rows);
       lastReviewId = m.lastReviewId;

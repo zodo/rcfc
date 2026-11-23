@@ -4,9 +4,17 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
 
 ## Layout
 
-- `src/` PWA client (Vite + vite-plugin-pwa, Dexie, no UI framework). `domain/` pure logic (event fold, RWKV row derivation, card picking), `engine/` RWKV Web Worker + checkpoints, `store.ts` ties log + engine, `main.ts` screens
+- `src/` PWA client (Vite + vite-plugin-pwa, Dexie, no UI framework)
+  - `domain/` pure logic: event fold, RWKV row derivation, card picking, new-card daily limits (`newcards.ts`)
+  - `engine/` RWKV Web Worker + checkpoints; `EngineApi` is what the app uses (tests stub it)
+  - `store.ts` ties log + engine. No UI side effects: writes return `{ replay }` / set `stale`, the app decides when to reload
+  - `session.ts` study-session logic (UI-free); `sync.ts` sync loop
+  - `app.ts` shell shared by screens: `app` (store, sync, current screen), `go.*` navigation, `page()` / `fullScreen()`, `setKeys()`
+  - `screens/` one module per screen; they navigate through `go`, never import each other (except helpers in `decks.ts`, `sort.ts`)
+  - `main.ts` boot only; `dev/` dev-only URL hooks (`?reset`, `?seed=N`), excluded from production builds
 - `rwkv/engine/` Rust RWKV-SRS V1 inference (→ Wasm), checked against upstream goldens in `rwkv/golden/`; `rwkv/models/` weights
-- `worker/` Cloudflare Worker: API under `/api/*`; everything else is static assets
+- `worker/` Cloudflare Worker: API under `/api/*`; everything else is static assets. `sync.ts` is the sync API, written against a small `SqlDb` slice of D1 so tests run it on bun:sqlite
+- `test/` bun tests; `test/support/` harness: fake-indexeddb, `FakeEngine`, in-process sync server (`Device`, `Server`, `Clock`)
 - `migrations/` D1 SQL migrations (applied automatically on deploy)
 - `scripts/` deploy tooling (below)
 - `wrangler.jsonc` the single Worker config: top level = local dev, `env.preview`, `env.production`
@@ -30,7 +38,9 @@ Bun is the package manager, script runner and test runner (`bun.lock`; never use
 - `bun run dev` local dev with local D1/R2 (`bun run db:migrate:local` first on a fresh checkout)
 - `bun run build` typecheck + build
 - `scripts/build-icons.sh` re-rasterize `public/icon.svg` into the committed PNG icons (manifest + iOS) after changing it
-- `bun test` unit tests (`bun:test`). `RCFC_DUOCARDS_EXPORT=/path/to/export.csv bun test` also runs the importer over a real export (never commit real exports: personal data)
+- `bun test` all tests (`bun:test`): pure domain, Store/StudySession on fake-indexeddb + fake engine, multi-device sync through the real Worker handler. `RCFC_DUOCARDS_EXPORT=/path/to/export.csv bun test` also runs the importer over a real export (never commit real exports: personal data)
+- `bun run smoke [url]` UI smoke test in real Safari (WebKit) via safaridriver: starts a dev server on :5199 unless given one, walks deck → add → study → words → settings/sync → seeded replay → sorting; screenshot on failure in `.wrangler/smoke/`. Needs Safari Develop ▸ Allow Remote Automation and no other automation session (the Safari MCP holds one while connected)
+- Dev URL hooks (dev server only): `/?reset` wipes this origin's data, `/?seed=60` adds a demo deck with a month of reviews
 - `bun run deploy:preview` build → remote D1 migrations → deploy → smoke test; prints the URL
 - `bun run deploy:prod` same for production; refuses a dirty tree. **Only on explicit user request.**
 - `bun run check:deploy preview|production|<url>` re-run the smoke test

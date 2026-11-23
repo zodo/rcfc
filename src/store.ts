@@ -1,27 +1,31 @@
 // App state: the event log in IndexedDB (Dexie), its fold, and the RWKV engine.
-import Dexie, { type Table } from "dexie";
+// No UI side effects: when the in-memory model falls behind the log (late sync,
+// rollover change) writes report `replay` and set `stale`; the app decides when
+// to reload.
+import Dexie, { type DexieOptions, type Table } from "dexie";
 import { Collection, EventFactory, eventOrder, type Card, type Preset } from "./domain/collection";
 import type { AppEvent, Review, ReviewPayload } from "./domain/events";
 import type { EntityId } from "./domain/ids";
-import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin, studyDay } from "./domain/rows";
-import { Engine } from "./engine/client";
-import type { InitResult } from "./engine/protocol";
+import { newQueue, unseenCards, type DayClock } from "./domain/newcards";
+import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin } from "./domain/rows";
 import { needsReplay } from "./domain/sync";
+import { Engine, type EngineApi } from "./engine/client";
+import type { InitResult } from "./engine/protocol";
 
 /** `remote`: came from the sync server, so it is never pushed back. */
 type StoredEvent = AppEvent & { seq?: number; remote?: 1 };
 
-export interface IngestResult {
+export interface WriteResult {
   added: number;
-  /** The model must replay from scratch (late review or rollover change): reload. */
+  /** The model must replay from scratch (late review or rollover change): reload when convenient. */
   replay: boolean;
 }
 
 class AppDb extends Dexie {
   events!: Table<StoredEvent, number>;
   meta!: Table<{ key: string; value: unknown }, string>;
-  constructor() {
-    super("rcfc");
+  constructor(name: string, options?: DexieOptions) {
+    super(name, options);
     this.version(1).stores({ events: "++seq, &event_id, type", meta: "key" });
   }
 }
@@ -36,10 +40,20 @@ export interface StartupInfo {
 
 export type Progress = (done: number, total: number) => void;
 
+export interface StoreOptions {
+  onProgress?: Progress;
+  /** Defaults to the RWKV Web Worker; tests pass a stub. */
+  engine?: EngineApi;
+  /** IndexedDB database name (default "rcfc"). */
+  dbName?: string;
+  /** Dexie options, e.g. a fake-indexeddb implementation in tests. */
+  dexie?: DexieOptions;
+  now?: () => number;
+}
+
 export class Store {
   readonly col = new Collection();
   private rows = new RowBuilder();
-  readonly engine = new Engine();
   readonly factory: EventFactory;
   /** Latest P(recall) per reviewed card, and when each was computed. */
   readonly preds = new Map<EntityId, number>();
@@ -47,25 +61,27 @@ export class Store {
   private configKey = "";
   /** Called after every local write (sync pushes soon after). */
   onLocalWrite: () => void = () => {};
-  /** In-memory RWKV state is behind the log until the app reloads (late sync). */
+  /** In-memory RWKV state is behind the log until the app reloads. */
   stale = false;
 
   private constructor(
     private db: AppDb,
     readonly deviceId: string,
+    readonly engine: EngineApi,
+    private now: () => number,
   ) {
-    this.factory = new EventFactory(deviceId);
+    this.factory = new EventFactory(deviceId, now);
   }
 
-  static async open(onProgress?: Progress): Promise<{ store: Store; info: StartupInfo }> {
+  static async open(opts: StoreOptions = {}): Promise<{ store: Store; info: StartupInfo }> {
     const t0 = performance.now();
-    const db = new AppDb();
+    const db = new AppDb(opts.dbName ?? "rcfc", opts.dexie);
     let deviceId = (await db.meta.get("device_id"))?.value as string | undefined;
     if (!deviceId) {
       deviceId = crypto.randomUUID();
       await db.meta.put({ key: "device_id", value: deviceId });
     }
-    const s = new Store(db, deviceId);
+    const s = new Store(db, deviceId, opts.engine ?? new Engine(), opts.now ?? Date.now);
     const events = await db.events.orderBy("seq").toArray();
     for (const e of events) s.col.apply(e);
     if (!s.col.defaultPreset()) await s.append([s.factory.preset()]);
@@ -86,10 +102,15 @@ export class Store {
     for (let i = from; i < reviews.length; i += CHUNK) {
       const end = Math.min(reviews.length, i + CHUNK);
       await s.engine.apply(Float64Array.from(rows.slice(i * ROW_WIDTH, end * ROW_WIDTH)), reviews[end - 1].event_id);
-      onProgress?.(end - from, reviews.length - from);
+      opts.onProgress?.(end - from, reviews.length - from);
     }
     if (reviews.length > from) await s.engine.flush();
     return { store: s, info: { events: events.length, reviews: reviews.length, replayed: reviews.length - from, engine, ms: performance.now() - t0 } };
+  }
+
+  /** Close the database (tests reopen the same log). */
+  close(): void {
+    this.db.close();
   }
 
   private makeConfigKey(): string {
@@ -100,8 +121,23 @@ export class Store {
     return `rows${ROWS_VERSION}|${roll.join(",")}`;
   }
 
+  /**
+   * The first review under another preset extends the config key; the rows so
+   * far are unchanged, so the checkpoint stays valid under the new key.
+   */
+  private async rekey(): Promise<void> {
+    const k = this.makeConfigKey();
+    if (k === this.configKey) return;
+    this.configKey = k;
+    await this.engine.rekey(k);
+  }
+
   private rolloverOf(p: Pick<ReviewPayload, "preset_id">): number {
     return this.col.presets.get(p.preset_id)?.day_rollover_hour ?? this.preset().day_rollover_hour;
+  }
+
+  private tz(): number {
+    return localTzOffsetMin(new Date(this.now()));
   }
 
   preset(): Preset {
@@ -109,16 +145,15 @@ export class Store {
   }
 
   /** Append non-review events (creation, edits, settings). */
-  async append(events: AppEvent[]): Promise<void> {
+  async append(events: AppEvent[]): Promise<WriteResult> {
     if (events.some((e) => e.type === "review")) throw new Error("use answer() for reviews");
     const fresh = events.filter((e) => !this.col.eventIds.has(e.event_id));
     await this.db.events.bulkAdd(fresh);
     for (const e of fresh) this.col.apply(e);
     if (fresh.length) this.onLocalWrite();
-    if (fresh.some((e) => e.type === "preset_updated") && this.configKey && this.makeConfigKey() !== this.configKey) {
-      // A rollover change re-derives every row: reload replays from scratch.
-      location.reload();
-    }
+    // A rollover change re-derives every row: only a full replay can apply it.
+    if (fresh.some((e) => e.type === "preset_updated") && this.configKey && this.makeConfigKey() !== this.configKey) this.stale = true;
+    return { added: fresh.length, replay: this.stale };
   }
 
   /** Record an answer and feed it to RWKV. Returns the pre-answer P(recall). */
@@ -132,20 +167,21 @@ export class Store {
       preset_id: deck.preset_id,
       rating,
       duration_ms: Math.round(durationMs),
-      tz_offset_min: localTzOffsetMin(),
+      tz_offset_min: this.tz(),
     });
     await this.db.events.add(ev);
     this.col.apply(ev);
     this.onLocalWrite();
     const row = this.rows.push(ev, this.rolloverOf(ev.payload));
     const [p] = await this.engine.process(Float64Array.from(row), ev.event_id);
+    await this.rekey();
     return p;
   }
 
   /** Re-predict P(recall) now for the given (reviewed) cards. */
   async predict(cards: Card[]): Promise<void> {
-    const now = Date.now();
-    const tz = localTzOffsetMin();
+    const now = this.now();
+    const tz = this.tz();
     const rows: number[] = [];
     const list = cards.filter((c) => c.reviews > 0);
     for (const c of list) {
@@ -161,6 +197,16 @@ export class Store {
     });
   }
 
+  /** Last predictions of the given cards (reviewed ones only). */
+  predsOf(cards: Card[]): Map<EntityId, number> {
+    const m = new Map<EntityId, number>();
+    for (const c of cards) {
+      const p = this.preds.get(c.id);
+      if (c.reviews > 0 && p !== undefined) m.set(c.id, p);
+    }
+    return m;
+  }
+
   /** The `n` reviewed cards whose prediction is oldest. */
   stalest(cards: Card[], n: number): Card[] {
     return cards
@@ -169,71 +215,25 @@ export class Store {
       .slice(0, n);
   }
 
-  today(): number {
-    return studyDay(Date.now(), localTzOffsetMin(), this.preset().day_rollover_hour);
-  }
-
-  private dayOf(ts: number): number {
-    return studyDay(ts, localTzOffsetMin(), this.preset().day_rollover_hour);
-  }
-
-  /**
-   * Cards introduced today (except ones known on first sight), split into fresh words (no card of the note seen
-   * before today) and second directions (a sibling was seen on an earlier day).
-   */
-  introducedToday(): { words: number; second: number } {
-    const today = this.today();
-    const words = new Set<EntityId>();
-    let second = 0;
-    for (const c of this.col.cards.values()) {
-      if (c.first_review_ts === undefined || this.dayOf(c.first_review_ts) !== today) continue;
-      // Already known on first sight (Easy, e.g. sorted as known): not a new burden.
-      if (c.first_rating === 4) continue;
-      const siblings = (this.col.cardsByNote.get(c.note_id) ?? []).map((id) => this.col.cards.get(id)!);
-      if (siblings.some((s) => s.first_review_ts !== undefined && this.dayOf(s.first_review_ts) < today)) second++;
-      else words.add(c.note_id);
-    }
-    return { words: words.size, second };
-  }
-
-  /** Never-seen cards: first cards of unseen words, and second directions ready to start. */
-  private unseen(deckId?: EntityId): { fresh: Card[]; second: Card[] } {
-    const today = this.today();
-    const second: Card[] = [];
-    const fresh: Card[] = [];
-    for (const c of this.col.liveCards(deckId)) {
-      if (c.reviews > 0) continue;
-      const siblings = (this.col.cardsByNote.get(c.note_id) ?? []).filter((id) => id !== c.id).map((id) => this.col.cards.get(id)!);
-      const seen = siblings.filter((s) => s.first_review_ts !== undefined);
-      if (seen.length === 0) {
-        if (c.template === "forward" || siblings.length === 0 || siblings.every((s) => s.template !== "forward")) fresh.push(c);
-      } else if (seen.every((s) => this.dayOf(s.first_review_ts!) < today)) second.push(c);
-    }
-    return { fresh, second };
+  clock(): DayClock {
+    return { now: this.now(), tzOffsetMin: this.tz(), rolloverHour: this.preset().day_rollover_hour };
   }
 
   /** First cards of words never studied, all of them (for sorting known words). */
   unseenWords(deckId?: EntityId): Card[] {
-    return this.unseen(deckId).fresh;
+    return unseenCards(this.col, this.clock(), deckId).fresh;
   }
 
-  /**
-   * New cards that may be shown now. Fresh words and second directions (the
-   * other side of a word started on an earlier day) each get the daily limit,
-   * so a big batch of known words doesn't crowd out new ones.
-   */
+  /** New cards that may be shown now (src/domain/newcards.ts). */
   newQueue(deckId?: EntityId): Card[] {
-    const { fresh, second } = this.unseen(deckId);
-    const today = this.introducedToday();
-    const limit = this.preset().new_per_day;
-    return [...second.slice(0, Math.max(0, limit - today.second)), ...fresh.slice(0, Math.max(0, limit - today.words))];
+    return newQueue(this.col, this.clock(), this.preset().new_per_day, deckId);
   }
 
   async allEvents(): Promise<AppEvent[]> {
     return (await this.db.events.orderBy("seq").toArray()).map(({ seq: _seq, remote: _remote, ...e }) => e as AppEvent);
   }
 
-  /** Restore from a backup: adds unknown events (any type) and reloads. */
+  /** Restore from a backup: adds unknown events (any type). The app must reload to replay them. */
   async importBackup(events: AppEvent[]): Promise<number> {
     const fresh = events.filter((e) => e && typeof e.event_id === "string" && !this.col.eventIds.has(e.event_id));
     await this.db.events.bulkAdd(fresh);
@@ -269,10 +269,10 @@ export class Store {
   }
 
   /** Add events pulled from the server. Reviews feed RWKV when in order. */
-  async ingest(events: AppEvent[]): Promise<IngestResult> {
+  async ingest(events: AppEvent[]): Promise<WriteResult> {
     const seen = new Set<string>();
     const fresh = events.filter((e) => !this.col.eventIds.has(e.event_id) && !seen.has(e.event_id) && seen.add(e.event_id));
-    if (!fresh.length) return { added: 0, replay: false };
+    if (!fresh.length) return { added: 0, replay: this.stale };
     await this.db.events.bulkAdd(fresh.map((e) => ({ ...e, remote: 1 as const })));
     // Decide and apply synchronously, so a local answer cannot slip in between.
     let replay = needsReplay(this.col.reviews[this.col.reviews.length - 1], fresh);
@@ -288,9 +288,10 @@ export class Store {
       const rows: number[] = [];
       for (const r of reviews) this.rows.push(r, this.rolloverOf(r.payload), rows);
       await this.engine.apply(Float64Array.from(rows), reviews[reviews.length - 1].event_id);
+      await this.rekey();
       await this.engine.flush();
       await this.predict(reviews.map((r) => this.col.cards.get(r.payload.card_id)).filter((c): c is Card => !!c));
     }
-    return { added: fresh.length, replay };
+    return { added: fresh.length, replay: false };
   }
 }

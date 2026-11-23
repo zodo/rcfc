@@ -2,10 +2,9 @@
 // after the stored cursor. Runs on start, on reconnect, when the app comes back
 // to the foreground, every 30 s while visible, and shortly after local writes.
 import type { AppEvent } from "./domain/events";
-import { newSyncCode } from "./domain/sync";
+import { newSyncCode, PUSH_MAX } from "./domain/sync";
 import type { Store } from "./store";
 
-const PUSH_BATCH = 500; // matches the Worker's PUSH_MAX
 const INTERVAL_MS = 30_000;
 const AFTER_WRITE_MS = 2_000;
 
@@ -25,6 +24,8 @@ export class Sync {
   /** Pulled events need a full RWKV replay; the app should reload when convenient. */
   onReplay: () => void = () => {};
   onStatus: (s: SyncStatus) => void = () => {};
+  /** How requests reach the API; tests route them straight to the Worker handler. */
+  fetch: (url: string, init: RequestInit) => Promise<Response> = (url, init) => fetch(url, init);
 
   private running: Promise<void> | null = null;
   private again = false;
@@ -113,7 +114,7 @@ export class Sync {
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const res = await fetch(`/api/sync/${path}`, { ...init, headers: { ...init.headers, "x-user-code": this.code, "content-type": "application/json" } });
+    const res = await this.fetch(`/api/sync/${path}`, { ...init, headers: { ...init.headers, "x-user-code": this.code, "content-type": "application/json" } });
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
       throw new Error(body?.error ?? `HTTP ${res.status}`);
@@ -124,7 +125,7 @@ export class Sync {
   private async push(): Promise<void> {
     let after = (await this.store.getMeta<number>("sync_pushed")) ?? 0;
     for (;;) {
-      const { events, upTo } = await this.store.outbox(after, PUSH_BATCH);
+      const { events, upTo } = await this.store.outbox(after, PUSH_MAX);
       if (upTo === after) return;
       if (events.length) await this.request("push", { method: "POST", body: JSON.stringify({ events }) });
       after = upTo;

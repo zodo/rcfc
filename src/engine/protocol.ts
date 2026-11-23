@@ -18,6 +18,8 @@ export interface SpeedResult {
 export type Request =
   | { op: "init"; configKey: string }
   | { op: "reset" }
+  /** The rows config grew (first review under another preset): save checkpoints under this key. */
+  | { op: "rekey"; configKey: string }
   /** Replay: state only. */
   | { op: "apply"; rows: Float64Array; lastReviewId: string }
   /** Live answer: returns the pre-answer P per row. */

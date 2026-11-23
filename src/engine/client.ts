@@ -1,6 +1,9 @@
 // Promise API over the RWKV worker.
 import type { InitResult, Request, Response, SpeedResult } from "./protocol";
 
+/** What the app uses of the engine; tests substitute a stub (test/support/fake-engine.ts). */
+export type EngineApi = Pick<Engine, keyof Engine>;
+
 export class Engine {
   private worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   private next = 1;
@@ -35,6 +38,9 @@ export class Engine {
   }
   reset() {
     return this.call<null>({ op: "reset" });
+  }
+  rekey(configKey: string) {
+    return this.call<null>({ op: "rekey", configKey });
   }
   apply(rows: Float64Array, lastReviewId: string) {
     return this.call<null>({ op: "apply", rows, lastReviewId });
