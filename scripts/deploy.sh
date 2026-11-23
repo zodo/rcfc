@@ -30,7 +30,10 @@ wrangler d1 migrations apply DB --remote -c wrangler.jsonc --env "$env"
 echo "== deploy"
 log=$(mktemp)
 wrangler deploy --message "$msg" 2>&1 | tee "$log"
-url=$(grep -Eo 'https://[a-z0-9.-]+\.workers\.dev' "$log" | head -1)
+# Prefer a custom domain (production) over the workers.dev address.
+custom=$(grep -Eo '[a-z0-9.-]+\.[a-z]+ \(custom domain\)' "$log" | head -1 | cut -d' ' -f1 || true)
+url=${custom:+https://$custom}
+[[ -n "$url" ]] || url=$(grep -Eo 'https://[a-z0-9.-]+\.workers\.dev' "$log" | head -1)
 rm -f "$log"
 [[ -n "$url" ]] || { echo "could not find deployed URL in wrangler output" >&2; exit 1; }
 
