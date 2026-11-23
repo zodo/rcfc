@@ -34,6 +34,10 @@ export default defineConfig({
       },
       workbox: {
         navigateFallbackDenylist: [/^\/api\//],
+        // Activate new versions without waiting for a message from the page:
+        // pages of older versions never send one. src/ui/update.ts offers the reload.
+        skipWaiting: true,
+        clientsClaim: true,
         // The RWKV model (~11 MB) and engine must be precached for offline use;
         // Workbox silently skips files over its 2 MiB default.
         globPatterns: ["**/*.{js,css,html,svg,webmanifest,wasm,safetensors}"],
