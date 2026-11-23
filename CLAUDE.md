@@ -39,7 +39,7 @@ Bun is the package manager, script runner and test runner (`bun.lock`; never use
 - `bun run build` typecheck + build
 - `scripts/build-icons.sh` re-rasterize `public/icon.svg` into the committed PNG icons (manifest + iOS) after changing it
 - `bun test` all tests (`bun:test`): pure domain, Store/StudySession on fake-indexeddb + fake engine, multi-device sync through the real Worker handler. `RCFC_DUOCARDS_EXPORT=/path/to/export.csv bun test` also runs the importer over a real export (never commit real exports: personal data)
-- `bun run smoke [url]` UI smoke test in real Safari (WebKit) via safaridriver: starts a dev server on :5199 unless given one, walks deck → add → study → words → settings/sync → seeded replay → sorting; screenshot on failure in `.wrangler/smoke/`. Needs Safari Develop ▸ Allow Remote Automation and no other automation session (the Safari MCP holds one while connected)
+- `bun run smoke [url]` UI smoke test in headless Chromium (Chromium.app, else Chrome; `RCFC_CHROMIUM` overrides) over the DevTools Protocol, no deps: starts a dev server on :5199 unless given one, walks deck → add → study → words → settings/sync → seeded replay with the real model → sorting, fails on page errors; screenshot on failure in `.wrangler/smoke/`. `RCFC_HEADFUL=1` to watch, `RCFC_TRACE=1` to log clicks. ~4 s after the dev server is up
 - Dev URL hooks (dev server only): `/?reset` wipes this origin's data, `/?seed=60` adds a demo deck with a month of reviews
 - `bun run deploy:preview` build → remote D1 migrations → deploy → smoke test; prints the URL
 - `bun run deploy:prod` same for production; refuses a dirty tree. **Only on explicit user request.**

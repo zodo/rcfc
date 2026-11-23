@@ -111,7 +111,8 @@ function showCard(s: StudySession, pick: Pick, due: number) {
       return;
     }
     await s.refresh(card);
-    next(s);
+    // Closed while the answer was saving: don't draw the next card over home.
+    if (flashcard.isConnected) next(s);
   }
 
   function onKey(e: KeyboardEvent) {

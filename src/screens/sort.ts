@@ -86,7 +86,8 @@ export function sortWords(deckId: EntityId): void {
         saveSortedLater(laterSet);
         later++;
       }
-      show();
+      // Stopped (or left) while the answer was saving: don't come back.
+      if (el.isConnected) show();
     };
     const el = h(
       "div",
