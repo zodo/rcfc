@@ -4,6 +4,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::bytes::{Reader, Writer};
+
 pub const FEATURE_LEN: usize = 92;
 const ID_PLACEHOLDER: i64 = 314_159_265_358_979_323;
 const DAY_OFFSET_ENCODE_PERIODS: [f64; 7] = [3.0, 7.0, 30.0, 100.0, 365.0, 3650.0, 36500.0];
@@ -82,7 +84,10 @@ pub fn normalized_ids(input: &ReviewInput) -> (Ids, [f64; 3]) {
     let (note, note_missing) = norm(input.note_id, input.card_id);
     let (deck, deck_missing) = norm(input.deck_id, 0);
     let (preset, preset_missing) = norm(input.preset_id, 0);
-    ((input.card_id, note, deck, preset), [note_missing, deck_missing, preset_missing])
+    (
+        (input.card_id, note, deck, preset),
+        [note_missing, deck_missing, preset_missing],
+    )
 }
 
 impl FeatureState {
@@ -90,10 +95,26 @@ impl FeatureState {
     /// state and is_query are filled in by the caller).
     fn card_features(&self, input: &ReviewInput, missing: [f64; 3]) -> ([f32; 24], f64, f64) {
         let card = input.card_id;
-        let edc = self.card2elapsed_days_cumulative.get(&card).copied().unwrap_or(0.0) + input.elapsed_days;
-        let esc = self.card2elapsed_seconds_cumulative.get(&card).copied().unwrap_or(0.0) + input.elapsed_seconds;
-        let day_offset = self.first_day_offset.map_or(0.0, |first| input.day_offset - first);
-        let day_offset_first = self.card2first_day_offset.get(&card).copied().unwrap_or(day_offset);
+        let edc = self
+            .card2elapsed_days_cumulative
+            .get(&card)
+            .copied()
+            .unwrap_or(0.0)
+            + input.elapsed_days;
+        let esc = self
+            .card2elapsed_seconds_cumulative
+            .get(&card)
+            .copied()
+            .unwrap_or(0.0)
+            + input.elapsed_seconds;
+        let day_offset = self
+            .first_day_offset
+            .map_or(0.0, |first| input.day_offset - first);
+        let day_offset_first = self
+            .card2first_day_offset
+            .get(&card)
+            .copied()
+            .unwrap_or(day_offset);
         let prev = self.prev_day_offset.unwrap_or(0.0);
         let diff_new_cards = self
             .last_new_cards
@@ -101,7 +122,11 @@ impl FeatureState {
             .map(|last| self.card_count as i64 - *last as i64)
             .unwrap_or(0)
             .max(0) as f64;
-        let diff_reviews = self.last_i.get(&card).map(|last| (self.i - *last - 1).max(0)).unwrap_or(0) as f64;
+        let diff_reviews = self
+            .last_i
+            .get(&card)
+            .map(|last| (self.i - *last - 1).max(0))
+            .unwrap_or(0) as f64;
         let (mut today_reviews, mut today_new_cards) = (self.today_reviews, self.today_new_cards);
         if day_offset != self.today {
             today_new_cards = 0;
@@ -140,7 +165,13 @@ impl FeatureState {
         (f.map(|v| v as f32), day_offset, day_offset_first)
     }
 
-    fn push_ids_and_days(&self, out: &mut Vec<f32>, encodings: &[Vec<f32>; 4], day_offset: f64, day_offset_first: f64) {
+    fn push_ids_and_days(
+        &self,
+        out: &mut Vec<f32>,
+        encodings: &[Vec<f32>; 4],
+        day_offset: f64,
+        day_offset_first: f64,
+    ) {
         for e in encodings {
             out.extend_from_slice(e);
         }
@@ -148,7 +179,12 @@ impl FeatureState {
             let f = 2.0 * std::f64::consts::PI / period;
             let a = py_mod(day_offset, period);
             let b = py_mod(day_offset_first, period);
-            out.extend([(f * a).sin() as f32, (f * a).cos() as f32, (f * b).sin() as f32, (f * b).cos() as f32]);
+            out.extend([
+                (f * a).sin() as f32,
+                (f * a).cos() as f32,
+                (f * b).sin() as f32,
+                (f * b).cos() as f32,
+            ]);
         }
     }
 
@@ -184,9 +220,14 @@ impl FeatureState {
 
     /// Features of an answered review: returns (query row, answer row) and
     /// records the review. The query row yields the pre-answer prediction.
-    pub fn process_features(&mut self, input: &ReviewInput) -> Result<(Vec<f32>, Vec<f32>, Ids), String> {
+    pub fn process_features(
+        &mut self,
+        input: &ReviewInput,
+    ) -> Result<(Vec<f32>, Vec<f32>, Ids), String> {
         let rating = input.rating.ok_or("process review is missing 'rating'")?;
-        let duration = input.duration.ok_or("process review is missing 'duration'")?;
+        let duration = input
+            .duration
+            .ok_or("process review is missing 'duration'")?;
         let state = input.state.ok_or("process review is missing 'state'")?;
         if !(1..=4).contains(&rating) {
             return Err(format!("rating must be 1..=4, got {rating}"));
@@ -220,13 +261,21 @@ impl FeatureState {
         answer.extend_from_slice(&card);
         self.push_ids_and_days(&mut answer, &encodings, day_offset, day_offset_first);
 
-        self.record(input.card_id, input.elapsed_days, input.elapsed_seconds, day_offset);
+        self.record(
+            input.card_id,
+            input.elapsed_days,
+            input.elapsed_seconds,
+            day_offset,
+        );
         Ok((query, answer, ids))
     }
 
     fn record(&mut self, card: i64, elapsed_days: f64, elapsed_seconds: f64, day_offset: f64) {
         *self.card2elapsed_days_cumulative.entry(card).or_insert(0.0) += elapsed_days;
-        *self.card2elapsed_seconds_cumulative.entry(card).or_insert(0.0) += elapsed_seconds;
+        *self
+            .card2elapsed_seconds_cumulative
+            .entry(card)
+            .or_insert(0.0) += elapsed_seconds;
         if self.first_day_offset.is_none() {
             self.first_day_offset = Some(day_offset);
         }
@@ -239,7 +288,8 @@ impl FeatureState {
         if self.card_set.insert(card) {
             self.today_new_cards += 1;
             self.card_count += 1;
-            self.card2first_day_offset.insert(card, day_offset - self.first_day_offset.unwrap());
+            self.card2first_day_offset
+                .insert(card, day_offset - self.first_day_offset.unwrap());
         }
         self.prev_day_offset = Some(day_offset);
         self.last_i.insert(card, self.i);
@@ -248,8 +298,126 @@ impl FeatureState {
     }
 }
 
+impl FeatureState {
+    /// Serialize everything (checkpoint). Format version lives in the caller.
+    pub fn write(&self, w: &mut Writer) {
+        w.opt_f64(self.first_day_offset);
+        w.opt_f64(self.prev_day_offset);
+        w.u64(self.card_set.len() as u64);
+        for c in &self.card_set {
+            w.i64(*c);
+        }
+        w.u64(self.card_count as u64);
+        w.u64(self.last_new_cards.len() as u64);
+        for (k, v) in &self.last_new_cards {
+            w.i64(*k);
+            w.u64(*v as u64);
+        }
+        w.i64(self.i);
+        w.u64(self.last_i.len() as u64);
+        for (k, v) in &self.last_i {
+            w.i64(*k);
+            w.i64(*v);
+        }
+        w.f64(self.today);
+        w.i64(self.today_reviews);
+        w.i64(self.today_new_cards);
+        for m in [
+            &self.card2first_day_offset,
+            &self.card2elapsed_days_cumulative,
+            &self.card2elapsed_seconds_cumulative,
+        ] {
+            w.u64(m.len() as u64);
+            for (k, v) in m {
+                w.i64(*k);
+                w.f64(*v);
+            }
+        }
+        for m in &self.id_encodings {
+            w.u64(m.len() as u64);
+            for (k, v) in m {
+                w.i64(*k);
+                w.f32s(v);
+            }
+        }
+        w.u64(self.id_rng.left as u64);
+        w.u64(self.id_rng.next as u64);
+        for s in self.id_rng.state {
+            w.u32(s);
+        }
+    }
+
+    pub fn read(r: &mut Reader) -> Result<Self, String> {
+        let first_day_offset = r.opt_f64()?;
+        let prev_day_offset = r.opt_f64()?;
+        let mut card_set = BTreeSet::new();
+        for _ in 0..r.u64()? {
+            card_set.insert(r.i64()?);
+        }
+        let card_count = r.u64()? as usize;
+        let mut last_new_cards = BTreeMap::new();
+        for _ in 0..r.u64()? {
+            last_new_cards.insert(r.i64()?, r.u64()? as usize);
+        }
+        let i = r.i64()?;
+        let mut last_i = BTreeMap::new();
+        for _ in 0..r.u64()? {
+            last_i.insert(r.i64()?, r.i64()?);
+        }
+        let today = r.f64()?;
+        let today_reviews = r.i64()?;
+        let today_new_cards = r.i64()?;
+        let f64_map = |r: &mut Reader| -> Result<BTreeMap<i64, f64>, String> {
+            let mut m = BTreeMap::new();
+            for _ in 0..r.u64()? {
+                m.insert(r.i64()?, r.f64()?);
+            }
+            Ok(m)
+        };
+        let card2first_day_offset = f64_map(r)?;
+        let card2elapsed_days_cumulative = f64_map(r)?;
+        let card2elapsed_seconds_cumulative = f64_map(r)?;
+        let mut id_encodings: [BTreeMap<i64, Vec<f32>>; 4] = Default::default();
+        for m in id_encodings.iter_mut() {
+            for _ in 0..r.u64()? {
+                m.insert(r.i64()?, r.f32s()?);
+            }
+        }
+        let left = r.u64()? as usize;
+        let next = r.u64()? as usize;
+        let mut state = [0u32; 624];
+        for s in state.iter_mut() {
+            *s = r.u32()?;
+        }
+        if left == 0 || left > 624 || next > 624 {
+            return Err("checkpoint: bad rng state".into());
+        }
+        Ok(Self {
+            first_day_offset,
+            prev_day_offset,
+            card_set,
+            card_count,
+            last_new_cards,
+            i,
+            last_i,
+            today,
+            today_reviews,
+            today_new_cards,
+            card2first_day_offset,
+            card2elapsed_days_cumulative,
+            card2elapsed_seconds_cumulative,
+            id_encodings,
+            id_rng: TorchMt19937 { left, next, state },
+        })
+    }
+}
+
 fn scale_log(x: f64, mean: f64, std: f64) -> f64 {
-    let l = if x == -1.0 { 0.0 } else { (1.0 + 1e-5 + x).ln() };
+    let l = if x == -1.0 {
+        0.0
+    } else {
+        (1.0 + 1e-5 + x).ln()
+    };
     (l - mean) / std
 }
 fn day_sin(x: f64) -> f64 {
@@ -275,9 +443,15 @@ impl TorchMt19937 {
         let mut state = [0u32; 624];
         state[0] = (seed & 0xffff_ffff) as u32;
         for j in 1..624 {
-            state[j] = 1_812_433_253u32.wrapping_mul(state[j - 1] ^ (state[j - 1] >> 30)).wrapping_add(j as u32);
+            state[j] = 1_812_433_253u32
+                .wrapping_mul(state[j - 1] ^ (state[j - 1] >> 30))
+                .wrapping_add(j as u32);
         }
-        Self { left: 1, next: 0, state }
+        Self {
+            left: 1,
+            next: 0,
+            state,
+        }
     }
 
     fn random_u32(&mut self) -> u32 {
@@ -295,13 +469,18 @@ impl TorchMt19937 {
     }
 
     fn id_encoding(&mut self, dim: usize) -> Vec<f32> {
-        (0..dim).map(|_| (self.random_u32() % 4) as f32 - 1.5).collect()
+        (0..dim)
+            .map(|_| (self.random_u32() % 4) as f32 - 1.5)
+            .collect()
     }
 
     fn next_state(&mut self) {
         const N: usize = 624;
         const M: usize = 397;
-        let twist = |u: u32, v: u32| (((u & 0x8000_0000) | (v & 0x7fff_ffff)) >> 1) ^ if v & 1 != 0 { 0x9908_b0df } else { 0 };
+        let twist = |u: u32, v: u32| {
+            (((u & 0x8000_0000) | (v & 0x7fff_ffff)) >> 1)
+                ^ if v & 1 != 0 { 0x9908_b0df } else { 0 }
+        };
         self.left = N;
         self.next = 0;
         for i in 0..(N - M) {
@@ -321,6 +500,9 @@ mod tests {
     fn mt19937_matches_upstream_vector() {
         // Same vector as upstream id_encoding.rs test.
         let mut rng = TorchMt19937::seed_from_u64(12_345);
-        assert_eq!(rng.id_encoding(12), vec![0.5, -0.5, -0.5, -0.5, -1.5, -0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5]);
+        assert_eq!(
+            rng.id_encoding(12),
+            vec![0.5, -0.5, -0.5, -0.5, -1.5, -0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5]
+        );
     }
 }

@@ -9,7 +9,7 @@
 
 use wasm_bindgen::prelude::*;
 
-use crate::{ReviewInput, Runtime};
+use crate::{Kind, ReviewInput, Runtime};
 
 pub const ROW_WIDTH: usize = 10;
 
@@ -27,7 +27,10 @@ fn opt(v: f64) -> Option<f64> {
 
 fn rows(data: &[f64]) -> Result<Vec<ReviewInput>, JsError> {
     if data.len() % ROW_WIDTH != 0 {
-        return Err(JsError::new(&format!("row data length {} is not a multiple of {ROW_WIDTH}", data.len())));
+        return Err(JsError::new(&format!(
+            "row data length {} is not a multiple of {ROW_WIDTH}",
+            data.len()
+        )));
     }
     Ok(data
         .chunks_exact(ROW_WIDTH)
@@ -51,7 +54,9 @@ impl Rwkv {
     /// Load a V1 model (.safetensors bytes).
     #[wasm_bindgen(constructor)]
     pub fn new(weights: &[u8]) -> Result<Rwkv, JsError> {
-        Runtime::new(weights).map(|rt| Rwkv { rt }).map_err(|e| JsError::new(&e))
+        Runtime::new(weights)
+            .map(|rt| Rwkv { rt })
+            .map_err(|e| JsError::new(&e))
     }
 
     /// Apply answered reviews in time order. Returns, per review, the P(recall)
@@ -66,6 +71,60 @@ impl Rwkv {
     /// P(recall) now for each row. Does not change state.
     pub fn predict(&mut self, data: &[f64]) -> Result<Vec<f64>, JsError> {
         Ok(self.rt.predict(&rows(data)?))
+    }
+
+    /// Like `process` without the pre-answer predictions: half the work. For replay.
+    pub fn apply(&mut self, data: &[f64]) -> Result<(), JsError> {
+        for r in rows(data)? {
+            self.rt.apply(&r).map_err(|e| JsError::new(&e))?;
+        }
+        Ok(())
+    }
+
+    /// States changed since the last call, flat `[kind, id, kind, id, ...]`.
+    #[wasm_bindgen(js_name = takeDirty)]
+    pub fn take_dirty(&mut self) -> Vec<f64> {
+        self.rt
+            .take_dirty()
+            .into_iter()
+            .flat_map(|(k, id)| [k as u8 as f64, id as f64])
+            .collect()
+    }
+
+    #[wasm_bindgen(js_name = stateBytes)]
+    pub fn state_bytes(&self, kind: u8, id: f64) -> Result<Option<Vec<u8>>, JsError> {
+        Ok(self.rt.state_bytes(
+            Kind::from_u8(kind).map_err(|e| JsError::new(&e))?,
+            id as i64,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = loadState)]
+    pub fn load_state(&mut self, kind: u8, id: f64, bytes: &[u8]) -> Result<(), JsError> {
+        let kind = Kind::from_u8(kind).map_err(|e| JsError::new(&e))?;
+        self.rt
+            .load_state(kind, id as i64, bytes)
+            .map_err(|e| JsError::new(&e))
+    }
+
+    #[wasm_bindgen(js_name = featuresBytes)]
+    pub fn features_bytes(&self) -> Vec<u8> {
+        self.rt.features_bytes()
+    }
+
+    #[wasm_bindgen(js_name = loadFeatures)]
+    pub fn load_features(&mut self, bytes: &[u8]) -> Result<(), JsError> {
+        self.rt.load_features(bytes).map_err(|e| JsError::new(&e))
+    }
+
+    /// Forget all history (keeps the model).
+    pub fn reset(&mut self) {
+        self.rt.reset();
+    }
+
+    #[wasm_bindgen(getter, js_name = memoryBytes)]
+    pub fn memory_bytes(&self) -> f64 {
+        self.rt.memory_bytes() as f64
     }
 
     #[wasm_bindgen(getter, js_name = reviewsProcessed)]

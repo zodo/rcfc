@@ -12,14 +12,20 @@ use std::time::Instant;
 
 use rcfc_rwkv::{ReviewInput, Runtime};
 
-const MODEL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../models/RWKV_trained_on_101_4999.safetensors");
+const MODEL: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../models/RWKV_trained_on_101_4999.safetensors"
+);
 const NOTES_PER_DAY: usize = 10;
 const CHECKPOINTS: [u32; 3] = [30, 60, 365];
 
 struct Rng(u64);
 impl Rng {
     fn next(&mut self) -> f64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (self.0 >> 11) as f64 / (1u64 << 53) as f64
     }
 }
@@ -41,7 +47,11 @@ fn query(c: &Card, now_secs: f64) -> ReviewInput {
         deck_id: Some(1),
         preset_id: Some(1),
         day_offset: (now_secs / 86_400.0).floor(),
-        elapsed_days: if elapsed < 0.0 { -1.0 } else { (elapsed / 86_400.0).floor() },
+        elapsed_days: if elapsed < 0.0 {
+            -1.0
+        } else {
+            (elapsed / 86_400.0).floor()
+        },
         elapsed_seconds: elapsed,
         rating: None,
         duration: None,
@@ -61,29 +71,56 @@ fn main() {
     let mut dumped: Vec<f64> = Vec::new();
     let row = |r: &ReviewInput| {
         let n = |v: Option<i64>| v.map_or(f64::NAN, |v| v as f64);
-        [r.card_id as f64, n(r.note_id), n(r.deck_id), n(r.preset_id), r.day_offset, r.elapsed_days,
-         r.elapsed_seconds, n(r.rating), r.duration.unwrap_or(f64::NAN), r.state.unwrap_or(f64::NAN)]
+        [
+            r.card_id as f64,
+            n(r.note_id),
+            n(r.deck_id),
+            n(r.preset_id),
+            r.day_offset,
+            r.elapsed_days,
+            r.elapsed_seconds,
+            n(r.rating),
+            r.duration.unwrap_or(f64::NAN),
+            r.state.unwrap_or(f64::NAN),
+        ]
     };
 
-    println!("{:>5} {:>7} {:>7} {:>9} {:>10} {:>11} {:>12} {:>10}",
-        "day", "cards", "reviews", "rev/day", "replay", "answer+50", "predict all", "state MB");
+    println!(
+        "{:>5} {:>7} {:>7} {:>9} {:>10} {:>11} {:>12} {:>10}",
+        "day", "cards", "reviews", "rev/day", "replay", "answer+50", "predict all", "state MB"
+    );
     for day in 1..=*CHECKPOINTS.last().unwrap() {
         for _ in 0..NOTES_PER_DAY {
             let note = next_id;
             next_id += 1;
             for _ in 0..2 {
-                cards.push(Card { id: next_id, note, due_day: day, interval: 0.0, last_secs: None, state: 0.0 });
+                cards.push(Card {
+                    id: next_id,
+                    note,
+                    due_day: day,
+                    interval: 0.0,
+                    last_secs: None,
+                    state: 0.0,
+                });
                 next_id += 1;
             }
         }
         // Session at 08:00, one answer every ~8 s.
         let mut t = (day as f64 - 1.0) * 86_400.0 + 8.0 * 3600.0;
-        let mut queue: Vec<usize> = (0..cards.len()).filter(|&i| cards[i].due_day <= day).collect();
+        let mut queue: Vec<usize> = (0..cards.len())
+            .filter(|&i| cards[i].due_day <= day)
+            .collect();
         let mut today = 0;
         while let Some(i) = queue.pop() {
             let c = &mut cards[i];
             let recalled = rng.next() < 0.85;
-            let rating = if !recalled { 1 } else if rng.next() < 0.15 { 4 } else { 3 };
+            let rating = if !recalled {
+                1
+            } else if rng.next() < 0.15 {
+                4
+            } else {
+                3
+            };
             let mut input = query(c, t);
             input.rating = Some(rating);
             input.duration = Some(3000.0 + 6000.0 * rng.next());
@@ -99,7 +136,11 @@ fn main() {
             today += 1;
             c.last_secs = Some(t);
             if recalled {
-                c.interval = if c.interval < 1.0 { 1.0 } else { c.interval * 2.5 };
+                c.interval = if c.interval < 1.0 {
+                    1.0
+                } else {
+                    c.interval * 2.5
+                };
                 c.due_day = day + c.interval.round() as u32;
                 c.state = 2.0;
             } else {
@@ -126,16 +167,27 @@ fn main() {
             if let (Some(dir), true) = (&dump, day == *CHECKPOINTS.last().unwrap()) {
                 let bytes = |v: &[f64]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
                 std::fs::write(format!("{dir}/process.f64"), bytes(&dumped)).unwrap();
-                std::fs::write(format!("{dir}/predict_all.f64"), bytes(&all.iter().flat_map(row).collect::<Vec<_>>())).unwrap();
+                std::fs::write(
+                    format!("{dir}/predict_all.f64"),
+                    bytes(&all.iter().flat_map(row).collect::<Vec<_>>()),
+                )
+                .unwrap();
             }
             let start = Instant::now();
             rt.predict(&all);
             let predict_all = start.elapsed().as_secs_f64();
 
-            println!("{:>5} {:>7} {:>7} {:>9} {:>9.1}s {:>9.1}ms {:>11.0}ms {:>10.0}",
-                day, cards.len(), rt.reviews_processed(), today, replay_secs,
-                (process_median + predict50) * 1e3, predict_all * 1e3,
-                rt.state_bytes() as f64 / 1e6);
+            println!(
+                "{:>5} {:>7} {:>7} {:>9} {:>9.1}s {:>9.1}ms {:>11.0}ms {:>10.0}",
+                day,
+                cards.len(),
+                rt.reviews_processed(),
+                today,
+                replay_secs,
+                (process_median + predict50) * 1e3,
+                predict_all * 1e3,
+                rt.memory_bytes() as f64 / 1e6
+            );
         }
     }
 }

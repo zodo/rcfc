@@ -1,5 +1,5 @@
-// Event types from docs/design.md ("Data model"). Only what is used so far;
-// extend as features land.
+// Event types from docs/design.md ("Data model"). Events are immutable; current
+// state is a fold over the log (src/domain/collection.ts).
 import type { EntityId } from "./ids";
 
 export interface EventEnvelope<T extends string, P> {
@@ -8,6 +8,12 @@ export interface EventEnvelope<T extends string, P> {
   ts: number; // device wall clock at creation, ms since epoch
   device_id: string;
   payload: P;
+}
+
+/** BCP 47 tags. `from` is the studied language (front side) and drives pronunciation. */
+export interface LangPair {
+  from: string;
+  to: string;
 }
 
 export interface NoteFields {
@@ -25,13 +31,41 @@ export interface NoteSource {
   created_at?: string;
 }
 
+export interface PresetUpdatedPayload {
+  preset_id: EntityId;
+  /** Target P(recall); a card is due when its prediction drops below this. */
+  desired_retention: number;
+  /** Local hour when a new study day starts (drives RWKV day_offset). */
+  day_rollover_hour: number;
+  /** New cards introduced per study day, across decks using this preset. */
+  new_per_day: number;
+}
+
+export interface DeckCreatedPayload {
+  deck_id: EntityId;
+  name: string;
+  preset_id: EntityId;
+  /** Default language pair for notes added to this deck. */
+  lang_pair: LangPair;
+}
+
+export interface DeckRenamedPayload {
+  deck_id: EntityId;
+  name: string;
+}
+
 export interface NoteCreatedPayload {
   note_id: EntityId;
   deck_id: EntityId;
   fields: NoteFields;
-  /** BCP 47 tags, e.g. { from: "es", to: "en" }. `from` drives pronunciation. */
-  lang_pair: { from: string; to: string };
+  lang_pair: LangPair;
   source?: NoteSource;
+}
+
+export interface NoteEditedPayload {
+  note_id: EntityId;
+  field: string;
+  value: string;
 }
 
 export type CardTemplate = "forward" | "reverse";
@@ -42,6 +76,45 @@ export interface CardCreatedPayload {
   template: CardTemplate;
 }
 
+export interface NoteDeletedPayload {
+  note_id: EntityId;
+}
+
+/**
+ * One answer. Raw facts only: RWKV inputs (day_offset, elapsed, state) are
+ * derived at replay (src/domain/rows.ts). The envelope `ts` is the answer time.
+ * note/deck/preset ids are recorded as of the answer, so later moves or
+ * re-organisation never change what the model saw.
+ */
+export interface ReviewPayload {
+  card_id: EntityId;
+  note_id: EntityId;
+  deck_id: EntityId;
+  preset_id: EntityId;
+  /** 1 again, 2 hard, 3 good, 4 easy. */
+  rating: 1 | 2 | 3 | 4;
+  duration_ms: number;
+  /** Minutes east of UTC at answer time (local day boundaries survive travel). */
+  tz_offset_min: number;
+}
+
+export type PresetUpdated = EventEnvelope<"preset_updated", PresetUpdatedPayload>;
+export type DeckCreated = EventEnvelope<"deck_created", DeckCreatedPayload>;
+export type DeckRenamed = EventEnvelope<"deck_renamed", DeckRenamedPayload>;
 export type NoteCreated = EventEnvelope<"note_created", NoteCreatedPayload>;
+export type NoteEdited = EventEnvelope<"note_edited", NoteEditedPayload>;
+export type NoteDeleted = EventEnvelope<"note_deleted", NoteDeletedPayload>;
 export type CardCreated = EventEnvelope<"card_created", CardCreatedPayload>;
-export type AppEvent = NoteCreated | CardCreated;
+export type Review = EventEnvelope<"review", ReviewPayload>;
+
+export type AppEvent =
+  | PresetUpdated
+  | DeckCreated
+  | DeckRenamed
+  | NoteCreated
+  | NoteEdited
+  | NoteDeleted
+  | CardCreated
+  | Review;
+
+export type EventType = AppEvent["type"];

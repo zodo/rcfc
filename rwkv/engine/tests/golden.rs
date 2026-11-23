@@ -3,7 +3,10 @@
 use rcfc_rwkv::{ReviewInput, Runtime};
 use serde_json::Value;
 
-const MODEL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../models/RWKV_trained_on_101_4999.safetensors");
+const MODEL: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../models/RWKV_trained_on_101_4999.safetensors"
+);
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../golden/v1_101_4999.json");
 /// Probability tolerance. Upstream and we both run f32, but summation order differs.
 const P_TOL: f64 = 1e-6;
@@ -25,7 +28,11 @@ fn input(v: &Value) -> ReviewInput {
 }
 
 fn floats(v: &Value) -> Vec<f32> {
-    v.as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect()
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_f64().unwrap() as f32)
+        .collect()
 }
 
 #[test]
@@ -41,30 +48,52 @@ fn matches_upstream_golden() {
     for (n, r) in reviews.iter().enumerate() {
         let inp = input(&r["input"]);
         let (pf, af) = rt.debug_features(&inp).unwrap();
-        let (gpf, gaf) = (floats(&r["predict_features"]), floats(&r["process_features"]));
+        let (gpf, gaf) = (
+            floats(&r["predict_features"]),
+            floats(&r["process_features"]),
+        );
         for (i, (a, b)) in pf.iter().zip(&gpf).enumerate() {
-            assert!((a - b).abs() <= 1e-6, "review {n}: predict feature {i}: ours {a}, upstream {b}");
+            assert!(
+                (a - b).abs() <= 1e-6,
+                "review {n}: predict feature {i}: ours {a}, upstream {b}"
+            );
         }
         for (i, (a, b)) in af.iter().zip(&gaf).enumerate() {
-            assert!((a - b).abs() <= 1e-6, "review {n}: process feature {i}: ours {a}, upstream {b}");
+            assert!(
+                (a - b).abs() <= 1e-6,
+                "review {n}: process feature {i}: ours {a}, upstream {b}"
+            );
         }
         let p = rt.process(&inp).unwrap();
         let want = r["p"].as_f64().unwrap();
         max_p_err = max_p_err.max((p - want).abs());
-        assert!((p - want).abs() <= P_TOL, "review {n}: p ours {p}, upstream {want}");
+        assert!(
+            (p - want).abs() <= P_TOL,
+            "review {n}: p ours {p}, upstream {want}"
+        );
 
-        while next_batch < batches.len() && batches[next_batch]["after_reviews"].as_u64().unwrap() as usize == n + 1 {
+        while next_batch < batches.len()
+            && batches[next_batch]["after_reviews"].as_u64().unwrap() as usize == n + 1
+        {
             let b = &batches[next_batch];
-            let inputs: Vec<ReviewInput> = b["inputs"].as_array().unwrap().iter().map(input).collect();
+            let inputs: Vec<ReviewInput> =
+                b["inputs"].as_array().unwrap().iter().map(input).collect();
             let got = rt.predict(&inputs);
             for (i, (g, w)) in got.iter().zip(b["p"].as_array().unwrap()).enumerate() {
                 let w = w.as_f64().unwrap();
                 max_p_err = max_p_err.max((g - w).abs());
-                assert!((g - w).abs() <= P_TOL, "batch {next_batch} row {i}: ours {g}, upstream {w}");
+                assert!(
+                    (g - w).abs() <= P_TOL,
+                    "batch {next_batch} row {i}: ours {g}, upstream {w}"
+                );
             }
             next_batch += 1;
         }
     }
     assert_eq!(next_batch, batches.len(), "all prediction batches checked");
-    eprintln!("{} reviews, {} batches, max |Δp| = {max_p_err:e}", reviews.len(), batches.len());
+    eprintln!(
+        "{} reviews, {} batches, max |Δp| = {max_p_err:e}",
+        reviews.len(),
+        batches.len()
+    );
 }

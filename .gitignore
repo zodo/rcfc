@@ -8,3 +8,4 @@ build/
 .wrangler/
 dev-dist/
 rwkv/engine/target/
+src/rwkv/pkg/

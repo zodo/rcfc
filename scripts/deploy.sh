@@ -20,6 +20,7 @@ fi
 msg="$branch@$sha$dirty"
 
 echo "== build ($env, $msg)"
+npm run build:wasm
 npm run typecheck
 CLOUDFLARE_ENV="$env" vite build
 

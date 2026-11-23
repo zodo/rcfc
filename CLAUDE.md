@@ -4,7 +4,8 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
 
 ## Layout
 
-- `src/` PWA client (Vite + vite-plugin-pwa)
+- `src/` PWA client (Vite + vite-plugin-pwa, Dexie, no UI framework). `domain/` pure logic (event fold, RWKV row derivation, card picking), `engine/` RWKV Web Worker + checkpoints, `store.ts` ties log + engine, `main.ts` screens
+- `rwkv/engine/` Rust RWKV-SRS V1 inference (→ Wasm), checked against upstream goldens in `rwkv/golden/`; `rwkv/models/` weights
 - `worker/` Cloudflare Worker: API under `/api/*`; everything else is static assets
 - `migrations/` D1 SQL migrations (applied automatically on deploy)
 - `scripts/` deploy tooling (below)
@@ -22,6 +23,8 @@ Preview and production never share data. Bindings are not inherited by named env
 
 ## Commands
 
+- `npm run build:wasm` builds the engine into `src/rwkv/pkg/` (gitignored; dev/build/deploy run it). Needs `cargo install wasm-bindgen-cli --version 0.2.130 --locked`
+- `cd rwkv/engine && cargo test --release` engine goldens + checkpoint round trip; `cargo run --release --example bench` year-of-use benchmark
 - `npm run dev` local dev with local D1/R2 (`npm run db:migrate:local` first on a fresh checkout)
 - `npm run build` typecheck + build
 - `npm test` unit tests (vitest). `RCFC_DUOCARDS_EXPORT=/path/to/export.csv npm test` also runs the importer over a real export (never commit real exports: personal data)
@@ -45,6 +48,12 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 
 - Entity ids are random positive integers < 2^53 (`src/domain/ids.ts`), not full 64-bit: fit rwkv-srs `i64`, exact in JS, JSON-safe.
 - Importers are pure (text in, events out) and dedup on normalized front+back so re-imports are safe. Imported notes must not auto-queue enrichment.
+
+## RWKV notes
+
+- Review events store raw facts; `src/domain/rows.ts` derives RWKV inputs (day_offset from first review day, elapsed, state) following RWKV4Anki `review_rows.py`. Changing that derivation: bump `ROWS_VERSION` (forces a full replay).
+- Engine checkpoint lives in IndexedDB `rcfc-engine`, keyed by model sha + rows config; on mismatch the app replays the log.
+- Known scale limit: all recurrent state is held in memory (~70 KB/card, ~0.5 GB after a year of daily use). Fine for months; needs on-disk/evicted states before then.
 
 ## Rust / Wasm
 

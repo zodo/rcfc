@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use crate::bytes::{Reader, Writer};
 use crate::features::FEATURE_LEN;
 
 const D: usize = 128;
@@ -67,7 +68,10 @@ impl Norm {
         let mean = x.iter().sum::<f32>() / n;
         let var = x.iter().map(|v| (v - mean) * (v - mean)).sum::<f32>() / n;
         let inv = 1.0 / (var + LN_EPS).sqrt();
-        x.iter().enumerate().map(|(i, v)| (v - mean) * inv * self.w[i] + self.b[i]).collect()
+        x.iter()
+            .enumerate()
+            .map(|(i, v)| (v - mean) * inv * self.w[i] + self.b[i])
+            .collect()
     }
     /// GroupNorm with H groups over D channels.
     fn group(&self, x: &[f32]) -> Vec<f32> {
@@ -88,7 +92,7 @@ impl Norm {
 
 struct TimeMixer {
     ln: Norm,
-    lerp: Vec<f32>, // [8, D]
+    lerp: Vec<f32>,  // [8, D]
     bonus: Vec<f32>, // [H*K]
     w_r: Linear,
     w_k: Linear,
@@ -119,13 +123,51 @@ struct Layer {
 /// Recurrent state of one layer.
 #[derive(Clone, Debug)]
 pub struct LayerState {
-    pub time_shift: Vec<f32>,   // [D]
-    pub time_state: Vec<f32>,   // [H, K, K]
+    pub time_shift: Vec<f32>,    // [D]
+    pub time_state: Vec<f32>,    // [H, K, K]
     pub channel_shift: Vec<f32>, // [D]
 }
 
 /// Recurrent state of one module (card, note, deck, preset or global).
 pub type ModuleState = Vec<LayerState>;
+
+pub fn write_module_state(w: &mut Writer, s: &ModuleState) {
+    w.u32(s.len() as u32);
+    for l in s {
+        w.f32s(&l.time_shift);
+        w.f32s(&l.time_state);
+        w.f32s(&l.channel_shift);
+    }
+}
+
+impl Weights {
+    /// Decode a module state and check it fits module `m` of this model.
+    pub fn read_module_state(&self, m: usize, r: &mut Reader) -> Result<ModuleState, String> {
+        let n = r.u32()? as usize;
+        if n != self.modules[m].len() {
+            return Err(format!(
+                "checkpoint: module {m} has {n} layers, model has {}",
+                self.modules[m].len()
+            ));
+        }
+        (0..n)
+            .map(|_| {
+                let l = LayerState {
+                    time_shift: r.f32s()?,
+                    time_state: r.f32s()?,
+                    channel_shift: r.f32s()?,
+                };
+                if l.time_shift.len() != D
+                    || l.time_state.len() != H * K * K
+                    || l.channel_shift.len() != D
+                {
+                    return Err("checkpoint: bad layer state size".to_string());
+                }
+                Ok(l)
+            })
+            .collect()
+    }
+}
 
 pub struct Weights {
     f2c_0: Linear,
@@ -145,7 +187,11 @@ fn silu(x: f32) -> f32 {
 }
 fn softplus(x: f32) -> f32 {
     // torch softplus with threshold 20
-    if x > 20.0 { x } else { x.exp().ln_1p() }
+    if x > 20.0 {
+        x
+    } else {
+        x.exp().ln_1p()
+    }
 }
 
 fn l2_normalize_head(x: &mut [f32]) {
@@ -156,12 +202,22 @@ fn l2_normalize_head(x: &mut [f32]) {
 }
 
 impl Layer {
-    fn forward(&self, layer_id: usize, input: &[f32], v0: &mut Vec<f32>, state: Option<&LayerState>) -> (Vec<f32>, LayerState) {
+    fn forward(
+        &self,
+        layer_id: usize,
+        input: &[f32],
+        v0: &mut Vec<f32>,
+        state: Option<&LayerState>,
+    ) -> (Vec<f32>, LayerState) {
         let t = &self.time;
         // ---- time mixer ----
         let x = t.ln.layer(input);
         let xs: &[f32] = state.map_or(&x, |s| &s.time_shift);
-        let mix = |j: usize| -> Vec<f32> { (0..D).map(|c| x[c] + t.lerp[j * D + c] * (xs[c] - x[c])).collect() };
+        let mix = |j: usize| -> Vec<f32> {
+            (0..D)
+                .map(|c| x[c] + t.lerp[j * D + c] * (xs[c] - x[c]))
+                .collect()
+        };
         let r = t.w_r.call(&mix(0));
         let mut k = t.w_k.call(&mix(1));
         let mv = mix(2);
@@ -176,10 +232,34 @@ impl Layer {
                 v[c] += sigmoid(lerp[c]) * (v0[c] - v[c]);
             }
         }
-        let a: Vec<f32> = t.a_lora.1.call(&t.a_lora.0.call(&mix(4))).into_iter().map(sigmoid).collect();
-        let g = t.g_b.call(&t.g_a.call(&mix(5)).into_iter().map(sigmoid).collect::<Vec<_>>());
-        let dlo: Vec<f32> = t.d_lora.0.call(&mix(3)).into_iter().map(f32::tanh).collect();
-        let w: Vec<f32> = t.d_lora.1.call(&dlo).into_iter().map(|d| (-(-0.5 - softplus(-d)).exp()).exp()).collect();
+        let a: Vec<f32> = t
+            .a_lora
+            .1
+            .call(&t.a_lora.0.call(&mix(4)))
+            .into_iter()
+            .map(sigmoid)
+            .collect();
+        let g = t.g_b.call(
+            &t.g_a
+                .call(&mix(5))
+                .into_iter()
+                .map(sigmoid)
+                .collect::<Vec<_>>(),
+        );
+        let dlo: Vec<f32> = t
+            .d_lora
+            .0
+            .call(&mix(3))
+            .into_iter()
+            .map(f32::tanh)
+            .collect();
+        let w: Vec<f32> = t
+            .d_lora
+            .1
+            .call(&dlo)
+            .into_iter()
+            .map(|d| (-(-0.5 - softplus(-d)).exp()).exp())
+            .collect();
 
         for h in 0..H {
             l2_normalize_head(&mut k[h * K..(h + 1) * K]);
@@ -205,7 +285,8 @@ impl Layer {
                 }
                 let mut acc = 0.0f32;
                 for j in 0..K {
-                    let nv = row[j] * w[o + j] - sa * (a[o + j] * k_def[o + j]) + v[o + i] * ka[o + j];
+                    let nv =
+                        row[j] * w[o + j] - sa * (a[o + j] * k_def[o + j]) + v[o + i] * ka[o + j];
                     row[j] = nv;
                     acc += nv * r[o + j];
                 }
@@ -230,12 +311,29 @@ impl Layer {
         let cm = &self.channel;
         let xc = cm.ln.layer(&after_time);
         let xcs: &[f32] = state.map_or(&xc, |s| &s.channel_shift);
-        let mixed: Vec<f32> = (0..D).map(|c| xc[c] + cm.lerp_k[c] * (xcs[c] - xc[c])).collect();
-        let kk: Vec<f32> = cm.w_k.call(&mixed).into_iter().map(|v| { let r = v.max(0.0); r * r }).collect();
+        let mixed: Vec<f32> = (0..D)
+            .map(|c| xc[c] + cm.lerp_k[c] * (xcs[c] - xc[c]))
+            .collect();
+        let kk: Vec<f32> = cm
+            .w_k
+            .call(&mixed)
+            .into_iter()
+            .map(|v| {
+                let r = v.max(0.0);
+                r * r
+            })
+            .collect();
         let o2 = cm.w_v.call(&kk);
         let out: Vec<f32> = (0..D).map(|c| after_time[c] + o2[c]).collect();
 
-        (out, LayerState { time_shift: x, time_state: s, channel_shift: xc })
+        (
+            out,
+            LayerState {
+                time_shift: x,
+                time_state: s,
+                channel_shift: xc,
+            },
+        )
     }
 }
 
@@ -243,15 +341,27 @@ impl Weights {
     pub fn from_safetensors(bytes: &[u8]) -> Result<Self, String> {
         let t = Tensors::parse(bytes)?;
         let lin = |name: &str, bias: bool| t.linear(name, bias);
-        let norm = |name: &str| -> Result<Norm, String> { Ok(Norm { w: t.get(&format!("{name}.weight"))?, b: t.get(&format!("{name}.bias"))? }) };
+        let norm = |name: &str| -> Result<Norm, String> {
+            Ok(Norm {
+                w: t.get(&format!("{name}.weight"))?,
+                b: t.get(&format!("{name}.bias"))?,
+            })
+        };
         let mut modules = Vec::new();
         for m in 0..MODULES {
             let mut layers = Vec::new();
             let mut l = 0;
-            while t.has(&format!("rwkv_modules.{m}.blocks.{l}.time_mixer.W_r.weight")) {
+            while t.has(&format!(
+                "rwkv_modules.{m}.blocks.{l}.time_mixer.W_r.weight"
+            )) {
                 let p = format!("rwkv_modules.{m}.blocks.{l}");
                 let tm = |s: &str| format!("{p}.time_mixer.{s}");
-                let lora = |s: &str| -> Result<(Linear, Linear), String> { Ok((lin(&tm(&format!("{s}.A")), false)?, lin(&tm(&format!("{s}.B_and_lamb")), true)?)) };
+                let lora = |s: &str| -> Result<(Linear, Linear), String> {
+                    Ok((
+                        lin(&tm(&format!("{s}.A")), false)?,
+                        lin(&tm(&format!("{s}.B_and_lamb")), true)?,
+                    ))
+                };
                 layers.push(Layer {
                     time: TimeMixer {
                         ln: norm(&tm("layer_norm"))?,
@@ -294,15 +404,27 @@ impl Weights {
             p_linear: lin("p_linear", true)?,
         };
         if w.f2c_0.inp != FEATURE_LEN {
-            return Err(format!("model expects {} features, engine produces {FEATURE_LEN}", w.f2c_0.inp));
+            return Err(format!(
+                "model expects {} features, engine produces {FEATURE_LEN}",
+                w.f2c_0.inp
+            ));
         }
         Ok(w)
     }
 
     /// One review row through the whole network. `states[m]` is the current state
     /// of module m (None = fresh). Returns P(recall) and the next states.
-    pub fn forward(&self, features: &[f32], states: [Option<&ModuleState>; MODULES]) -> (f64, [ModuleState; MODULES]) {
-        let h = self.f2c_0.call(features).into_iter().map(silu).collect::<Vec<_>>();
+    pub fn forward(
+        &self,
+        features: &[f32],
+        states: [Option<&ModuleState>; MODULES],
+    ) -> (f64, [ModuleState; MODULES]) {
+        let h = self
+            .f2c_0
+            .call(features)
+            .into_iter()
+            .map(silu)
+            .collect::<Vec<_>>();
         let h = self.f2c_ln.layer(&h);
         let mut x: Vec<f32> = self.f2c_3.call(&h).into_iter().map(silu).collect();
         let mut next: Vec<ModuleState> = Vec::with_capacity(MODULES);
@@ -318,7 +440,12 @@ impl Weights {
             next.push(ms);
         }
         let z = self.prehead.layer(&x);
-        let hp: Vec<f32> = self.head_p.call(&z).into_iter().map(|v| v.max(0.0)).collect();
+        let hp: Vec<f32> = self
+            .head_p
+            .call(&z)
+            .into_iter()
+            .map(|v| v.max(0.0))
+            .collect();
         let logits = self.p_linear.call(&hp);
         let max = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let exps: Vec<f32> = logits.iter().map(|l| (l - max).exp()).collect();
@@ -340,7 +467,9 @@ impl<'a> Tensors<'a> {
             return Err("model file too small".into());
         }
         let n = u64::from_le_bytes(bytes[..8].try_into().unwrap()) as usize;
-        let header: serde_json::Value = serde_json::from_slice(bytes.get(8..8 + n).ok_or("truncated header")?).map_err(|e| e.to_string())?;
+        let header: serde_json::Value =
+            serde_json::from_slice(bytes.get(8..8 + n).ok_or("truncated header")?)
+                .map_err(|e| e.to_string())?;
         let mut index = HashMap::new();
         for (name, v) in header.as_object().ok_or("bad header")? {
             if name == "__metadata__" {
@@ -349,26 +478,63 @@ impl<'a> Tensors<'a> {
             if v["dtype"] != "F32" {
                 return Err(format!("{name}: only F32 supported, got {}", v["dtype"]));
             }
-            let shape = v["shape"].as_array().ok_or("bad shape")?.iter().map(|d| d.as_u64().unwrap() as usize).collect();
+            let shape = v["shape"]
+                .as_array()
+                .ok_or("bad shape")?
+                .iter()
+                .map(|d| d.as_u64().unwrap() as usize)
+                .collect();
             let off = v["data_offsets"].as_array().ok_or("bad offsets")?;
-            index.insert(name.clone(), (shape, off[0].as_u64().unwrap() as usize, off[1].as_u64().unwrap() as usize));
+            index.insert(
+                name.clone(),
+                (
+                    shape,
+                    off[0].as_u64().unwrap() as usize,
+                    off[1].as_u64().unwrap() as usize,
+                ),
+            );
         }
-        Ok(Self { data: &bytes[8 + n..], index })
+        Ok(Self {
+            data: &bytes[8 + n..],
+            index,
+        })
     }
     fn has(&self, name: &str) -> bool {
         self.index.contains_key(name)
     }
     fn shape(&self, name: &str) -> Result<&[usize], String> {
-        Ok(&self.index.get(name).ok_or_else(|| format!("missing tensor {name}"))?.0)
+        Ok(&self
+            .index
+            .get(name)
+            .ok_or_else(|| format!("missing tensor {name}"))?
+            .0)
     }
     fn get(&self, name: &str) -> Result<Vec<f32>, String> {
-        let (_, a, b) = self.index.get(name).ok_or_else(|| format!("missing tensor {name}"))?;
-        let raw = self.data.get(*a..*b).ok_or_else(|| format!("tensor {name} out of bounds"))?;
-        Ok(raw.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect())
+        let (_, a, b) = self
+            .index
+            .get(name)
+            .ok_or_else(|| format!("missing tensor {name}"))?;
+        let raw = self
+            .data
+            .get(*a..*b)
+            .ok_or_else(|| format!("tensor {name} out of bounds"))?;
+        Ok(raw
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+            .collect())
     }
     fn linear(&self, name: &str, bias: bool) -> Result<Linear, String> {
         let wn = format!("{name}.weight");
         let s = self.shape(&wn)?.to_vec();
-        Ok(Linear { w: self.get(&wn)?, b: if bias { Some(self.get(&format!("{name}.bias"))?) } else { None }, out: s[0], inp: s[1] })
+        Ok(Linear {
+            w: self.get(&wn)?,
+            b: if bias {
+                Some(self.get(&format!("{name}.bias"))?)
+            } else {
+                None
+            },
+            out: s[0],
+            inp: s[1],
+        })
     }
 }
