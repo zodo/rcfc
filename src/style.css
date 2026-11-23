@@ -425,3 +425,34 @@ pre {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* swipes */
+.flashcard {
+  transition: border-color 0.15s;
+}
+.flashcard.hint-right {
+  border-color: var(--good);
+  box-shadow: inset 0 0 0 2px var(--good);
+}
+.flashcard.hint-left {
+  border-color: var(--again);
+  box-shadow: inset 0 0 0 2px var(--again);
+}
+.swipe-hint {
+  margin: 8px 0 0;
+}
+.sort-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.small-face {
+  font-size: 22px;
+}
+.sort-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+}

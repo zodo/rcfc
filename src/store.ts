@@ -160,25 +160,27 @@ export class Store {
     return studyDay(ts, localTzOffsetMin(), this.preset().day_rollover_hour);
   }
 
-  /** Notes whose first card was introduced today (the daily limit counts words). */
-  newWordsToday(): number {
+  /**
+   * Cards introduced today (except ones known on first sight), split into fresh words (no card of the note seen
+   * before today) and second directions (a sibling was seen on an earlier day).
+   */
+  introducedToday(): { words: number; second: number } {
     const today = this.today();
-    const notes = new Set<EntityId>();
-    for (const c of this.col.cards.values()) if (c.first_review_ts !== undefined && this.dayOf(c.first_review_ts) === today) notes.add(c.note_id);
-    // A note counts only if none of its cards were seen before today.
-    let n = 0;
-    for (const id of notes) {
-      const cards = (this.col.cardsByNote.get(id) ?? []).map((c) => this.col.cards.get(c)!);
-      if (cards.every((c) => c.first_review_ts === undefined || this.dayOf(c.first_review_ts) === today)) n++;
+    const words = new Set<EntityId>();
+    let second = 0;
+    for (const c of this.col.cards.values()) {
+      if (c.first_review_ts === undefined || this.dayOf(c.first_review_ts) !== today) continue;
+      // Already known on first sight (Easy, e.g. sorted as known): not a new burden.
+      if (c.first_rating === 4) continue;
+      const siblings = (this.col.cardsByNote.get(c.note_id) ?? []).map((id) => this.col.cards.get(id)!);
+      if (siblings.some((s) => s.first_review_ts !== undefined && this.dayOf(s.first_review_ts) < today)) second++;
+      else words.add(c.note_id);
     }
-    return n;
+    return { words: words.size, second };
   }
 
-  /**
-   * New cards that may be shown now: second directions of words introduced on
-   * an earlier day (not limited), then fresh words up to the daily limit.
-   */
-  newQueue(deckId?: EntityId): Card[] {
+  /** Never-seen cards: first cards of unseen words, and second directions ready to start. */
+  private unseen(deckId?: EntityId): { fresh: Card[]; second: Card[] } {
     const today = this.today();
     const second: Card[] = [];
     const fresh: Card[] = [];
@@ -190,8 +192,24 @@ export class Store {
         if (c.template === "forward" || siblings.length === 0 || siblings.every((s) => s.template !== "forward")) fresh.push(c);
       } else if (seen.every((s) => this.dayOf(s.first_review_ts!) < today)) second.push(c);
     }
-    const left = Math.max(0, this.preset().new_per_day - this.newWordsToday());
-    return [...second, ...fresh.slice(0, left)];
+    return { fresh, second };
+  }
+
+  /** First cards of words never studied, all of them (for sorting known words). */
+  unseenWords(deckId?: EntityId): Card[] {
+    return this.unseen(deckId).fresh;
+  }
+
+  /**
+   * New cards that may be shown now. Fresh words and second directions (the
+   * other side of a word started on an earlier day) each get the daily limit,
+   * so a big batch of known words doesn't crowd out new ones.
+   */
+  newQueue(deckId?: EntityId): Card[] {
+    const { fresh, second } = this.unseen(deckId);
+    const today = this.introducedToday();
+    const limit = this.preset().new_per_day;
+    return [...second.slice(0, Math.max(0, limit - today.second)), ...fresh.slice(0, Math.max(0, limit - today.words))];
   }
 
   async allEvents(): Promise<AppEvent[]> {

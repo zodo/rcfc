@@ -7,6 +7,7 @@ import { DuocardsFormatError, guessSourceLang, importDuocardsCsv, noteKey } from
 import { Store } from "./store";
 import { append, clear, h, langName, langSelect, toast } from "./ui/h";
 import { canSpeak, speak } from "./ui/speech";
+import { swipeable } from "./ui/swipe";
 
 const root = document.getElementById("app")!;
 let store: Store;
@@ -21,7 +22,16 @@ function nav(active: Screen | "study") {
   return h("nav", { class: "nav" }, item("home", "Study", "◎"), item("add", "Add", "+"), item("browse", "Words", "≡"), item("import", "Import", "⇩"), item("settings", "Settings", "⚙"));
 }
 
+/** One keyboard handler for the current screen. */
+let keyHandler: ((e: KeyboardEvent) => void) | null = null;
+function setKeys(f: ((e: KeyboardEvent) => void) | null) {
+  if (keyHandler) document.removeEventListener("keydown", keyHandler);
+  keyHandler = f;
+  if (f) document.addEventListener("keydown", f);
+}
+
 function page(active: Screen, title: string, ...body: (Node | string | null | false)[]) {
+  setKeys(null);
   clear(root);
   append(root, [h("header", { class: "top" }, h("h1", {}, title)), h("section", { class: "content" }, ...body), nav(active)]);
 }
@@ -121,6 +131,17 @@ async function home() {
     "Study",
     decks().length > 1 ? h("button", { class: "primary wide big", onclick: () => study() }, `Study all · ${dueCount(allPreds, desired)} due · ${store.newQueue().length} new`) : null,
     h("div", { class: "decks" }, ...rows),
+    ...decks().map((d) => {
+      const n = unsortedWords(d.id).length;
+      return n >= 5
+        ? h(
+            "button",
+            { class: "secondary wide sort-entry", onclick: () => sortWords(d.id) },
+            h("strong", {}, `Already know some ${d.name} words?`),
+            h("span", { class: "muted small" }, `Swipe through ${n} unseen words: → I know it, ← teach me`),
+          )
+        : null;
+    }),
     h("p", { class: "muted small legend" }, h("span", { class: "due" }, "■"), " due  ", h("span", { class: "new" }, "■"), " new today"),
     h("details", { class: "card-box" }, h("summary", {}, "New deck"), newDeckForm(() => home())),
     installTip(),
@@ -182,6 +203,7 @@ function next(s: Session) {
 }
 
 function done(s: Session) {
+  setKeys(null);
   clear(root);
   append(root, [
     h(
@@ -239,8 +261,9 @@ function showCard(s: Session, pick: Pick, due: number) {
   const label = ["Again", "Hard", "Good", "Easy"];
   const ratings = h(
     "div",
-    { class: "ratings hidden" },
-    ...label.map((l, i) => h("button", { class: `rate r${i + 1}`, onclick: () => rate((i + 1) as ReviewPayload["rating"]) }, l)),
+    { class: "hidden" },
+    h("div", { class: "ratings" }, ...label.map((l, i) => h("button", { class: `rate r${i + 1}`, onclick: () => rate((i + 1) as ReviewPayload["rating"]) }, l))),
+    h("p", { class: "muted small center swipe-hint" }, "or swipe the card: → Good, ← Again"),
   );
 
   function doReveal() {
@@ -256,13 +279,14 @@ function showCard(s: Session, pick: Pick, due: number) {
   async function rate(r: ReviewPayload["rating"]) {
     if (busy || !revealed) return;
     busy = true;
-    document.removeEventListener("keydown", onKey);
+    setKeys(null);
     const duration = Math.min(performance.now() - shownAt, 120_000);
     try {
       await store.answer(card, r, duration);
     } catch (e) {
       busy = false;
-      document.addEventListener("keydown", onKey);
+      setKeys(onKey);
+      flashcard.style.transform = "";
       toast(`Could not save: ${e instanceof Error ? e.message : e}`);
       return;
     }
@@ -285,28 +309,163 @@ function showCard(s: Session, pick: Pick, due: number) {
       e.preventDefault();
       doReveal();
     } else if (revealed && ["1", "2", "3", "4"].includes(e.key)) rate(Number(e.key) as ReviewPayload["rating"]);
+    else if (revealed && e.key === "ArrowRight") rate(3);
+    else if (revealed && e.key === "ArrowLeft") rate(1);
   }
-  document.addEventListener("keydown", onKey);
 
+  const flashcard = h(
+    "div",
+    { class: "flashcard" },
+    h("div", { class: "muted small lang" }, forward ? `${langName(lang.from)} → ${langName(lang.to)}` : `${langName(lang.to)} → ${langName(lang.from)}`),
+    h("div", { class: "face prompt" }, prompt),
+    forward ? speakBtn : null,
+    back,
+    !forward ? speakBtn && h("div", { class: "answer-speak" }, speakBtn) : null,
+  );
+  swipeable(flashcard, { onTap: doReveal, canSwipe: () => revealed && !busy, onRight: () => rate(3), onLeft: () => rate(1) });
+
+  setKeys(null);
   clear(root);
   append(root, [
     h(
       "section",
       { class: "study" },
       status,
-      h(
-        "div",
-        { class: "flashcard", onclick: () => doReveal() },
-        h("div", { class: "muted small lang" }, forward ? `${langName(lang.from)} → ${langName(lang.to)}` : `${langName(lang.to)} → ${langName(lang.from)}`),
-        h("div", { class: "face prompt" }, prompt),
-        forward ? speakBtn : null,
-        back,
-        !forward ? speakBtn && h("div", { class: "answer-speak" }, speakBtn) : null,
-      ),
+      flashcard,
       h("div", { class: "controls" }, reveal, ratings),
     ),
   ]);
+  setKeys(onKey);
   if (forward && canSpeak() && pick.kind === "new") say();
+}
+
+// ---------- sort known words ----------
+
+const SORTED_KEY = "rcfc:sortedLater";
+
+/** Cards the user swiped "teach me" on: not shown in sorting again. */
+function sortedLater(): Set<EntityId> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(SORTED_KEY) ?? "[]") as EntityId[]);
+  } catch {
+    return new Set();
+  }
+}
+function saveSortedLater(s: Set<EntityId>) {
+  try {
+    localStorage.setItem(SORTED_KEY, JSON.stringify([...s]));
+  } catch {
+    /* ignore */
+  }
+}
+
+function unsortedWords(deckId: EntityId): Card[] {
+  const later = sortedLater();
+  return store.unseenWords(deckId).filter((c) => !later.has(c.id));
+}
+
+/**
+ * Swipe through never-studied words. "I know it" records a real answer (Easy):
+ * the model then schedules the word far out and checks it later. "Teach me"
+ * leaves it new, to be introduced under the daily limit.
+ */
+function sortWords(deckId: EntityId) {
+  const queue = unsortedWords(deckId);
+  const total = queue.length;
+  let known = 0;
+  let later = 0;
+  const laterSet = sortedLater();
+  const deck = store.col.decks.get(deckId)!;
+
+  const finish = () => {
+    setKeys(null);
+    clear(root);
+    append(root, [
+      h(
+        "section",
+        { class: "done" },
+        h("div", { class: "big-emoji", "aria-hidden": "true" }, "✓"),
+        h("h2", {}, queue.length ? "Paused" : "All sorted"),
+        h("p", { class: "muted" }, `${known} you know: the model will check them now and then. ${later} to learn: they come in ${store.preset().new_per_day} a day.`),
+        queue.length ? h("p", { class: "muted small" }, `${queue.length} left to sort; continue any time from the Study tab.`) : null,
+        h("button", { class: "primary wide", onclick: () => home() }, "Done"),
+      ),
+    ]);
+  };
+
+  const show = () => {
+    const card = queue[0];
+    if (!card) return finish();
+    const note = store.col.notes.get(card.note_id)!;
+    const shownAt = performance.now();
+    let peeked = false;
+    let busy = false;
+    const translation = h("div", { class: "answer hidden" }, h("div", { class: "divider" }), h("div", { class: "face small-face" }, note.fields.back), note.fields.example ? h("div", { class: "example" }, note.fields.example) : null);
+    const peek = () => {
+      peeked = true;
+      translation.classList.remove("hidden");
+      tapHint.classList.add("hidden");
+    };
+    const tapHint = h("div", { class: "muted small" }, "tap to see the translation");
+    const decide = async (knows: boolean) => {
+      if (busy) return;
+      busy = true;
+      setKeys(null);
+      queue.shift();
+      if (knows) {
+        try {
+          await store.answer(card, 4, Math.min(performance.now() - shownAt, 120_000));
+          known++;
+        } catch (e) {
+          toast(`Could not save: ${e instanceof Error ? e.message : e}`);
+        }
+      } else {
+        laterSet.add(card.id);
+        saveSortedLater(laterSet);
+        later++;
+      }
+      show();
+    };
+    const el = h(
+      "div",
+      { class: "flashcard sort-card" },
+      h("div", { class: "muted small lang" }, `${langName(deck.lang_pair.from)} · do you know it?`),
+      h("div", { class: "face prompt" }, note.fields.front),
+      canSpeak() ? h("button", { class: "icon", onclick: () => speak(note.fields.front, note.lang_pair.from), "aria-label": "Pronounce" }, "🔊") : null,
+      tapHint,
+      translation,
+    );
+    swipeable(el, { onTap: () => (peeked ? undefined : peek()), onRight: () => void decide(true), onLeft: () => void decide(false) });
+    clear(root);
+    append(root, [
+      h(
+        "section",
+        { class: "study" },
+        h(
+          "div",
+          { class: "study-top" },
+          h("button", { class: "icon", onclick: finish, "aria-label": "Stop" }, "✕"),
+          h("span", { class: "muted small" }, `${total - queue.length + 1} / ${total}`),
+          h("span", { class: "muted small" }, `✓ ${known}`),
+        ),
+        el,
+        h(
+          "div",
+          { class: "controls" },
+          h("div", { class: "sort-buttons" }, h("button", { class: "rate r1", onclick: () => decide(false) }, "← Teach me"), h("button", { class: "rate r3", onclick: () => decide(true) }, "I know it →")),
+        ),
+      ),
+    ]);
+    setKeys((e) => {
+      if (e.key === "ArrowRight") void decide(true);
+      else if (e.key === "ArrowLeft") void decide(false);
+      else if (e.key === " ") {
+        e.preventDefault();
+        peek();
+      }
+    });
+  };
+  show();
 }
 
 // ---------- add ----------

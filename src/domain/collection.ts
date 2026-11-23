@@ -31,6 +31,8 @@ export interface Card {
   reviews: number;
   /** ts of the first and last review. */
   first_review_ts?: number;
+  /** Rating of the first review (4 = already known when first seen). */
+  first_rating?: number;
   last_review_ts?: number;
 }
 
@@ -112,7 +114,10 @@ export class Collection {
         const c = this.cards.get(e.payload.card_id);
         if (c) {
           c.reviews++;
-          c.first_review_ts = Math.min(c.first_review_ts ?? Infinity, e.ts);
+          if (c.first_review_ts === undefined || e.ts < c.first_review_ts) {
+            c.first_review_ts = e.ts;
+            c.first_rating = e.payload.rating;
+          }
           c.last_review_ts = Math.max(c.last_review_ts ?? -Infinity, e.ts);
         }
         break;

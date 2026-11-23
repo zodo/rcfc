@@ -101,6 +101,7 @@ describe("Collection", () => {
     expect(c.reviews.map((r) => r.ts)).toEqual([8000, 9000]);
     expect(card1.reviews).toBe(2);
     expect(card1.first_review_ts).toBe(8000);
+    expect(card1.first_rating).toBe(1);
 
     c.apply({ event_id: "del", type: "note_deleted", ts: 10000, device_id: "dev-a", payload: { note_id: noteId } });
     expect(c.liveCards()).toEqual([]);
