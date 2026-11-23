@@ -4,6 +4,7 @@ dist/
 build/
 .env
 .env.*
+.dev.vars*
 *.log
 .wrangler/
 dev-dist/
