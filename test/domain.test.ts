@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AppEvent, Review, ReviewPayload } from "../src/domain/events";
 import { RowBuilder, ROW_WIDTH, nextPhase, studyDay } from "../src/domain/rows";

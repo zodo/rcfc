@@ -1,0 +1,6 @@
+[install]
+# Pin exact versions on `bun add` (project convention).
+exact = true
+
+[test]
+root = "test"

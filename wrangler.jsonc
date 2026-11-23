@@ -1,9 +1,9 @@
 // One Worker serves the PWA (static assets) and the API (/api/*).
 // Bindings are NOT inherited by named environments, so every env redeclares them.
-//   top level   -> local dev only (`npm run dev`), local D1/R2 state in .wrangler/
+//   top level   -> local dev only (`bun run dev`), local D1/R2 state in .wrangler/
 //   preview     -> rcfc-preview, its own D1 + R2; safe to break
 //   production  -> rcfc, real user data
-// Resource ids are filled in by `npm run cf:bootstrap` (ids are not secrets).
+// Resource ids are filled in by `bun run cf:bootstrap` (ids are not secrets).
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "rcfc-dev",

@@ -4,7 +4,7 @@
 #       CLOUDFLARE_API_TOKEN=...
 #       CLOUDFLARE_ACCOUNT_ID=...
 #     Override the location with RCFC_CF_ENV_FILE.
-#  2. OAuth: `npx wrangler login` once in an interactive terminal. Wrangler keeps
+#  2. OAuth: `bunx wrangler login` once in an interactive terminal. Wrangler keeps
 #     and refreshes the token itself; if it lapses, run `wrangler login` again.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -21,7 +21,7 @@ fi
 if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   # OAuth mode: fail fast with a clear message instead of a mid-deploy auth error.
   if ! wrangler whoami >/dev/null 2>&1; then
-    echo "cf.sh: not authenticated. Either run 'npx wrangler login' in a terminal," >&2
+    echo "cf.sh: not authenticated. Either run 'bunx wrangler login' in a terminal," >&2
     echo "       or create $f with CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (see CLAUDE.md)." >&2
     exit 2
   fi

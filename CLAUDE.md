@@ -15,34 +15,36 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
 
 | Env | Worker | D1 / R2 | Use |
 |---|---|---|---|
-| dev | (local only) | `.wrangler/state` | `npm run dev` |
+| dev | (local only) | `.wrangler/state` | `bun run dev` |
 | preview | `rcfc-preview` → https://rcfc-preview.zzodoo.workers.dev | `rcfc-preview` | deploy freely to show work |
 | production | `rcfc` → https://rcfc.zzodoo.workers.dev | `rcfc` | real user data |
 
-Preview and production never share data. Bindings are not inherited by named envs, so add any new binding to all three blocks in `wrangler.jsonc`, then `npm run cf-typegen`.
+Preview and production never share data. Bindings are not inherited by named envs, so add any new binding to all three blocks in `wrangler.jsonc`, then `bun run cf-typegen`.
 
 ## Commands
 
-- `npm run build:wasm` builds the engine into `src/rwkv/pkg/` (gitignored; dev/build/deploy run it). Needs `cargo install wasm-bindgen-cli --version 0.2.130 --locked`
+Bun is the package manager, script runner and test runner (`bun.lock`; never use npm/npx/node). `bun install` to set up. Exception: `bun run dev` runs vite on Node, because the Cloudflare plugin's Miniflare hangs on Bun's incomplete `ws` support; production builds run on Bun (`bun --bun vite build`).
+
+- `bun run build:wasm` builds the engine into `src/rwkv/pkg/` (gitignored; dev/build/deploy run it). Needs `cargo install wasm-bindgen-cli --version 0.2.130 --locked`
 - `cd rwkv/engine && cargo test --release` engine goldens + checkpoint round trip; `cargo run --release --example bench` year-of-use benchmark
-- `npm run dev` local dev with local D1/R2 (`npm run db:migrate:local` first on a fresh checkout)
-- `npm run build` typecheck + build
-- `npm test` unit tests (vitest). `RCFC_DUOCARDS_EXPORT=/path/to/export.csv npm test` also runs the importer over a real export (never commit real exports: personal data)
-- `npm run deploy:preview` build → remote D1 migrations → deploy → smoke test; prints the URL
-- `npm run deploy:prod` same for production; refuses a dirty tree. **Only on explicit user request.**
-- `npm run check:deploy -- preview|production|<url>` re-run the smoke test
-- `npm run cf -- wrangler <cmd>` any wrangler command with credentials loaded
-- `npm run cf:bootstrap` one-time (idempotent): creates D1 + R2 for preview/prod, writes D1 ids into `wrangler.jsonc`
+- `bun run dev` local dev with local D1/R2 (`bun run db:migrate:local` first on a fresh checkout)
+- `bun run build` typecheck + build
+- `bun test` unit tests (`bun:test`). `RCFC_DUOCARDS_EXPORT=/path/to/export.csv bun test` also runs the importer over a real export (never commit real exports: personal data)
+- `bun run deploy:preview` build → remote D1 migrations → deploy → smoke test; prints the URL
+- `bun run deploy:prod` same for production; refuses a dirty tree. **Only on explicit user request.**
+- `bun run check:deploy preview|production|<url>` re-run the smoke test
+- `bun run cf wrangler <cmd>` any wrangler command with credentials loaded
+- `bun run cf:bootstrap` one-time (idempotent): creates D1 + R2 for preview/prod, writes D1 ids into `wrangler.jsonc`
 
 Last deployed URLs are saved in `.wrangler/url-preview` and `.wrangler/url-production`.
 
 ## Credentials
 
 `scripts/cf.sh` supports two modes:
-- **OAuth** (current): the user ran `npx wrangler login`; wrangler stores and refreshes the token in `~/Library/Preferences/.wrangler/`. It lapses after long idle periods.
+- **OAuth** (current): the user ran `bunx wrangler login`; wrangler stores and refreshes the token in `~/Library/Preferences/.wrangler/`. It lapses after long idle periods.
 - **API token**: `~/.config/rcfc/cloudflare.env` (mode 600) with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; takes precedence when present.
 
-Never print, copy or commit credentials. If cf.sh reports "not authenticated", ask the user to run `npx wrangler login` in their terminal (it needs a browser; you can't do it).
+Never print, copy or commit credentials. If cf.sh reports "not authenticated", ask the user to run `bunx wrangler login` in their terminal (it needs a browser; you can't do it).
 
 ## Domain notes
 

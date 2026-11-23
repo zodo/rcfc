@@ -14,7 +14,7 @@
     "isolatedModules": true,
     "types": [
       "vite/client",
-      "node",
+      "bun",
       "vite-plugin-pwa/vanillajs"
     ]
   },

@@ -17,8 +17,8 @@ for i in 1 2 3 4 5; do   # new deployments can take a few seconds to propagate
 done
 health=$(curl -s "$url/api/health")
 echo "health: $health"
-check "GET /api/health ok"     '[[ $(node -pe "JSON.parse(process.argv[1]).ok" "$health") == true ]]'
-[[ -z "$want" ]] || check "env is $want" '[[ $(node -pe "JSON.parse(process.argv[1]).env" "$health") == "$want" ]]'
+check "GET /api/health ok"     '[[ $(bun -p "JSON.parse(process.argv[1]).ok" "$health") == true ]]'
+[[ -z "$want" ]] || check "env is $want" '[[ $(bun -p "JSON.parse(process.argv[1]).env" "$health") == "$want" ]]'
 page=$(curl -sf "$url/" || true)
 manifest=$(curl -sf "$url/manifest.webmanifest" || true)
 check "GET / serves the app"   '[[ "$page" == *"<title>rcfc</title>"* ]]'

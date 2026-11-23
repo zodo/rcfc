@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { parseCsv } from "../src/import/csv";
 import {
   DuocardsFormatError,
@@ -121,7 +121,7 @@ describe("guessSourceLang", () => {
 });
 
 // Optional check against a real export (not committed: it is personal data).
-//   RCFC_DUOCARDS_EXPORT=/path/to/duo_cards_es_export.csv npm test
+//   RCFC_DUOCARDS_EXPORT=/path/to/duo_cards_es_export.csv bun test
 const real = process.env.RCFC_DUOCARDS_EXPORT;
 describe.skipIf(!real || !existsSync(real))("real Duocards export", () => {
   it("imports every row without errors", () => {

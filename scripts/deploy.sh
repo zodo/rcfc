@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Build, migrate, deploy and smoke-test one environment.
-#   npm run deploy:preview      -> rcfc-preview  (any branch, dirty tree ok)
-#   npm run deploy:prod         -> rcfc          (clean tree, pushed commit)
+#   bun run deploy:preview      -> rcfc-preview  (any branch, dirty tree ok)
+#   bun run deploy:prod         -> rcfc          (clean tree, pushed commit)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 env="${1:?usage: deploy.sh preview|production}"
 [[ "$env" == preview || "$env" == production ]] || { echo "unknown env $env" >&2; exit 2; }
 
 if grep -q '"database_id": "PENDING_BOOTSTRAP"' wrangler.jsonc; then
-  echo "D1 ids missing; run: npm run cf:bootstrap" >&2; exit 2
+  echo "D1 ids missing; run: bun run cf:bootstrap" >&2; exit 2
 fi
 
 sha=$(git rev-parse --short HEAD)
@@ -20,9 +20,9 @@ fi
 msg="$branch@$sha$dirty"
 
 echo "== build ($env, $msg)"
-npm run build:wasm
-npm run typecheck
-CLOUDFLARE_ENV="$env" vite build
+bun run build:wasm
+bun run typecheck
+CLOUDFLARE_ENV="$env" bun --bun vite build
 
 echo "== migrate D1 ($env)"
 wrangler d1 migrations apply DB --remote -c wrangler.jsonc --env "$env"

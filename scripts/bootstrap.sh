@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Idempotently create the D1 databases and R2 buckets for preview + production,
-# and write the D1 ids into wrangler.jsonc. Run via: npm run cf:bootstrap
+# and write the D1 ids into wrangler.jsonc. Run via: bun run cf:bootstrap
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 for db in rcfc-preview rcfc; do
-  id=$(wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s).find(x=>x.name===process.argv[1]);process.stdout.write(r?r.uuid:"")})' "$db")
+  id=$(wrangler d1 list --json | bun -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s).find(x=>x.name===process.argv[1]);process.stdout.write(r?r.uuid:"")})' "$db")
   if [[ -z "$id" ]]; then
     echo "creating D1 $db"
     wrangler d1 create "$db" >/dev/null
-    id=$(wrangler d1 info "$db" --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).uuid))')
+    id=$(wrangler d1 info "$db" --json | bun -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).uuid))')
   fi
   echo "D1 $db = $id"
-  node -e '
+  bun -e '
     const fs=require("fs"), [name,id]=process.argv.slice(1);
     let s=fs.readFileSync("wrangler.jsonc","utf8");
     const re=new RegExp(`("database_name": "${name}", "database_id": ")[^"]*(")`);
