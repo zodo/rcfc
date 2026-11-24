@@ -100,6 +100,20 @@ describe("piles", () => {
     expect((await sitting(d)).view()["i"].size).toBe(25);
   });
 
+  it("5 more after the day's new words deals 5 more new words, while there are any", async () => {
+    const d = await Device.open();
+    await d.deck(17);
+    const s = await sitting(d);
+    expect(await run(s)).toHaveLength(10); // the day's 10 new words
+    expect(s.moreCount()).toBe(5);
+    await s.more();
+    expect(await run(s)).toHaveLength(5);
+    expect(s.moreCount()).toBe(2);
+    await s.more();
+    expect(await run(s)).toHaveLength(2);
+    expect(s.moreCount()).toBe(0);
+  });
+
   it("a pile left unfinished comes back smaller", async () => {
     const clock = new Clock();
     const d = await Device.open(clock);

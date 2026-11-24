@@ -66,8 +66,12 @@ export class StudySession {
     return col.liveCards().filter((c) => col.notes.get(c.note_id)!.lang_pair.from === this.lang);
   }
 
-  /** The pile as it lies today; `wide` as if "more" had been asked of a sticker pile. */
-  view(wide = false): PileView {
+  /**
+   * The pile as it lies today. `asking`: as if "more" were asked now: a
+   * language's pile may go MORE new words past today's limit (what dealing
+   * them raises it by), a sticker's pile goes wide.
+   */
+  view(asking = false): PileView {
     const { store } = this;
     const { col } = store;
     const source = this.source();
@@ -78,8 +82,9 @@ export class StudySession {
     // Sticker piles asked for more today draw new words freely, and those don't count toward any language's limit.
     const notCounted = new Set<string>();
     for (const [pile, days] of col.deals) if (pileLabel(pile) !== undefined && (days.get(today)?.more ?? 0) > 0) notCounted.add(pile);
-    wide = this.label !== undefined && (wide || notCounted.has(this.pile));
-    const newLimit = wide ? () => Infinity : this.lang !== undefined ? () => perDay + more(this.pile) : (l: string) => perDay + more(languagePile(l));
+    const wide = this.label !== undefined && (asking || notCounted.has(this.pile));
+    const extra = asking ? MORE : 0;
+    const newLimit = wide ? () => Infinity : this.lang !== undefined ? () => perDay + more(this.pile) + extra : (l: string) => perDay + more(languagePile(l));
     return new PileView({
       col,
       pile: this.pile,
