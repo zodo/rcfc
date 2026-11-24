@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AssetAttached, NoteCreatedPayload } from "../src/domain/events";
-import { budgetDay, imagePrompt, meanings, parseScene, sceneMessages, secondsToReset, senseFor } from "../src/domain/pictures";
+import { budgetDay, imagePrompt, meanings, parseScene, sceneMessages, secondsToReset, senseFor, withoutQuotes } from "../src/domain/pictures";
 import { Pictures } from "../src/pictures";
 import { handlePictures, type AiRunner, type BlobStore, type PictureEnv } from "../worker/pictures";
 import { sqliteD1 } from "./support/d1";
@@ -76,12 +76,21 @@ describe("picture prompts", () => {
     expect(parseScene('```json\n{"sense":"bench","scene":"A park bench."}\n```', { ...r, example: "x" })).toEqual({ sense: "bench", scene: "A park bench." });
     expect(parseScene({ scene: "Obj." }, r).scene).toBe("Obj.");
     expect(parseScene("not json at all", r).scene).toBe("not json at all");
-    expect(parseScene(undefined, r).scene).toBe("candle, sail: la vela");
+    expect(parseScene(undefined, r).scene).toBe("A simple everyday scene that shows candle.");
+  });
+
+  it("drops quoted words and dialogue from the scene, so the picture never spells the answer", () => {
+    expect(withoutQuotes("A man at a desk under a calendar highlighting the word 'Monday' above him.")).toBe("A man at a desk under a calendar highlighting above him.");
+    expect(withoutQuotes("Three friends, asking each other '¿Vosotros queréis ir al cine?' as they talk.")).toBe("Three friends as they talk.");
+    expect(withoutQuotes('A man waves and says "Hola, Pedro!" to his friend.')).toBe("A man waves to his friend.");
+    expect(withoutQuotes("The friends' house and a person's dog.")).toBe("The friends' house and a person's dog.");
+    const r = { word: "lunes", translation: "Monday" };
+    expect(parseScene({ scene: "'lunes'" }, r).scene).not.toContain("lunes");
   });
 
   it("names the medium before the scene", () => {
     expect(imagePrompt("A cat.").indexOf("Cut-paper")).toBe(0);
-    expect(imagePrompt("A cat.")).toContain("white paper background");
+    expect(imagePrompt("A cat.")).toContain("irregular and hand-cut");
   });
 
   it("budgets by UTC day", () => {

@@ -51,13 +51,13 @@ export function senseFor(r: PictureRequest): string | undefined {
 export const SCENE_SYSTEM = `You write the subject for a flashcard illustration that helps a language learner remember one word.
 Rules:
 - Show exactly ONE meaning. If a "Sense" is given, use it. Else use the meaning the example sentence uses.
-- Describe one concrete, instantly readable scene: one clear main subject, simple background. 1-2 sentences, English, no style words (the style is added later).
+- Describe one concrete, instantly readable scene: one or two main figures or objects. Never describe a place behind them (no street, city, room, park, wall, doorway or landscape): it becomes a cut-out on blank paper, so at most one or two small props hint at the setting, like a sun, a lamp or a bush. 1-2 sentences, English, no style words (the style is added later).
 - Abstract words, verbs and idioms: show a person or animal visibly doing or feeling it, in a situation where the meaning is obvious.
-- Idioms whose literal words make a vivid picture: merge the literal image with the meaning, as a memory hook (e.g. "estar en las nubes": a daydreaming woman whose head floats among clouds above her desk).
+- Idioms whose literal words make a vivid picture: merge the literal image with the meaning, as a memory hook (e.g. "estar en las nubes": a daydreaming woman whose head floats among clouds).
 - People are always adults.
-- Make the meaning unmistakable: include the one detail that tells this meaning apart from similar ideas (e.g. for getting up early: a person already dressed, drinking coffee, dark sky, clock showing 5:30).
+- Make the meaning unmistakable: include the one detail that tells this meaning apart from similar ideas (e.g. for getting up early: a person already dressed, drinking coffee, a small sun just rising, a rooster crowing).
 - If "Details" are given, include them.
-- Never include text, letters, signs, labels or speech bubbles.
+- The picture is a test: the learner must guess the word from it. So nothing in it may carry writing: no quoted words, dialogue or names, no speech or thought bubbles, no calendars, signs, books, screens, chalkboards, labels, letters or digits. Show talking with gestures and open mouths; show days, numbers and times with things you can count or see (e.g. Monday: a sleepy office worker with a briefcase hurrying to work at dawn; thirteen: thirteen apples in a row).
 Return JSON: {"sense": "<the meaning you chose, 1-3 English words>", "scene": "<the scene>"}`;
 
 export function sceneMessages(r: PictureRequest): { role: "system" | "user"; content: string }[] {
@@ -84,16 +84,35 @@ export function parseScene(reply: unknown, r: PictureRequest): { sense: string; 
     }
   }
   const o = (v ?? {}) as { sense?: unknown; scene?: unknown };
-  const scene = typeof o.scene === "string" && o.scene.trim() ? o.scene.trim() : `${r.translation}: ${r.word}`;
   // A sense we asked for wins over the LLM's own label (it mislabels).
   const sense = senseFor(r) ?? (typeof o.sense === "string" && o.sense.trim() ? o.sense.trim() : meanings(r.translation)[0] ?? r.translation);
-  return { sense, scene };
+  const text = typeof o.scene === "string" ? withoutQuotes(o.scene) : "";
+  // Never the studied word: the picture sits on the known side as a clue.
+  return { sense, scene: text || `A simple everyday scene that shows ${sense}.` };
 }
 
-// Medium first: scene-first prompts sometimes come out as photos.
-const STYLE_LEAD = "Cut-paper illustration: a layered diorama made entirely of matte card stock, filling the whole frame. It shows:";
+const SPEECH_VERB = String.raw`(?:(?:and|while|as)\s+)?(?:says?|said|saying|asks?|asking|shouts?|shouting|reads?|reading|writes?|writing|showing|displaying|labell?ed|with the words?|the words?)(?:\s+(?:each other|him|her|them|out|loud))*,?\s*`;
+const QUOTED = new RegExp(String.raw`[\s,]*(?:${SPEECH_VERB})?(?:"[^"]*"|“[^”]*”|«[^»]*»|(?<![\p{L}\p{N}])['‘][^'’]{1,120}['’](?![\p{L}\p{N}]))`, "giu");
+
+/**
+ * The scene minus quoted words and dialogue. The scene LLM writes them despite
+ * its rules ("a calendar highlighting the word 'Monday'"), and FLUX then draws
+ * them as text: a giveaway on a card that should make you recall the word.
+ */
+export function withoutQuotes(scene: string): string {
+  return scene
+    .replace(QUOTED, "")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// Medium first: scene-first prompts sometimes come out as photos. A loose
+// cut-out, not a full-frame diorama: its hand-cut outline shows on the card
+// (the client flattens the white paper away), a framed panel looks like a photo.
+const STYLE_LEAD = "Cut-paper illustration: one large free-standing cut-out of layered matte card stock, centered on a plain white background and filling most of the frame. It shows:";
 const STYLE =
-  "Paper colors: mustard yellow, terracotta, sage green, dusty blue and white. Crisp scissor-cut edges, soft drop shadows between the layers, plain white paper background, photographed straight on in soft daylight. No text, no letters, no words.";
+  "Its outline is irregular and hand-cut, following the figures and props: no rectangular backdrop, no panel, no frame, plain white background showing around it. Paper colors: mustard yellow, terracotta, sage green, dusty blue and white. Crisp scissor-cut edges, soft drop shadows between the layers, photographed straight on in soft daylight. The paper is blank, with no writing anywhere.";
 
 export function imagePrompt(scene: string): string {
   return `${STYLE_LEAD} ${scene} ${STYLE}`;
