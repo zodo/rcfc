@@ -1,16 +1,30 @@
-// Add a word to the current language: a note with forward and reverse cards.
+// Add a word: a note with forward and reverse cards, in the last language used
+// (switchable here; "Add a language…" picks a new one, made with its first word).
 import { app, go, subPage } from "../app";
 import type { NoteFields } from "../domain/events";
 import { noteKey } from "../import/duocards";
 import type { NoteCreatedPayload } from "../domain/events";
 import { clear, h, langName, toast } from "../ui/h";
 import { pictureEditor } from "../ui/picture";
-import { currentDeck } from "./decks";
+import { deckFor, languageLabel, languages, lastLanguage, rememberLanguage, samePair } from "./languages";
+
+const NEW = "new";
 
 export function add(): void {
-  const d = currentDeck();
-  if (!d) return void go.home();
+  const pair = lastLanguage();
+  if (!pair) return void go.addLanguage();
   const { store } = app;
+  // Which language: a native picker, the languages with words plus this one if it has none yet.
+  const langs = languages();
+  const all = langs.some((p) => samePair(p, pair)) ? langs : [...langs, pair];
+  const picker = h("select", { name: "language" });
+  all.forEach((p, i) => picker.appendChild(h("option", { value: String(i), selected: samePair(p, pair) }, languageLabel(p, all))));
+  picker.appendChild(h("option", { value: NEW }, "Add a language…"));
+  picker.addEventListener("change", () => {
+    if (picker.value === NEW) return go.addLanguage();
+    rememberLanguage(all[Number(picker.value)]);
+    go.add();
+  });
   const front = h("input", { name: "front", required: true, autocomplete: "off", autocapitalize: "off", spellcheck: false });
   const back = h("input", { name: "back", required: true, autocomplete: "off" });
   const example = h("textarea", { name: "example", rows: 2 });
@@ -37,7 +51,7 @@ export function add(): void {
           const fields: NoteFields = { front: f, back: b };
           const ex = example.value.trim();
           if (ex) fields.example = ex;
-          const evs = store.factory.note(d.id, fields, d.lang_pair);
+          const evs = store.factory.note(await deckFor(pair), fields, pair);
           await store.append(evs);
           const noteId = (evs[0].payload as NoteCreatedPayload).note_id;
           void app.pictures.ensure(noteId);
@@ -49,8 +63,9 @@ export function add(): void {
           front.focus();
         },
       },
-      h("label", {}, langName(d.lang_pair.from), front),
-      h("label", {}, langName(d.lang_pair.to), back),
+      h("label", {}, "Language", picker),
+      h("label", {}, langName(pair.from), front),
+      h("label", {}, langName(pair.to), back),
       h("label", {}, "Example (optional)", example),
       hint,
       h("button", { class: "primary", type: "submit" }, "Add"),

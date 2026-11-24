@@ -249,8 +249,8 @@ export class EventFactory {
     return this.make("preset_updated", { ...DEFAULT_PRESET, ...p, preset_id: p.preset_id ?? newEntityId() });
   }
 
-  deck(name: string, preset_id: EntityId, lang_pair: LangPair): AppEvent {
-    return this.make("deck_created", { deck_id: newEntityId(), name, preset_id, lang_pair });
+  deck(name: string, preset_id: EntityId, lang_pair: LangPair, deck_id: EntityId = newEntityId()): AppEvent {
+    return this.make("deck_created", { deck_id, name, preset_id, lang_pair });
   }
 
   /** A note and its cards, in one batch. */

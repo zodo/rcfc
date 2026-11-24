@@ -5,12 +5,13 @@
 // for more cards or the same ones again: they land on the spot, and a tap on
 // the pile studies them. First launch asks which language to learn.
 import { app, go, page } from "../app";
-import type { Deck } from "../domain/collection";
+import type { LangPair } from "../domain/events";
+import { derivedEntityId } from "../domain/ids";
 import { StudySession } from "../session";
 import { h } from "../ui/h";
 import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
-import { deckLabel, decks, languageForm, rememberDeck } from "./decks";
+import { languageForm, languageLabel, languages, rememberLanguage, setOpenLanguage } from "./languages";
 
 /** Edges drawn under the top card; deeper cards only make the pile no thicker. */
 const EDGES = 30;
@@ -21,12 +22,13 @@ const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 
 export async function home(): Promise<void> {
   if (app.reloadPending) return location.reload();
-  if (decks().length === 0) {
+  const langs = languages();
+  if (langs.length === 0) {
     page(
       "home",
       "Welcome",
       h("p", {}, "Flashcards scheduled by RWKV, a neural memory model that runs on your device."),
-      languageForm(() => go.words(), "Start"),
+      languageForm(() => go.add(), "Start"),
     );
     return;
   }
@@ -35,7 +37,7 @@ export async function home(): Promise<void> {
   const moved = { cleared: app.cleared, refilled: app.refilled };
   app.cleared = app.refilled = null;
   const spots = [];
-  for (const d of decks()) spots.push(await spot(d, moved));
+  for (const p of langs) spots.push(await spot(p, languageLabel(p, langs), moved));
   if (app.current !== "home") return; // left while loading
   page("home", "Study", h("div", { class: "table" }, ...spots));
 }
@@ -52,30 +54,26 @@ const CHECK_DRAWN = 780;
 const LANDING_MS = 420;
 
 /** One language's spot: its pile, or the outline a finished pile leaves. */
-async function spot(d: Deck, moved: Moved): Promise<HTMLElement> {
-  const { store } = app;
-  const name = h("div", { class: "pile-name" }, deckLabel(d));
-  if (!store.col.liveCards(d.id).length) {
-    const b = h("button", { class: "spot empty", "aria-label": `Add words to ${deckLabel(d)}`, onclick: () => (rememberDeck(d.id), go.words()) });
-    return h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, "no words yet"));
-  }
-  const s = new StudySession(store, d.lang_pair);
+async function spot(pair: LangPair, label: string, moved: Moved): Promise<HTMLElement> {
+  const name = h("div", { class: "pile-name" }, label);
+  const s = new StudySession(app.store, pair);
+  const seed = derivedEntityId(s.pile) % 233280; // the pile's own poses, the same every time
   await s.prepare();
   const n = s.next();
   if (!n) {
     const done = s.doneToday().length;
     const fresh = moved.cleared === s.pile && done > 0;
-    const b = h("button", { class: `spot finished${fresh ? " fresh" : ""}`, "aria-label": `${deckLabel(d)}: more cards`, onclick: () => sheet(d, s) });
+    const b = h("button", { class: `spot finished${fresh ? " fresh" : ""}`, "aria-label": `${label}: more cards`, onclick: () => sheet(label, s) });
     if (done) b.innerHTML = ICON_CHECK;
     if (fresh) {
-      b.append(...flecks(d.id));
+      b.append(...flecks(seed));
       setTimeout(() => haptic("double"), CHECK_DRAWN);
     }
     return h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due"));
   }
   const pile = h("span", { class: "pile-stack" });
   const faces = s.faces(Math.min(EDGES, n.left - 1));
-  const r = seeded(d.id % 233280);
+  const r = seeded(seed);
   for (let i = faces.length; i >= 1; i--) {
     const edge = h("span", { class: `pile-edge${faces[i - 1] === "reverse" ? " known" : ""}${i === faces.length ? " last" : ""}` });
     edge.style.transform = `translate(${((r() - 0.5) * 2).toFixed(1)}px,${(i * CARD_PX).toFixed(1)}px) rotate(${((r() - 0.5) * 1).toFixed(2)}deg)`;
@@ -90,14 +88,14 @@ async function spot(d: Deck, moved: Moved): Promise<HTMLElement> {
     cards.forEach((c, i) => c.style.setProperty("--d", `${Math.round(i * step)}ms`));
     setTimeout(() => haptic("thud"), Math.round(cards.length * step) + 180);
   }
-  const b = h("button", { class: `spot${dealt ? " dealt" : ""}`, "aria-label": `Study ${deckLabel(d)}`, onclick: () => (rememberDeck(d.id), go.study(d.id)) }, pile);
+  const b = h("button", { class: `spot${dealt ? " dealt" : ""}`, "aria-label": `Study ${label}`, onclick: () => (rememberLanguage(pair), go.study(pair)) }, pile);
   b.style.marginBottom = `${Math.round(faces.length * CARD_PX)}px`;
   return h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, `${n.left} ${n.left === 1 ? "card" : "cards"}`));
 }
 
 /** Bits of coloured paper that jump off a check as it is drawn. */
 function flecks(seed: number): HTMLElement[] {
-  const r = seeded((seed % 233280) + 7);
+  const r = seeded(seed + 7);
   const colours = ["--again", "--good", "--easy", "--new", "--highlight"];
   return Array.from({ length: 9 }, (_, i) => {
     const a = -Math.PI / 2 + (i - 4) * 0.36 + (r() - 0.5) * 0.3; // a fan, upwards
@@ -122,7 +120,7 @@ function topCard(cardId: number): HTMLElement {
 }
 
 /** A finished spot, tapped: more cards or the same ones again (put on the spot, not studied yet), or words to add. */
-function sheet(d: Deck, s: StudySession): void {
+function sheet(label: string, s: StudySession): void {
   const done = s.doneToday();
   const more = s.moreCount();
   const close = () => {
@@ -134,15 +132,15 @@ function sheet(d: Deck, s: StudySession): void {
   /** The pile is on its spot again: back to the table to watch it land. */
   const refill = () => {
     close();
-    rememberDeck(d.id);
+    rememberLanguage(s.pair);
     app.refilled = s.pile;
     void home();
   };
   const backdrop = h("div", { class: "sheet-backdrop", onclick: close });
   const el = h(
     "div",
-    { class: "pile-sheet", role: "dialog", "aria-label": deckLabel(d) },
-    h("h2", {}, deckLabel(d)),
+    { class: "pile-sheet", role: "dialog", "aria-label": label },
+    h("h2", {}, label),
     more
       ? h(
           "button",
@@ -159,7 +157,7 @@ function sheet(d: Deck, s: StudySession): void {
     done.length
       ? h("button", { class: more ? "secondary wide" : "primary wide", onclick: () => (s.againThese(done), refill()) }, done.length === 1 ? "Go through it again" : `Go through these ${done.length} again`)
       : null,
-    !more && !s.unseenLeft() ? h("button", { class: "secondary wide", onclick: () => (close(), rememberDeck(d.id), go.words()) }, "Add words") : null,
+    !more && !s.unseenLeft() ? h("button", { class: "secondary wide", onclick: () => (close(), setOpenLanguage(s.pair), go.add()) }, "Add words") : null,
   );
   document.addEventListener("keydown", onKey);
   app.root.append(backdrop, el);

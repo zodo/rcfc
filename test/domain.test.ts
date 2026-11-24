@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
+import { derivedEntityId } from "../src/domain/ids";
 import type { AppEvent, Review, ReviewPayload } from "../src/domain/events";
 import { RowBuilder, ROW_WIDTH, nextPhase, studyDay } from "../src/domain/rows";
 import { wordStatus } from "../src/domain/scheduler";
@@ -118,5 +119,24 @@ describe("wordStatus", () => {
     // Marked known (last answer Easy): known whatever the model says, until answered again.
     expect(wordStatus([{ id: 1, reviews: 1, last_rating: 4 }, card(2, 0)], new Map([[1, 0.8]]))).toBe("known");
     expect(wordStatus([{ id: 1, reviews: 3, last_rating: 1 }], new Map([[1, 0.8]]))).toBe("learning");
+  });
+});
+
+describe("derived ids", () => {
+  it("are the same for the same text, differ otherwise, and fit an entity id", () => {
+    const es = derivedEntityId("deck:lang:es>en");
+    expect(derivedEntityId("deck:lang:es>en")).toBe(es);
+    expect(derivedEntityId("deck:lang:de>en")).not.toBe(es);
+    expect(derivedEntityId("deck:lang:en>es")).not.toBe(es);
+    for (const id of [es, derivedEntityId(""), derivedEntityId("ü".repeat(500))]) {
+      expect(Number.isSafeInteger(id) && id > 0).toBe(true);
+    }
+  });
+
+  it("a deck made twice with the same id (two devices offline) folds into one", () => {
+    const col = new Collection();
+    const id = derivedEntityId("deck:lang:de>en");
+    for (const dev of ["a", "b"]) col.apply(new EventFactory(dev).deck("German", 1, { from: "de", to: "en" }, id));
+    expect([...col.decks.keys()]).toEqual([id]);
   });
 });

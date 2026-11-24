@@ -1,5 +1,6 @@
 // App shell shared by the screens (src/screens/): the open store and sync,
 // which screen is showing, page chrome, keyboard handling and navigation.
+import type { LangPair } from "./domain/events";
 import type { EntityId } from "./domain/ids";
 import type { Pictures } from "./pictures";
 import type { Store } from "./store";
@@ -12,10 +13,11 @@ export type ScreenName = Tab | "study";
 
 export interface Screens {
   home(): void | Promise<void>;
-  /** A language's pile; `again`: today's finished cards from it once more. */
-  study(deckId?: EntityId): void | Promise<void>;
-  /** The Words tab, for the current language (decks.ts `currentDeck`). */
+  /** A language's pile (default: the last one studied). */
+  study(pair?: LangPair): void | Promise<void>;
+  /** The Words tab: every word, or the language open there (languages.ts `openLanguage`). */
   words(): void;
+  /** Add a word to the last language used (languages.ts `lastLanguage`). */
   add(): void;
   import(): void;
   edit(noteId: EntityId): void;
@@ -74,7 +76,7 @@ function nav(active: Tab) {
 
 type Body = (Node | string | null | false)[];
 
-/** A tab screen: title (text, or a node such as the language picker), content and the tab bar. */
+/** A tab screen: title, content and the tab bar. */
 export function page(active: Tab, title: string | Node, ...body: Body): void {
   show(active, h("header", { class: "top" }, typeof title === "string" ? h("h1", {}, title) : title), body);
 }

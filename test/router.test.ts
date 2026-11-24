@@ -84,7 +84,7 @@ describe("router", () => {
     await tick();
     expect(last()).toBe("words");
     expect(h.names()).toEqual(["home", "words"]);
-    go.study(7);
+    go.study({ from: "es", to: "en" });
     go.home(); // the study screen's close button
     await tick();
     expect(last()).toBe("home");

@@ -348,30 +348,6 @@ header.top.sub .back svg {
   width: 24px;
   height: 24px;
 }
-/* the language picker is the Words title */
-h1.picker {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-}
-h1.picker > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-h1.picker .chev {
-  color: var(--on-table-muted);
-  font-size: 16px;
-}
-.lang-picker {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
 /* ---------- tab bar: paper tabs, the current one lifted ---------- */
 .nav {
   position: fixed;
@@ -527,8 +503,7 @@ h1.picker .chev {
   object-fit: contain;
 }
 /* a finished pile: the spot, and a pencil check once something was done */
-.spot.finished,
-.spot.empty {
+.spot.finished {
   display: grid;
   place-items: center;
 }

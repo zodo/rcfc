@@ -3,7 +3,7 @@ import { app, go, requestPersistence, subPage } from "../app";
 import type { AppEvent } from "../domain/events";
 import { DuocardsFormatError, guessSourceLang, importDuocardsCsv } from "../import/duocards";
 import { append, clear, h, langSelect, toast } from "../ui/h";
-import { currentDeck, deckFor, deckLabel, decks, rememberDeck } from "./decks";
+import { deckFor, languageLabel, languages, lastLanguage, rememberLanguage } from "./languages";
 
 export function importScreen(): void {
   const { store } = app;
@@ -13,8 +13,8 @@ export function importScreen(): void {
     const f = file.files?.[0];
     if (!f) return;
     const text = await f.text();
-    const cur = currentDeck();
-    const from = guessSourceLang(f.name) ?? cur?.lang_pair.from ?? "es";
+    const cur = lastLanguage();
+    const from = guessSourceLang(f.name) ?? cur?.from ?? "es";
     clear(box);
     let preview;
     try {
@@ -24,12 +24,13 @@ export function importScreen(): void {
       return;
     }
     // Default: the current language if the file looks like it, else another with that language, else a new one.
-    const match = cur?.lang_pair.from === from ? cur : decks().find((d) => d.lang_pair.from === from);
+    const known = languages();
+    const match = cur?.from === from ? cur : known.find((p) => p.from === from);
     const target = h("select", { name: "target" });
-    for (const d of decks()) target.appendChild(h("option", { value: String(d.id), selected: d.id === match?.id }, deckLabel(d)));
+    known.forEach((p, i) => target.appendChild(h("option", { value: String(i), selected: p.from === match?.from && p.to === match.to }, languageLabel(p, known))));
     target.appendChild(h("option", { value: "new", selected: !match }, "A new language…"));
     const fromSel = langSelect("from", from);
-    const toSel = langSelect("to", cur?.lang_pair.to ?? "en");
+    const toSel = langSelect("to", cur?.to ?? "en");
     const langs = h("div", { class: "row2" }, h("label", {}, "Words are in", fromSel), h("label", {}, "Translations in", toSel));
     const syncLangs = () => langs.classList.toggle("hidden", target.value !== "new");
     target.addEventListener("change", syncLangs);
@@ -49,13 +50,12 @@ export function importScreen(): void {
             disabled: preview.notes === 0,
             onclick: async (e: Event) => {
               (e.target as HTMLButtonElement).disabled = true;
-              const lang_pair = { from: fromSel.value, to: toSel.value };
-              const deckId = target.value === "new" ? await deckFor(lang_pair) : Number(target.value);
-              const deck = store.col.decks.get(deckId)!;
-              const res = importDuocardsCsv(text, { deckId, langPair: deck.lang_pair, deviceId: store.deviceId, existing: store.col.liveNotes().map((n) => n.fields) });
+              const langPair = target.value === "new" ? { from: fromSel.value, to: toSel.value } : known[Number(target.value)];
+              const deckId = await deckFor(langPair);
+              const res = importDuocardsCsv(text, { deckId, langPair, deviceId: store.deviceId, existing: store.col.liveNotes().map((n) => n.fields) });
               await store.append(res.events as AppEvent[]);
               await requestPersistence();
-              rememberDeck(deckId);
+              rememberLanguage(langPair);
               toast(`Imported ${res.notes} words`);
               go.words();
             },

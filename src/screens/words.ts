@@ -1,14 +1,15 @@
-// Words tab: the current language's words with their progress (new, learning,
-// known). Search, add (+), select words to mark known / not known or delete,
-// tap one to edit. The whole list is there, rendered in chunks while scrolling.
+// Words tab: every word with its progress (new, learning, known); with two or
+// more languages, chips above the list open one of them (tap again for all).
+// Search, add (+), select words to mark known / not known or delete, tap one
+// to edit. The whole list is there, rendered in chunks while scrolling.
 import { app, errorText, go, page, subPage } from "../app";
 import type { Note } from "../domain/collection";
 import type { AppEvent } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import { KNOWN_HORIZON_MS, wordStatus } from "../domain/scheduler";
-import { append, clear, h, langName, toast } from "../ui/h";
+import { append, clear, h, toast } from "../ui/h";
 import { pictureEditor } from "../ui/picture";
-import { currentDeck, languageForm, languagePicker } from "./decks";
+import { languageForm, languageLabel, languages, openLanguage, rememberLanguage, samePair, setOpenLanguage } from "./languages";
 
 /** Rows added at a time as the list scrolls into view. */
 const CHUNK = 150;
@@ -24,9 +25,9 @@ interface Row {
 
 export function words(): void {
   const { store } = app;
-  const deck = currentDeck();
-  if (!deck) return void go.home();
-  const all = () => store.col.liveNotes(deck.id).reverse();
+  const langs = languages();
+  const open = openLanguage();
+  const all = () => store.col.liveNotes().filter((n) => !open || samePair(n.lang_pair, open)).reverse();
   let selecting = false;
   const selected = new Set<EntityId>();
   let found: Note[] = [];
@@ -80,9 +81,10 @@ export function words(): void {
     st.textContent = s ?? "";
   };
 
-  /** Re-predict a week ahead for this language, then update the statuses shown. */
+  /** Re-predict a week ahead for the words listed, then update the statuses shown. */
   const refresh = async () => {
-    for (const [id, p] of await store.predictAt(store.col.liveCards(deck!.id), Date.now() + KNOWN_HORIZON_MS)) weekAhead.set(id, p);
+    const cards = store.col.liveCards().filter((c) => !open || samePair(store.col.notes.get(c.note_id)!.lang_pair, open));
+    for (const [id, p] of await store.predictAt(cards, Date.now() + KNOWN_HORIZON_MS)) weekAhead.set(id, p);
     for (const [id, r] of rows) showStatus(store.col.notes.get(id)!, r.st);
   };
 
@@ -184,12 +186,25 @@ export function words(): void {
     : h(
         "div",
         { class: "card-box center" },
-        h("p", {}, `No ${langName(deck.lang_pair.from)} words yet.`),
+        h("p", {}, "No words yet."),
         h("button", { class: "primary", onclick: () => go.add() }, "Add a word"),
         h("button", { class: "secondary", onclick: () => go.import() }, "Import from Duocards"),
       );
-  const tools = h("div", { class: "word-tools" }, q, h("button", { class: "primary add-btn", onclick: () => go.add(), "aria-label": "Add a word" }, "+"));
-  page("words", languagePicker(deck, () => go.words()), empty ?? tools, empty ? null : info, list);
+  // + adds to the open language, else to the last one used.
+  const addWord = () => (open && rememberLanguage(open), go.add());
+  const tools = h("div", { class: "word-tools" }, q, h("button", { class: "primary add-btn", onclick: addWord, "aria-label": "Add a word" }, "+"));
+  const chips =
+    langs.length > 1
+      ? h(
+          "div",
+          { class: "chips lang-chips" },
+          ...langs.map((p) => {
+            const on = !!open && samePair(p, open);
+            return h("button", { class: `chip${on ? " on" : ""}`, "aria-pressed": String(on), onclick: () => (setOpenLanguage(on ? null : p), go.words()) }, languageLabel(p, langs));
+          }),
+        )
+      : null;
+  page("words", "Words", chips, empty ?? tools, empty ? null : info, list);
   app.root.appendChild(actions);
   rebuild();
   void refresh();
@@ -246,5 +261,5 @@ export function edit(noteId: EntityId): void {
 }
 
 export function addLanguage(): void {
-  subPage("words", "Add a language", () => go.words(), languageForm(() => go.words(), "Add language"));
+  subPage("words", "Add a language", () => go.words(), languageForm(() => go.add(), "Add a word"));
 }

@@ -261,7 +261,7 @@ Done today, cards waiting under a pile, cards left in a pile and each pile's siz
 1. This section.
 2. Fixed piles inside the current Study screen and its end screen. Hands-on review on a phone.
 3. The table on the Study tab (layout B: printed spots; finished spots tapped for choices). Built; hands-on review.
-4. No decks: the pair on the word, the Add screen, the model group from the pair, language piles. Mockups first.
+4. No decks: the pair on the word, the model group from the pair, language piles, language chips in Words. Built; hands-on review. The Add screen got only a language picker ("Add a language…" last); its chips and the two-way fields wait for its rework.
 5. Labels: events, the Words chips, the Stickers sheet, label piles on the table, the empty "new pile" spot. Mockups first.
 
 Later: the LLM fills the other field when adding; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; editing words.

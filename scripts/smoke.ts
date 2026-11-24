@@ -234,12 +234,11 @@ async function run(s: Browser, url: string) {
   await s.go(`${url}/?reset`);
   await s.until("welcome", `document.querySelector("header.top h1")?.textContent === "Welcome"`, 60_000);
 
-  log("pick a language: lands on its empty word list");
+  log("pick a language: lands on adding its first word");
   await s.click("button", "Start");
-  await s.until("Words: Spanish", `document.querySelector(".lang-picker")?.selectedOptions[0]?.textContent === "Spanish"`);
+  await s.until("Add: Spanish", `document.querySelector("select[name=language]")?.selectedOptions[0]?.textContent === "Spanish"`);
 
   log("add two words");
-  await s.click("button", "Add a word");
   for (const [front, back] of [["hola", "hello"], ["adiós", "goodbye"]]) {
     await s.type("input[name=front]", front);
     await s.type("input[name=back]", back);
@@ -320,7 +319,7 @@ async function run(s: Browser, url: string) {
 
   log("seeded collection: replay, due cards");
   await s.go(`${url}/?reset&seed=60`);
-  await s.until("seeded home", `document.querySelector(".pile-name")?.textContent === "Demo Spanish"`, 90_000);
+  await s.until("seeded home", `document.querySelector(".pile-name")?.textContent === "Spanish"`, 90_000);
   const pile = Number((await s.text(".pile-count")).split(" ")[0]);
   if (!(pile > 0)) throw new Error(`seeded deck shows a pile of ${pile}`);
   const edges = await s.js<number>(`return document.querySelectorAll(".spot .pile-edge").length;`);
@@ -383,6 +382,34 @@ async function run(s: Browser, url: string) {
     await s.click("button.rate", "Got it");
     await s.until("next", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
   }
+
+  log("a second language: picked on the Add screen, made with its first word; Words gets chips, the table a pile");
+  await s.click("button[aria-label=Close]");
+  await s.until("home", `document.querySelector(".pile-name")`);
+  await s.click("nav .nav-item", "Words");
+  if (await s.js<boolean>(`return !!document.querySelector(".lang-chips");`)) throw new Error("language chips with one language");
+  await s.click("button[aria-label='Add a word']");
+  await s.until("Add", `document.querySelector("select[name=language]")`);
+  await s.js(`const l = document.querySelector("select[name=language]"); l.value = "new"; l.dispatchEvent(new Event("change"));`);
+  await s.until("Add a language", `document.querySelector("header.top h1")?.textContent === "Add a language"`);
+  await s.js(`const l = document.querySelector("select[name=from]"); l.value = "de"; l.dispatchEvent(new Event("change"));`);
+  await s.click("button[type=submit]", "Add a word");
+  await s.until("Add: German", `document.querySelector("select[name=language]")?.selectedOptions[0]?.textContent === "German"`);
+  await shot(s, "add-language");
+  await s.type("input[name=front]", "der Schlüssel");
+  await s.type("input[name=back]", "key");
+  await s.click("button[type=submit]", "Add");
+  await s.until("toast", `document.getElementById("toast")?.textContent === 'Added "der Schlüssel"'`);
+  await s.click("button[aria-label=Back]");
+  await s.until("chips", `document.querySelectorAll(".lang-chips .chip").length === 2`);
+  await shot(s, "words-languages");
+  const everything = await words(s);
+  await s.click(".lang-chips .chip", "German");
+  await s.until("German only", `document.querySelectorAll(".list button.word").length === 1`);
+  await s.click(".lang-chips .chip", "German");
+  await s.until("all again", `document.querySelectorAll(".list button.word").length === ${everything}`);
+  await s.click("nav .nav-item", "Study");
+  await s.until("two piles", `[...document.querySelectorAll(".pile-name")].map((e) => e.textContent).join() === "Spanish,German"`);
 
   log("no uncaught errors");
   const errors = [...s.errors, ...(await s.js<string[]>("return window.__rcfcErrors ?? [];"))];
