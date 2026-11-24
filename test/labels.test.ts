@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
-import type { AppEvent, LabelCreated, LabelDeleted, LabelRenamed, NotesLabeled } from "../src/domain/events";
-import { labelIdFor, labelName, labelPile, nameKey } from "../src/domain/labels";
+import type { AppEvent, LabelColored, LabelCreated, LabelDeleted, LabelRenamed, NotesLabeled } from "../src/domain/events";
+import { LABEL_COLORS, labelColor, labelIdFor, labelName, labelPile, nameKey } from "../src/domain/labels";
 import { pileSize } from "../src/domain/piles";
 import { StudySession } from "../src/session";
 import { Clock, DAY, Device } from "./support/harness";
@@ -85,7 +85,32 @@ describe("sticker names and ids", () => {
   });
 });
 
+describe("sticker colours", () => {
+  it("one from the id until one is picked; the latest pick wins; renaming keeps it", () => {
+    let t = 1000;
+    const a = new EventFactory("a", () => t);
+    const col = new Collection();
+    col.apply(a.make<LabelCreated>("label_created", { label_id: 9, name: "food" }));
+    expect(labelColor(col.liveLabel(9)!)).toBe(LABEL_COLORS[9 % LABEL_COLORS.length]);
+    const late = (t = 3000, a.make<LabelColored>("label_colored", { label_id: 9, color: "pink" }));
+    const early = (t = 2000, a.make<LabelColored>("label_colored", { label_id: 9, color: "mint" }));
+    col.apply(late);
+    col.apply(early);
+    t = 4000;
+    col.apply(a.make<LabelRenamed>("label_renamed", { label_id: 9, name: "meals" }));
+    expect(labelColor(col.liveLabel(9)!)).toBe("pink");
+    expect(labelColor({ id: 9, color: "a colour from a newer app" })).toBe(LABEL_COLORS[9 % LABEL_COLORS.length]);
+  });
+});
+
 describe("stickers in the store", () => {
+  it("a new sticker gets the colour fewest stickers have", async () => {
+    const d = await Device.open();
+    const made = [];
+    for (const n of ["a", "b", "c", "d", "e", "f", "g"]) made.push(labelColor(d.store.col.liveLabel(await d.store.makeLabel(n))!));
+    expect(made).toEqual([...LABEL_COLORS, "yellow"]);
+  });
+
   it("renaming to another sticker's name merges into it", async () => {
     const d = await Device.open();
     const w = await words(d, 4);

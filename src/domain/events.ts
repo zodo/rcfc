@@ -128,6 +128,8 @@ export interface PileDealtPayload {
 export interface LabelCreatedPayload {
   label_id: EntityId;
   name: string;
+  /** Its colour as made (the one least used then); a later label_colored wins. */
+  color?: string;
 }
 
 /** A new name for a sticker; its words and pile stay. Last write wins. */
@@ -139,6 +141,12 @@ export interface LabelRenamedPayload {
 /** A sticker gone for good: off every word, its pile off the table. */
 export interface LabelDeletedPayload {
   label_id: EntityId;
+}
+
+/** A sticker's colour, one of LABEL_COLORS (src/domain/labels.ts). Last write wins. */
+export interface LabelColoredPayload {
+  label_id: EntityId;
+  color: string;
 }
 
 /** A sticker stuck on (`on`) or peeled off words. Last write wins per word and sticker. */
@@ -179,6 +187,7 @@ export type PileDealt = EventEnvelope<"pile_dealt", PileDealtPayload>;
 export type LabelCreated = EventEnvelope<"label_created", LabelCreatedPayload>;
 export type LabelRenamed = EventEnvelope<"label_renamed", LabelRenamedPayload>;
 export type LabelDeleted = EventEnvelope<"label_deleted", LabelDeletedPayload>;
+export type LabelColored = EventEnvelope<"label_colored", LabelColoredPayload>;
 export type NotesLabeled = EventEnvelope<"notes_labeled", NotesLabeledPayload>;
 
 export type AppEvent =
@@ -196,6 +205,7 @@ export type AppEvent =
   | LabelCreated
   | LabelRenamed
   | LabelDeleted
+  | LabelColored
   | NotesLabeled;
 
 export type EventType = AppEvent["type"];

@@ -13,7 +13,7 @@ import { KNOWN_HORIZON_MS, wordStatus } from "../domain/scheduler";
 import { append, clear, h, langName, toast } from "../ui/h";
 import { pictureEditor } from "../ui/picture";
 import { editSticker, languageForm, languages, openChip, rememberLanguage, setOpenChip, takeEditNext } from "./languages";
-import { newStickerSheet, pencilSheet, stickersSheet, stickerTag } from "./stickers";
+import { newStickerSheet, paint, pencilSheet, stickersSheet, stickerTag } from "./stickers";
 
 /** Rows added at a time as the list scrolls into view. */
 const CHUNK = 150;
@@ -277,15 +277,18 @@ export function words(): void {
         const b = chip(key, "");
         b.className = "chip sticker";
         b.append(h("span", { class: "t" }, l.name));
-        return b;
+        return paint(b, l);
       }
       const pen = h("button", { class: "pen", "aria-label": `Rename or delete ${l.name}`, onclick: () => pencilSheet(l.id, (now) => (setOpenChip(now === undefined ? null : labelPile(now)), go.words())) });
       pen.innerHTML = ICON_PEN;
-      return h("span", { class: "chip sticker on" }, h("button", { class: "t", "aria-pressed": "true", onclick: () => (setOpenChip(null), go.words()) }, l.name), pen);
+      return paint(h("span", { class: "chip sticker on" }, h("button", { class: "t", "aria-pressed": "true", onclick: () => (setOpenChip(null), go.words()) }, l.name), pen), l);
     }),
     h("button", { class: "chip new-sticker", onclick: () => newStickerSheet(editSticker) }, "+ Sticker"),
   );
   const chips = h("div", { class: "chip-rows" }, langRow, stickRow);
+  // Edit's dot stickers take the open sticker's colour.
+  const openSticker = labelId === undefined ? undefined : col.liveLabel(labelId);
+  if (openSticker) paint(list, openSticker);
   page("words", "Words", empty ? null : chips, empty ?? tools, empty ? null : info, list);
   app.root.appendChild(actions);
   if (labelId !== undefined && takeEditNext()) setMode("edit");
@@ -317,7 +320,7 @@ export function edit(noteId: EntityId): void {
     tags.replaceChildren(
       ...store.col.labelsOf(n.id).map((l) =>
         stickerTag(
-          l.name,
+          l,
           h(
             "button",
             {

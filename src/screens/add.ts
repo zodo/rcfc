@@ -42,7 +42,7 @@ export function add(): void {
   const hint = h("p", { class: "muted small" });
   const label = store.col.liveLabel(openLabel() ?? 0);
   const sticks = label
-    ? h("p", { class: "sticks small" }, "Sticks: ", stickerTag(label.name, h("button", { class: "x", type: "button", "aria-label": `Don't stick ${label.name} on this word`, onclick: () => (sticks!.hidden = true) }, "×")))
+    ? h("p", { class: "sticks small" }, "Sticks: ", stickerTag(label, h("button", { class: "x", type: "button", "aria-label": `Don't stick ${label.name} on this word`, onclick: () => (sticks!.hidden = true) }, "×")))
     : null;
   // The word just added, with its picture arriving; adjustable right here.
   const last = h("div", { class: "last-added" });

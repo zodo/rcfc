@@ -4,8 +4,8 @@
 // to reload.
 import Dexie, { type DexieOptions, type Table } from "dexie";
 import { Collection, EventFactory, eventOrder, type Card, type Preset } from "./domain/collection";
-import type { AppEvent, LabelCreated, LabelDeleted, LabelRenamed, NotesLabeled, Review, ReviewPayload } from "./domain/events";
-import { labelIdFor, labelName } from "./domain/labels";
+import type { AppEvent, LabelColored, LabelCreated, LabelDeleted, LabelRenamed, NotesLabeled, Review, ReviewPayload } from "./domain/events";
+import { freshColor, labelIdFor, labelName } from "./domain/labels";
 import type { EntityId } from "./domain/ids";
 import { knownCards, newQueue, unknownPlan, unseenCards, type DayClock, type Scope } from "./domain/newcards";
 import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin } from "./domain/rows";
@@ -291,7 +291,7 @@ export class Store {
   /** A sticker with this name: the one there is, else a new one. Returns its id. */
   async makeLabel(name: string): Promise<EntityId> {
     const { id, exists } = labelIdFor(this.col, name);
-    if (!exists) await this.append([this.factory.make<LabelCreated>("label_created", { label_id: id, name: labelName(name) })]);
+    if (!exists) await this.append([this.factory.make<LabelCreated>("label_created", { label_id: id, name: labelName(name), color: freshColor(this.col) })]);
     return id;
   }
 
@@ -311,6 +311,10 @@ export class Store {
     }
     if (this.col.liveLabel(id)?.name !== labelName(name)) await this.append([this.factory.make<LabelRenamed>("label_renamed", { label_id: id, name: labelName(name) })]);
     return id;
+  }
+
+  async colorLabel(id: EntityId, color: string): Promise<void> {
+    await this.append([this.factory.make<LabelColored>("label_colored", { label_id: id, color })]);
   }
 
   async deleteLabel(id: EntityId): Promise<void> {

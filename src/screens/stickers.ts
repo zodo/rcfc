@@ -2,15 +2,30 @@
 // sheets that make, stick, rename and delete them. A sticker is a label stuck
 // on words (src/domain/labels.ts); each one is a pile on the table.
 import { app, errorText, sheet } from "../app";
+import type { Label } from "../domain/collection";
 import type { EntityId } from "../domain/ids";
-import { LABEL_MAX, labelName } from "../domain/labels";
+import { LABEL_COLORS, LABEL_MAX, labelColor, labelName } from "../domain/labels";
 import { h, toast } from "../ui/h";
 
 const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
 
+/** Give an element (and what is inside it) a sticker's paper colour; it follows later changes (`repaint`). */
+export function paint<E extends HTMLElement>(el: E, l: Pick<Label, "id" | "color">): E {
+  const c = labelColor(l);
+  el.style.setProperty("--sticker", `var(--st-${c})`);
+  el.style.setProperty("--sticker-on", `var(--st-${c}-on)`);
+  el.dataset.label = String(l.id);
+  return el;
+}
+
+/** After a colour change: everything painted with that sticker takes the new colour. */
+function repaint(l: Label): void {
+  for (const el of document.querySelectorAll<HTMLElement>(`[data-label="${l.id}"]`)) paint(el, l);
+}
+
 /** A sticker as it looks: a scrap of coloured paper with its name. */
-export function stickerTag(name: string, ...extra: (Node | string | null)[]): HTMLElement {
-  return h("span", { class: "sticker" }, h("span", { class: "t" }, name), ...extra);
+export function stickerTag(l: Pick<Label, "id" | "name" | "color">, ...extra: (Node | string | null)[]): HTMLElement {
+  return paint(h("span", { class: "sticker" }, h("span", { class: "t" }, l.name), ...extra), l);
 }
 
 function nameInput(value = ""): HTMLInputElement {
@@ -81,7 +96,7 @@ export function stickersSheet(noteIds: EntityId[], changed: () => void): void {
               }),
           },
           h("span", { class: `box ${state}`, "aria-hidden": "true" }),
-          stickerTag(l.name),
+          stickerTag(l),
           state === "some" ? h("span", { class: "n small" }, `${on} of ${noteIds.length}`) : null,
         );
       }),
@@ -137,9 +152,35 @@ export function pencilSheet(id: EntityId, changed: (now: EntityId | undefined) =
     rename.textContent = other && other.id !== id ? `Merge into ${other.name}` : "Rename";
     rename.disabled = !labelName(name.value);
   });
+  // Its colour: a row of dot stickers, the current one ringed; a tap changes it at once.
+  const swatches = h("div", { class: "swatches", role: "radiogroup", "aria-label": "Colour" });
+  const renderSwatches = () =>
+    swatches.replaceChildren(
+      ...LABEL_COLORS.map((c) => {
+        const on = labelColor(label) === c;
+        const b = h("button", {
+          class: `swatch${on ? " on" : ""}`,
+          type: "button",
+          role: "radio",
+          "aria-checked": String(on),
+          "aria-label": c,
+          onclick: () =>
+            saving(async () => {
+              if (labelColor(label) === c) return;
+              await store.colorLabel(id, c);
+              repaint(label);
+              renderSwatches();
+            }),
+        });
+        b.style.setProperty("--sticker", `var(--st-${c})`);
+        return b;
+      }),
+    );
+  renderSwatches();
   const close = sheet(
     label.name,
-    h("span", {}, "Sticker ", stickerTag(label.name)),
+    h("span", {}, "Sticker ", stickerTag(label)),
+    swatches,
     h(
       "form",
       {

@@ -4,6 +4,22 @@
 import type { Collection } from "./collection";
 import { derivedEntityId, newEntityId, type EntityId } from "./ids";
 
+/** Sticker paper colours (CSS --st-<name>, style.css), in the order the pencil sheet shows them. */
+export const LABEL_COLORS = ["yellow", "pink", "blue", "orange", "lilac", "mint"] as const;
+export type LabelColor = (typeof LABEL_COLORS)[number];
+
+/** A sticker's colour: the one picked, else one from its id (the same on every device, kept through renames). */
+export function labelColor(l: { id: EntityId; color?: string }): LabelColor {
+  return (LABEL_COLORS as readonly string[]).includes(l.color ?? "") ? (l.color as LabelColor) : LABEL_COLORS[l.id % LABEL_COLORS.length];
+}
+
+/** The colour for a new sticker: the one fewest live stickers have (the first of those). */
+export function freshColor(col: Collection): LabelColor {
+  const used = new Map<string, number>();
+  for (const l of col.liveLabels()) used.set(labelColor(l), (used.get(labelColor(l)) ?? 0) + 1);
+  return [...LABEL_COLORS].sort((a, b) => (used.get(a) ?? 0) - (used.get(b) ?? 0))[0];
+}
+
 /** Longest sticker name, in characters. */
 export const LABEL_MAX = 30;
 

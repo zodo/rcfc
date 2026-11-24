@@ -204,7 +204,7 @@ Nov 24, 2026. Agreed and built, in the order of the plan at the end of this sect
 - A label is a name stuck on words (the UI calls it a sticker). Many to many, across languages. Labels never reach the model.
 - A sticker has an id and a name. A new name gets an id derived from it (compared ignoring case and extra spaces), so the same sticker made on two offline devices is one; a name whose derived id was used before (renamed or deleted since) gets a random id. Names are at most 30 characters.
 - A sticker stays until deleted, even with no words on it. Renaming changes only its name (last write wins), so its words and its pile stay. Renaming to another sticker's name merges into that one (its words get it, this one is deleted). Deleting takes it off every word and its pile off the table; the words stay.
-- Later: a colour per sticker from a small palette of paper colours, picked from its name at first and changeable in its pencil sheet (one more event). Everywhere a sticker shows (chips, the dot in Edit, under its pile) takes its colour. Until then every sticker is yellow.
+- Each sticker has a paper colour from a small palette (yellow, pink, blue, orange, lilac, mint). A new one gets the colour fewest stickers have, recorded when it is made; the pencil sheet changes it (a row of dot stickers, last write wins). Everywhere a sticker shows takes its colour: its chip (a deeper shade when open), the dots in Edit, its name under its pile, the sheets. Stickers made before colours get one from their id.
 - Language is not a label: it cannot be peeled off. Words in the user's own language (a subject such as pharmacology) are Russian words with Russian explanations plus a label.
 
 **The table (Study tab)**
@@ -262,6 +262,7 @@ Everything above is a fold over the log, so it syncs:
 | `label_created` | `label_id, name` | Made again with an existing id: only the name counts (last write wins) |
 | `label_renamed` | `label_id, name` | Last write wins |
 | `label_deleted` | `label_id` | For good; the id is never reused |
+| `label_colored` | `label_id, color` | Last write wins (`label_created` carries the first colour) |
 | `notes_labeled` | `label_id, note_ids, on` | Last write wins per word and sticker |
 | `review.pile` | the pile key: `lang:es` (older: `lang:es>en`, read as `lang:es`) or `label:<id>`; absent when not answered from a pile | Which pile the answer came from |
 | `pile_dealt` | `pile, day, n, more, all?` | The day's deal (`more` false; two devices dealing offline count the largest once), each "more", and "All N" (`all`) |
@@ -274,7 +275,7 @@ Done today, cards waiting under a pile, cards left in a pile and each pile's siz
 2. Fixed piles inside the current Study screen and its end screen. Hands-on review on a phone.
 3. The table on the Study tab (layout B: printed spots; finished spots tapped for choices). Built; hands-on review.
 4. No decks: languages on the word, one pile and model group per studied language, the translation's language per word, language chips in Words. Built; hands-on review. The Add screen got only a language picker ("Add a language…" last) and the translation's language as its field's label; its chips and the two-way fields wait for its rework.
-5. Labels as stickers: events, the Words chips, Edit, the pencil and Stickers sheets, sticker piles on the table with "Deal all N", the New pile spot, the back gesture. Built; hands-on review. Sticker colours next.
+5. Labels as stickers: events, the Words chips, Edit, the pencil and Stickers sheets, sticker piles on the table with "Deal all N", the New pile spot, the back gesture. Sticker colours. Built; hands-on review.
 
 Later: the LLM fills the other field when adding; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; editing words.
 

@@ -28,9 +28,21 @@
   --printed: rgb(38 54 42 / 0.42);
   /* cream card edges in a pile on the table: stronger than --card-known, a 1.5 px sliver must read as cream */
   --edge-known: #f0dfb4;
-  /* sticker paper; the open one is a deeper yellow */
-  --sticker: #f1d77e;
-  --sticker-on: #d9a521;
+  /* sticker paper (src/domain/labels.ts LABEL_COLORS), and the deeper shade of an open one */
+  --st-yellow: #f1d77e;
+  --st-yellow-on: #d9a521;
+  --st-pink: #f3b5be;
+  --st-pink-on: #df8494;
+  --st-blue: #acd0ec;
+  --st-blue-on: #74a9d4;
+  --st-mint: #b7e0c2;
+  --st-mint-on: #7cc08f;
+  --st-orange: #f6c18f;
+  --st-orange-on: #e79552;
+  --st-lilac: #d2c1ea;
+  --st-lilac-on: #ac90d6;
+  --sticker: var(--st-yellow);
+  --sticker-on: var(--st-yellow-on);
   --font: "Balsamiq Sans", system-ui, sans-serif;
   color-scheme: light;
   font-family: var(--font);
@@ -51,8 +63,18 @@
     --rule: #aebdcc;
     --printed: rgb(238 240 234 / 0.32);
     --edge-known: #cdb98a;
-    --sticker: #c9b264;
-    --sticker-on: #b98b1a;
+    --st-yellow: #c9b264;
+    --st-yellow-on: #b98b1a;
+    --st-pink: #c4929a;
+    --st-pink-on: #b06876;
+    --st-blue: #8aa8c0;
+    --st-blue-on: #5d88ac;
+    --st-mint: #93b59c;
+    --st-mint-on: #629c72;
+    --st-orange: #c99d73;
+    --st-orange-on: #b9773f;
+    --st-lilac: #a99bbe;
+    --st-lilac-on: #8b72af;
     color-scheme: dark;
   }
 }
@@ -837,6 +859,28 @@ header.top.sub .back svg {
 }
 .sheet-form .primary {
   margin-top: 2px;
+}
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 2px 0 4px;
+}
+/* a dot sticker of each colour; the current one ringed in pencil */
+.swatch {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  background-color: var(--sticker);
+  background-image: var(--fibre, none);
+  box-shadow:
+    inset 0 -1px 2px rgb(0 0 0 / 0.12),
+    0 1px 1px rgb(var(--shadow) / 0.3);
+}
+.swatch.on {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
 }
 .pile-sheet .inline {
   display: flex;

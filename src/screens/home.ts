@@ -63,7 +63,7 @@ const LANDING_MS = 420;
 /** One pile's spot (a language's or a sticker's): its pile, or the outline a finished pile leaves. */
 async function spot(key: string, label: string, moved: Moved): Promise<HTMLElement> {
   const s = new StudySession(app.store, key);
-  const name = h("div", { class: "pile-name" }, s.label === undefined ? label : stickerTag(label));
+  const name = h("div", { class: "pile-name" }, s.label === undefined ? label : stickerTag(app.store.col.liveLabel(s.label)!));
   if (s.label !== undefined && s.allCount() === 0) {
     const id = s.label;
     return h("div", { class: "pile-cell" }, h("button", { class: "spot empty", "aria-label": `${label}: add words`, onclick: () => editSticker(id) }), name, h("div", { class: "pile-count" }, "no words yet"));
@@ -177,5 +177,5 @@ function sheet(label: string, s: StudySession): void {
       setOpenLanguage(s.lang!);
       go.add();
     });
-  const close = openSheet(label, s.label === undefined ? label : stickerTag(label), ...buttons);
+  const close = openSheet(label, s.label === undefined ? label : stickerTag(app.store.col.liveLabel(s.label)!), ...buttons);
 }

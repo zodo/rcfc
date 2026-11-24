@@ -458,6 +458,8 @@ async function run(s: Browser, url: string) {
   await shot(s, "words-empty-sticker");
   await s.until("the open sticker is as tall as the others", `(() => { const h = (el) => el.offsetHeight; const on = document.querySelector(".chip.sticker.on"); const off = document.querySelector("button.chip.sticker"); return on && off && h(on) === h(off) && h(on) === h(document.querySelector(".chip.new-sticker")); })()`, 3000);
   await s.click(".chip.sticker.on .pen");
+  await s.click(".pile-sheet .swatch[aria-label=pink]");
+  await s.until("pink at once", `document.querySelector(".chip.sticker.on").style.getPropertyValue("--sticker") === "var(--st-pink)" && document.querySelector(".swatch.on")?.getAttribute("aria-label") === "pink"`);
   await shot(s, "words-pencil");
   await s.type(".pile-sheet input[name=sticker]", "trips");
   await s.click(".pile-sheet button[type=submit]", "Rename");

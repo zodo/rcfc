@@ -66,6 +66,8 @@ export interface Label {
   id: EntityId;
   name: string;
   deleted: boolean;
+  /** Picked in the pencil sheet; unset = the default for its id (labels.ts labelColor). */
+  color?: string;
 }
 
 /** A pile's deals on one study day: the deal (largest, if devices dealt it twice offline) and "more" added on top. */
@@ -212,6 +214,7 @@ export class Collection {
         if (!this.labels.has(id)) this.labels.set(id, { id, name, deleted: false });
         const l = this.labels.get(id)!;
         if (this.wins(`label:${id}:name`, e)) l.name = name;
+        if (e.payload.color && this.wins(`label:${id}:color`, e)) l.color = e.payload.color;
         break;
       }
       case "label_renamed": {
@@ -223,6 +226,11 @@ export class Collection {
         const l = this.labels.get(e.payload.label_id);
         if (l) l.deleted = true;
         else this.labels.set(e.payload.label_id, { id: e.payload.label_id, name: "", deleted: true });
+        break;
+      }
+      case "label_colored": {
+        const l = this.labels.get(e.payload.label_id);
+        if (l && this.wins(`label:${l.id}:color`, e)) l.color = e.payload.color;
         break;
       }
       case "notes_labeled": {
