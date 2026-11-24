@@ -505,6 +505,9 @@ h1.picker .chev {
 .study {
   position: relative;
   flex: 1;
+  /* A drag that leaves the card would select the text it passes over. */
+  user-select: none;
+  -webkit-user-select: none;
   display: flex;
   flex-direction: column;
   min-height: calc(100dvh - env(safe-area-inset-top));
@@ -593,8 +596,6 @@ h1.picker .chev {
 }
 .flashcard {
   touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
   cursor: grab;
   perspective: 2400px; /* far away: a raised edge grows a little, not over the whole screen */
   will-change: transform;
