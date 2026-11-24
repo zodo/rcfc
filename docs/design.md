@@ -228,7 +228,7 @@ What "needs the user most" means:
 | Pile | Cards it draws |
 | --- | --- |
 | Language | Words below target recall now, weakest first; then new words, only into space left after due words, at most 10 a day per studied language |
-| Sticker | The same from its words, any language; its new words count toward their language's 10 (shared with that language's pile). After "5 more" or "All N" that day: every word once, due or not, weakest first, words done today last, never-seen ones freely, and those new words don't count toward any language's limit |
+| Sticker | The same from its words, any language; its new words aren't held back by the daily limit (the pile's size caps them) but count toward their language's 10, so that language's pile gets fewer that day. After "5 more" or "All N" that day: every word once, due or not, weakest first, words done today last, never-seen ones freely, and those new words don't count toward any language's limit |
 
 - A face is not drawn within an hour of its twin being answered (it would be a free point and teach the model a false strength), unless nothing else is left. A new word's second face starts on a later day.
 - No two piles show the same word on top, unless the word is all a pile has left. If a pile's top card gets done in another pile, the next card comes up.

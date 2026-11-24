@@ -79,12 +79,14 @@ export class StudySession {
     const today = studyDay(clock.now, clock.tzOffsetMin, clock.rolloverHour);
     const more = (pile: string) => col.deals.get(pile)?.get(today)?.more ?? 0;
     const perDay = store.preset().new_per_day;
-    // Sticker piles asked for more today draw new words freely, and those don't count toward any language's limit.
+    // A sticker's new words aren't held back by the daily limit (the user picked
+    // them; the pile's size still caps a day) but count toward their language,
+    // unless it was asked for more today: then they don't count at all.
     const notCounted = new Set<string>();
     for (const [pile, days] of col.deals) if (pileLabel(pile) !== undefined && (days.get(today)?.more ?? 0) > 0) notCounted.add(pile);
     const wide = this.label !== undefined && (asking || notCounted.has(this.pile));
     const extra = asking ? MORE : 0;
-    const newLimit = wide ? () => Infinity : this.lang !== undefined ? () => perDay + more(this.pile) + extra : (l: string) => perDay + more(languagePile(l));
+    const newLimit = this.lang !== undefined ? () => perDay + more(this.pile) + extra : () => Infinity;
     return new PileView({
       col,
       pile: this.pile,

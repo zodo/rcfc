@@ -137,31 +137,52 @@ describe("sticker piles", () => {
     expect(d.store.col.reviews.every((r) => r.payload.pile === s.pile)).toBe(true);
   });
 
-  it("new words share their language's daily limit with its pile", async () => {
+  it("new words aren't held back by the daily limit, but count toward their language", async () => {
     const d = await Device.open();
     await d.store.append([d.store.factory.preset({ ...d.store.preset(), new_per_day: 3 })]);
     const w = await words(d, 10, 2);
     const s = await sticker(d, "kitchen", [...w.es.slice(5), ...w.de]);
     await s.start();
-    expect(await run(s)).toEqual(["palabra 5", "palabra 6", "palabra 7", "Wort 0", "Wort 1"]);
+    expect(await run(s)).toEqual(["palabra 5", "palabra 6", "palabra 7", "palabra 8", "palabra 9", "Wort 0", "Wort 1"]);
     const es = new StudySession(d.store, "es");
     await es.start();
     expect(es.next()).toBeNull(); // Spanish's 3 went to the sticker
   });
 
-  it("5 more deals past the new-word limit, and those new words don't count toward the language", async () => {
+  it("a new sticker shows its new words when the language's are used up", async () => {
     const d = await Device.open();
     await d.store.append([d.store.factory.preset({ ...d.store.preset(), new_per_day: 2 })]);
-    const w = await words(d, 8);
-    const s = await sticker(d, "kitchen", w.es.slice(0, 4));
-    await s.start();
-    expect(await run(s)).toEqual(["palabra 0", "palabra 1"]);
-    expect(s.moreCount()).toBe(2); // the rest of its words; the two just done are "go through again"
-    await s.more();
-    expect(await run(s)).toEqual(["palabra 2", "palabra 3"]);
+    const w = await words(d, 5);
     const es = new StudySession(d.store, "es");
     await es.start();
-    expect(await run(es)).toEqual(["palabra 4", "palabra 5"]); // Spanish still gets its 2
+    expect(await run(es)).toEqual(["palabra 0", "palabra 1"]);
+    const table = await sticker(d, "kitchen", w.es.slice(2));
+    await table.prepare();
+    expect(table.next()?.left).toBe(3);
+  });
+
+  it("the pile's size caps a big sticker's new words", async () => {
+    const d = await Device.open();
+    const w = await words(d, 30);
+    const s = await sticker(d, "kitchen", w.es);
+    await s.start();
+    expect(await run(s)).toHaveLength(20);
+  });
+
+  it("after 5 more a sticker's new words don't count toward the language", async () => {
+    const d = await Device.open();
+    await d.store.append([d.store.factory.preset({ ...d.store.preset(), new_per_day: 2 })]);
+    const w = await words(d, 30);
+    const s = await sticker(d, "kitchen", w.es);
+    await s.start();
+    expect(await run(s)).toHaveLength(20); // the pile's size
+    const es = new StudySession(d.store, "es");
+    await es.start();
+    expect(es.next()).toBeNull(); // the sticker's 20 used up Spanish's 2
+    await s.more();
+    expect(await run(s)).toHaveLength(5);
+    await es.start();
+    expect(await run(es)).toEqual(["palabra 25", "palabra 26"]); // Spanish gets its 2 again
   });
 
   it("5 more deals words that aren't due, those done today in other piles last", async () => {
