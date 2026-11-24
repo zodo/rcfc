@@ -301,24 +301,44 @@ async function run(s: Browser, url: string) {
   await s.click("nav .nav-item", "Words");
   await s.until("words", `document.querySelectorAll(".list button.word").length > 0`);
 
-  log("select words: mark known, delete");
+  log("select words: know, don't know, delete");
   const before = await words(s);
-  await s.click("button", "Select");
+  await s.click(".select-info button", "Select");
   await s.until("selecting", `document.querySelector(".list.selecting")`);
   // Two words never studied: the model must call them known once marked.
-  const fresh = await s.js<string[]>(`return [...document.querySelectorAll(".list button.word")].filter((b) => b.querySelector(".st-new")).slice(0, 2).map((b) => b.querySelector(".w-front").textContent);`);
-  if (fresh.length < 2) throw new Error("seeded list has fewer than 2 new words");
-  for (const w of fresh) await s.click(".list button.word", w);
+  const fresh = await s.js<string[]>(`return [...document.querySelectorAll(".list button.word")].filter((b) => b.querySelector(".st-new")).slice(0, 3).map((b) => b.querySelector(".w-front").textContent);`);
+  if (fresh.length < 3) throw new Error("seeded list has fewer than 3 new words");
+  for (const w of fresh.slice(0, 2)) await s.click(".list button.word", w);
   await s.until("2 selected", `document.querySelector(".select-info")?.textContent.startsWith("2 selected")`);
-  await s.click(".select-actions button", "I know these");
+  await s.click(".select-actions button", "I know");
   await s.until("marked known", `document.getElementById("toast")?.textContent === "2 words marked as known"`);
-  await s.until("tab bar back", `!document.querySelector(".list.selecting") && document.querySelector(".select-actions.hidden")`);
-  await s.until("marked words show known", `${JSON.stringify(fresh)}.every((w) => [...document.querySelectorAll(".list button.word")].some((b) => b.querySelector(".w-front").textContent === w && b.querySelector(".w-p").textContent === "known"))`);
+  await s.until("still selecting, none selected", `document.querySelector(".list.selecting") && document.querySelector(".select-info")?.textContent.startsWith("0 selected")`);
+  await s.until("marked words show known", `${JSON.stringify(fresh.slice(0, 2))}.every((w) => [...document.querySelectorAll(".list button.word")].some((b) => b.querySelector(".w-front").textContent === w && b.querySelector(".w-p").textContent === "known"))`);
+  await s.click(".list button.word", fresh[2]);
+  await s.click(".select-actions button", "Don't know");
+  await s.until("learn next", `document.getElementById("toast")?.textContent === "1 word to learn next"`);
   await s.js(`window.confirm = () => true;`);
-  await s.click("button", "Select");
   await s.click(".list button.word:nth-of-type(1)");
   await s.click(".select-actions button", "Delete");
   await s.until("one fewer", `document.querySelectorAll(".list button.word").length === ${before - 1}`);
+  await s.click(".select-info button", "Cancel");
+  await s.until("tab bar back", `!document.querySelector(".list.selecting") && document.querySelector(".select-actions.hidden")`);
+  log("the word asked for comes first in study");
+  await s.click("nav .nav-item", "Study");
+  await s.click(".deck button", "Study");
+  // Due reviews interleave with new words, so look for the first new card.
+  for (let i = 0; ; i++) {
+    if (i > 30) throw new Error("no new card in 30 answers");
+    await s.until("card", `document.querySelector(".flashcard")`);
+    if ((await s.text(".study-top")).includes("New word")) {
+      const w = await s.text(".face.prompt");
+      if (w !== fresh[2]) throw new Error(`first new word is "${w}", expected "${fresh[2]}"`);
+      break;
+    }
+    await s.click("button", "Show answer");
+    await s.click("button.rate", "Got it");
+    await s.until("next", `!document.querySelector(".answer:not(.hidden)")`);
+  }
 
   log("no uncaught errors");
   const errors = [...s.errors, ...(await s.js<string[]>("return window.__rcfcErrors ?? [];"))];

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AppEvent, Review } from "../src/domain/events";
-import { introducedToday, knownCards, newQueue, unseenCards, type DayClock } from "../src/domain/newcards";
+import { introducedToday, knownCards, newQueue, unknownPlan, unseenCards, type DayClock } from "../src/domain/newcards";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -90,5 +90,22 @@ describe("knownCards", () => {
       [n1.id, "forward"],
       [n1.id, "reverse"],
     ]);
+  });
+});
+
+describe("don't know", () => {
+  it("studied words get Again, unseen ones are learned next, latest request first", () => {
+    const { col, f, answer, add, clock } = setup(5);
+    const notes = col.liveNotes();
+    answer(col.cardsByNote.get(notes[0].id)![0], T0 - DAY);
+    const plan = unknownPlan(col, [notes[0].id, notes[3].id]);
+    expect(plan.again.map((c) => c.note_id)).toEqual([notes[0].id]);
+    expect(plan.next).toEqual([notes[3].id]);
+    add([f.make("notes_prioritized", { note_ids: plan.next })]);
+    // Fresh words only (w0's reverse card is a second direction, queued separately).
+    const front = () => unseenCards(col, clock(T0)).fresh.slice(0, 3).map((c) => col.notes.get(c.note_id)!.fields.front);
+    expect(front()).toEqual(["w3", "w1", "w2"]);
+    add([f.make("notes_prioritized", { note_ids: [notes[4].id, notes[2].id] })]);
+    expect(front()).toEqual(["w2", "w4", "w3"]);
   });
 });

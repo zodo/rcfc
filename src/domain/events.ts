@@ -80,6 +80,11 @@ export interface NoteDeletedPayload {
   note_id: EntityId;
 }
 
+/** "I don't know these" on words never studied: introduce them before other new words. Latest batch first. */
+export interface NotesPrioritizedPayload {
+  note_ids: EntityId[];
+}
+
 /**
  * One answer. Raw facts only: RWKV inputs (day_offset, elapsed, state) are
  * derived at replay (src/domain/rows.ts). The envelope `ts` is the answer time.
@@ -121,6 +126,7 @@ export type DeckRenamed = EventEnvelope<"deck_renamed", DeckRenamedPayload>;
 export type NoteCreated = EventEnvelope<"note_created", NoteCreatedPayload>;
 export type NoteEdited = EventEnvelope<"note_edited", NoteEditedPayload>;
 export type NoteDeleted = EventEnvelope<"note_deleted", NoteDeletedPayload>;
+export type NotesPrioritized = EventEnvelope<"notes_prioritized", NotesPrioritizedPayload>;
 export type CardCreated = EventEnvelope<"card_created", CardCreatedPayload>;
 export type Review = EventEnvelope<"review", ReviewPayload>;
 export type AssetAttached = EventEnvelope<"asset_attached", AssetAttachedPayload>;
@@ -132,6 +138,7 @@ export type AppEvent =
   | NoteCreated
   | NoteEdited
   | NoteDeleted
+  | NotesPrioritized
   | CardCreated
   | Review
   | AssetAttached;

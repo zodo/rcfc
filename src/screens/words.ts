@@ -1,5 +1,6 @@
 // Words tab: the current language's words with their progress (new, learning,
-// known). Search, add (+), select several to mark known or delete, tap one to edit.
+// known). Search, add (+), select words to mark known / not known or delete,
+// tap one to edit. The whole list is there, rendered in chunks while scrolling.
 import { app, errorText, go, page, subPage } from "../app";
 import type { Note } from "../domain/collection";
 import type { AppEvent } from "../domain/events";
@@ -9,11 +10,17 @@ import { append, clear, h, langName, toast } from "../ui/h";
 import { pictureEditor } from "../ui/picture";
 import { currentDeck, languageForm, languagePicker } from "./decks";
 
-const LIST_MAX = 300;
+/** Rows added at a time as the list scrolls into view. */
+const CHUNK = 150;
 /** P(recall) a week ahead per studied card, kept between visits so the list shows at once. */
 const weekAhead = new Map<EntityId, number>();
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+
+interface Row {
+  el: HTMLButtonElement;
+  st: HTMLElement;
+}
 
 export function words(): void {
   const { store } = app;
@@ -22,27 +29,69 @@ export function words(): void {
   const all = () => store.col.liveNotes(deck.id).reverse();
   let selecting = false;
   const selected = new Set<EntityId>();
+  let found: Note[] = [];
+  let shown = 0;
+  const rows = new Map<EntityId, Row>();
 
-  const q = h("input", { type: "search", placeholder: `Search ${plural(all().length, "word")}`, autocomplete: "off", "aria-label": "Search" });
-  const tools = h("div", { class: "word-tools" });
-  const selInfo = h("div", { class: "select-info" });
+  const q = h("input", { type: "search", placeholder: "Search", autocomplete: "off", "aria-label": "Search" });
+  const info = h("div", { class: "select-info" });
   const list = h("div", { class: "list" });
-  const knowBtn = h("button", { class: "secondary", onclick: () => void markKnown() }, "I know these");
-  const delBtn = h("button", { class: "danger", onclick: () => void remove() }, "Delete");
-  const actions = h("div", { class: "nav select-actions hidden" }, knowBtn, delBtn);
-
-  const hits = (): Note[] => {
-    const term = q.value.trim().toLocaleLowerCase();
-    return term ? all().filter((n) => `${n.fields.front}\n${n.fields.back}\n${n.fields.example ?? ""}`.toLocaleLowerCase().includes(term)) : all();
+  const more = h("div", { class: "list-more", "aria-hidden": "true" });
+  const btn = (label: string, cls: string, f: () => Promise<void>) => {
+    const b = h("button", { class: cls }, label);
+    b.addEventListener("click", async () => {
+      busy(true);
+      try {
+        await f();
+      } catch (e) {
+        toast(`Could not save: ${errorText(e)}`);
+      }
+      busy(false);
+    });
+    return b;
+  };
+  const knowBtn = btn("I know", "secondary", async () => {
+    const n = await store.markKnown([...selected]);
+    toast(`${plural(n, "word")} marked as known`);
+    await afterAnswers();
+  });
+  const unknownBtn = btn("Don't know", "secondary", async () => {
+    const r = await store.markUnknown([...selected]);
+    toast([r.forgotten ? `${plural(r.forgotten, "word")} to review soon` : "", r.next ? `${plural(r.next, "word")} to learn next` : ""].filter(Boolean).join(", "));
+    await afterAnswers();
+  });
+  const delBtn = btn("Delete", "danger", async () => {
+    const ids = [...selected];
+    if (!confirm(`Delete ${plural(ids.length, "word")}? Their review history is kept for the model.`)) return;
+    await store.append(ids.map((note_id) => store.factory.make("note_deleted", { note_id })));
+    toast(`Deleted ${plural(ids.length, "word")}`);
+    selected.clear();
+    rebuild();
+  });
+  const actions = h("div", { class: "nav select-actions hidden" }, knowBtn, unknownBtn, delBtn);
+  const busy = (on: boolean) => {
+    for (const b of [knowBtn, unknownBtn, delBtn]) b.disabled = on || selected.size === 0;
   };
 
   const status = (n: Note) => wordStatus((store.col.cardsByNote.get(n.id) ?? []).map((id) => store.col.cards.get(id)!), weekAhead);
+  const showStatus = (n: Note, st: HTMLElement) => {
+    const s = status(n);
+    st.className = `w-p small st-${s ?? "pending"}`;
+    st.textContent = s ?? "";
+  };
 
-  /** Re-predict a week ahead for this language, then redraw. */
+  /** Re-predict a week ahead for this language, then update the statuses shown. */
   const refresh = async () => {
-    const cards = store.col.liveCards(deck!.id);
-    for (const [id, p] of await store.predictAt(cards, Date.now() + KNOWN_HORIZON_MS)) weekAhead.set(id, p);
-    if (list.isConnected) render();
+    for (const [id, p] of await store.predictAt(store.col.liveCards(deck!.id), Date.now() + KNOWN_HORIZON_MS)) weekAhead.set(id, p);
+    for (const [id, r] of rows) showStatus(store.col.notes.get(id)!, r.st);
+  };
+
+  /** After marking: clear the selection (stay in select mode to go on), update statuses. */
+  const afterAnswers = async () => {
+    for (const id of selected) rows.get(id)?.el.classList.remove("selected");
+    selected.clear();
+    renderInfo();
+    await refresh();
   };
 
   const setSelecting = (on: boolean) => {
@@ -50,78 +99,86 @@ export function words(): void {
     selected.clear();
     document.querySelector("nav.nav:not(.select-actions)")?.classList.toggle("hidden", on);
     actions.classList.toggle("hidden", !on);
-    render();
+    list.classList.toggle("selecting", on);
+    for (const r of rows.values()) r.el.classList.remove("selected");
+    renderInfo();
   };
 
-  function render() {
-    clear(tools);
-    append(tools, [
-      q,
-      selecting
-        ? h("button", { class: "secondary", onclick: () => setSelecting(false) }, "Done")
-        : [h("button", { class: "secondary", onclick: () => setSelecting(true), disabled: all().length === 0 }, "Select"), h("button", { class: "primary add-btn", onclick: () => go.add(), "aria-label": "Add a word" }, "+")],
-    ].flat());
+  const link = (label: string, f: () => void) => h("button", { class: "link small", onclick: f }, label);
 
-    const found = hits();
-    clear(selInfo);
-    if (selecting) {
+  /** The row above the list: count and Select, or the selection and its controls. Same place, same height. */
+  function renderInfo() {
+    clear(info);
+    if (!selecting) {
+      append(info, [h("span", { class: "muted small" }, q.value ? plural(found.length, "match", "matches") : plural(found.length, "word")), link("Select", () => setSelecting(true))]);
+    } else {
       const allOn = found.length > 0 && found.every((n) => selected.has(n.id));
-      append(selInfo, [
-        h("span", { class: "muted small" }, selected.size ? `${selected.size} selected` : "Tap words to select them"),
-        h("button", { class: "link small", onclick: () => (found.forEach((n) => (allOn ? selected.delete(n.id) : selected.add(n.id))), render()) }, allOn ? "Select none" : `Select all ${found.length}`),
-      ]);
+      const toggleAll = () => {
+        for (const n of found) allOn ? selected.delete(n.id) : selected.add(n.id);
+        for (const [id, r] of rows) r.el.classList.toggle("selected", selected.has(id));
+        renderInfo();
+      };
+      append(info, [h("span", { class: "muted small" }, `${selected.size} selected`), h("span", { class: "info-links" }, link(allOn ? "Select none" : `Select all ${found.length}`, toggleAll), link("Cancel", () => setSelecting(false)))]);
     }
-    knowBtn.disabled = delBtn.disabled = selected.size === 0;
+    busy(false);
+  }
 
-    clear(list);
-    list.classList.toggle("selecting", selecting);
-    for (const n of found.slice(0, LIST_MAX)) {
-      const row = h(
-        "button",
-        {
-          class: `word${selected.has(n.id) ? " selected" : ""}`,
-          onclick: () => {
-            if (!selecting) return go.edit(n.id);
-            if (!selected.delete(n.id)) selected.add(n.id);
-            render();
-          },
+  function row(n: Note): HTMLButtonElement {
+    const st = h("span", {});
+    showStatus(n, st);
+    const el = h(
+      "button",
+      {
+        class: `word${selected.has(n.id) ? " selected" : ""}`,
+        onclick: () => {
+          if (!selecting) return go.edit(n.id);
+          if (!selected.delete(n.id)) selected.add(n.id);
+          el.classList.toggle("selected", selected.has(n.id));
+          renderInfo();
         },
-        selecting ? h("span", { class: "check", "aria-hidden": "true" }, selected.has(n.id) ? "✓" : "") : null,
-        h("span", { class: "w-front" }, n.fields.front),
-        h("span", { class: "w-back muted" }, n.fields.back),
-        h("span", { class: `w-p small st-${status(n) ?? "pending"}` }, status(n) ?? ""),
-      );
-      list.appendChild(row);
-    }
-    if (found.length > LIST_MAX) list.appendChild(h("p", { class: "muted small center" }, `${found.length - LIST_MAX} more; refine the search.`));
-    if (!found.length && q.value) list.appendChild(h("p", { class: "muted center" }, "No matches."));
+      },
+      h("span", { class: "check", "aria-hidden": "true" }),
+      h("span", { class: "w-front" }, n.fields.front),
+      h("span", { class: "w-back muted" }, n.fields.back),
+      st,
+    );
+    rows.set(n.id, { el, st });
+    return el;
+  }
+
+  /** Append the next chunk of rows. */
+  function grow() {
+    const end = Math.min(found.length, shown + CHUNK);
+    for (; shown < end; shown++) list.insertBefore(row(found[shown]), more);
+    more.classList.toggle("hidden", shown >= found.length);
+  }
+
+  /** The list from scratch: after a search or a delete. */
+  function rebuild() {
+    const term = q.value.trim().toLocaleLowerCase();
+    found = term ? all().filter((n) => `${n.fields.front}\n${n.fields.back}\n${n.fields.example ?? ""}`.toLocaleLowerCase().includes(term)) : all();
+    for (const id of selected) if (!store.col.liveNote(id)) selected.delete(id);
+    rows.clear();
+    clear(list);
+    list.appendChild(more);
+    shown = 0;
+    grow();
+    if (!found.length && q.value) list.prepend(h("p", { class: "muted center" }, "No matches."));
     list.classList.toggle("hidden", !found.length && !q.value);
+    renderInfo();
   }
 
-  async function markKnown() {
-    knowBtn.disabled = delBtn.disabled = true;
-    knowBtn.textContent = "Saving…";
-    try {
-      const n = await store.markKnown([...selected]);
-      toast(`${plural(n, "word")} marked as known`);
-    } catch (e) {
-      toast(`Could not save: ${errorText(e)}`);
-    }
-    knowBtn.textContent = "I know these";
-    if (list.isConnected) setSelecting(false);
-    await refresh();
-  }
+  // Load more rows well before the end comes into view.
+  const io = new IntersectionObserver(
+    (es) => {
+      if (!more.isConnected) io.disconnect();
+      else if (es.some((e) => e.isIntersecting)) grow();
+    },
+    { rootMargin: "800px" },
+  );
+  io.observe(more);
 
-  async function remove() {
-    const ids = [...selected];
-    if (!confirm(`Delete ${plural(ids.length, "word")}? Their review history is kept for the model.`)) return;
-    await store.append(ids.map((note_id) => store.factory.make("note_deleted", { note_id })));
-    toast(`Deleted ${plural(ids.length, "word")}`);
-    q.placeholder = `Search ${plural(all().length, "word")}`;
-    if (list.isConnected) setSelecting(false);
-  }
-
-  q.addEventListener("input", render);
+  q.addEventListener("input", rebuild);
   const empty = all().length
     ? null
     : h(
@@ -131,9 +188,10 @@ export function words(): void {
         h("button", { class: "primary", onclick: () => go.add() }, "Add a word"),
         h("button", { class: "secondary", onclick: () => go.import() }, "Import from Duocards"),
       );
-  page("words", languagePicker(deck, () => go.words()), empty ?? tools, empty ? null : selInfo, list);
+  const tools = h("div", { class: "word-tools" }, q, h("button", { class: "primary add-btn", onclick: () => go.add(), "aria-label": "Add a word" }, "+"));
+  page("words", languagePicker(deck, () => go.words()), empty ?? tools, empty ? null : info, list);
   app.root.appendChild(actions);
-  render();
+  rebuild();
   void refresh();
 }
 

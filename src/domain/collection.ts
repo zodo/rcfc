@@ -25,6 +25,8 @@ export interface Note {
   noPicture?: boolean;
   /** Fold order, for stable "oldest first". */
   order: number;
+  /** ts of the latest "learn these next" (notes_prioritized): new words go out latest first. */
+  priority?: number;
 }
 
 export type Picture = Omit<AssetAttachedPayload, "note_id" | "kind" | "r2_key"> & { key: string };
@@ -107,6 +109,12 @@ export class Collection {
         if (n) n.deleted = true;
         break;
       }
+      case "notes_prioritized":
+        for (const id of e.payload.note_ids) {
+          const n = this.notes.get(id);
+          if (n) n.priority = Math.max(n.priority ?? 0, e.ts);
+        }
+        break;
       case "card_created": {
         this.cards.set(e.payload.card_id, { id: e.payload.card_id, note_id: e.payload.note_id, template: e.payload.template, order: this.order++, reviews: 0 });
         const list = this.cardsByNote.get(e.payload.note_id) ?? [];

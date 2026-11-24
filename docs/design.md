@@ -55,6 +55,7 @@ Entity ids (`note_id`, `card_id`, `deck_id`, `preset_id`) are random 64-bit inte
 | `note_edited` | `note_id, field, value` | One event per field; last write wins per field |
 | `card_moved` | `card_id, deck_id` |  |
 | `card_deleted` / `note_deleted` | id | Tombstone only; history stays usable by RWKV |
+| `notes_prioritized` | `note_ids` | "I don't know these" on unseen words: learn them before other new words, latest first |
 | `asset_attached` | `note_id, kind (image or audio), r2_key` | Media lives in R2, not in events |
 | `review` | see below | Append-only, never edited |
 

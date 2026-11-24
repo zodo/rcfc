@@ -51,6 +51,9 @@ export function unseenCards(col: Collection, clock: DayClock, deckId?: EntityId)
       if (c.template === "forward" || siblings.length === 0 || siblings.every((s) => s.template !== "forward")) fresh.push(c);
     } else if (seen.every((s) => dayOf(s.first_review_ts!, clock) < today)) second.push(c);
   }
+  // Words asked for ("I don't know these") first, latest request first; then creation order (sort is stable).
+  const prio = (c: Card) => col.notes.get(c.note_id)!.priority ?? 0;
+  fresh.sort((a, b) => prio(b) - prio(a));
   return { fresh, second };
 }
 
@@ -84,4 +87,20 @@ export function knownCards(col: Collection, noteIds: Iterable<EntityId>): Card[]
     }
   }
   return out;
+}
+
+/**
+ * "I don't know these": studied cards get an Again answer (the model brings
+ * them back soon); words never studied are queued to be learned next.
+ */
+export function unknownPlan(col: Collection, noteIds: Iterable<EntityId>): { again: Card[]; next: EntityId[] } {
+  const again: Card[] = [];
+  const next: EntityId[] = [];
+  for (const id of noteIds) {
+    if (!col.liveNote(id)) continue;
+    const studied = (col.cardsByNote.get(id) ?? []).map((c) => col.cards.get(c)!).filter((c) => c.reviews > 0);
+    if (studied.length) again.push(...studied);
+    else next.push(id);
+  }
+  return { again, next };
 }

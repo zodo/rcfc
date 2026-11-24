@@ -6,14 +6,14 @@ import Dexie, { type DexieOptions, type Table } from "dexie";
 import { Collection, EventFactory, eventOrder, type Card, type Preset } from "./domain/collection";
 import type { AppEvent, Review, ReviewPayload } from "./domain/events";
 import type { EntityId } from "./domain/ids";
-import { knownCards, newQueue, unseenCards, type DayClock } from "./domain/newcards";
+import { knownCards, newQueue, unknownPlan, unseenCards, type DayClock } from "./domain/newcards";
 import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin } from "./domain/rows";
 import { needsReplay } from "./domain/sync";
 import { Engine, type EngineApi } from "./engine/client";
 import type { InitResult } from "./engine/protocol";
 
-/** Answer time recorded for words marked known without being shown: a quick, sure answer. */
-const KNOWN_DURATION_MS = 2000;
+/** Answer time recorded for words marked known or unknown without being shown: a quick, sure answer. */
+const MARKED_DURATION_MS = 2000;
 
 /** `remote`: came from the sync server, so it is never pushed back. */
 type StoredEvent = AppEvent & { seq?: number; remote?: 1 };
@@ -271,8 +271,19 @@ export class Store {
    */
   async markKnown(noteIds: EntityId[]): Promise<number> {
     const cards = knownCards(this.col, noteIds);
-    for (const c of cards) await this.answer(c, 4, KNOWN_DURATION_MS);
+    for (const c of cards) await this.answer(c, 4, MARKED_DURATION_MS);
     return new Set(cards.map((c) => c.note_id)).size;
+  }
+
+  /**
+   * The user doesn't know these words: studied ones are answered Again (due
+   * soon), unseen ones are learned before other new words. Returns how many of each.
+   */
+  async markUnknown(noteIds: EntityId[]): Promise<{ forgotten: number; next: number }> {
+    const { again, next } = unknownPlan(this.col, noteIds);
+    for (const c of again) await this.answer(c, 1, MARKED_DURATION_MS);
+    if (next.length) await this.append([this.factory.make("notes_prioritized", { note_ids: next })]);
+    return { forgotten: new Set(again.map((c) => c.note_id)).size, next: next.length };
   }
 
   async allEvents(): Promise<AppEvent[]> {

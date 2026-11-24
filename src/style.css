@@ -721,14 +721,14 @@ details.stack > summary {
   align-items: center;
   min-height: 0;
 }
-.select-info:empty {
+.word .check {
   display: none;
 }
 .list.selecting .word {
   grid-template-columns: 22px 1fr 1fr auto;
   align-items: center;
 }
-.check {
+.list.selecting .check {
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -746,6 +746,19 @@ details.stack > summary {
   border-color: var(--accent);
   color: var(--accent-text);
 }
+.word.selected .check::after {
+  content: "✓";
+}
+.select-info {
+  min-height: 28px;
+}
+.info-links {
+  display: flex;
+  gap: 18px;
+}
+.list-more {
+  height: 1px;
+}
 /* while selecting, the tab bar turns into the actions */
 .nav.select-actions {
   gap: 10px;
@@ -753,7 +766,9 @@ details.stack > summary {
 }
 .nav.select-actions button {
   flex: 1;
-  max-width: 260px;
+  max-width: 200px;
+  padding: 12px 6px;
+  white-space: nowrap;
 }
 .w-p {
   min-width: 4.5em;

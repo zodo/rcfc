@@ -52,6 +52,18 @@ describe("StudySession", () => {
     expect(d.store.col.reviews).toHaveLength(5);
   });
 
+  it("don't know: studied words come back due, unseen ones first among new words", async () => {
+    const clock = new Clock();
+    const d = await Device.open(clock);
+    const deckId = await d.deck(12);
+    const notes = d.store.col.liveNotes(deckId);
+    await d.store.markKnown([notes[0].id]);
+    clock.advance(DAY);
+    expect(await d.store.markUnknown([notes[0].id, notes[9].id])).toEqual({ forgotten: 1, next: 1 });
+    expect(d.store.col.reviews.map((r) => r.payload.rating)).toEqual([4, 1]);
+    expect(d.store.col.notes.get(d.store.newQueue(deckId).find((c) => c.template === "forward")!.note_id)!.fields.front).toBe("palabra 9");
+  });
+
   it("brings words back once they are due, with reverse cards the next day", async () => {
     const clock = new Clock();
     const d = await Device.open(clock);

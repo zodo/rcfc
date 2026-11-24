@@ -10,7 +10,7 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
   - `store.ts` ties log + engine. No UI side effects: writes return `{ replay }` / set `stale`, the app decides when to reload
   - `session.ts` study-session logic (UI-free); `sync.ts` sync loop; `pictures.ts` picture queue + offline picture store
   - `app.ts` shell shared by screens: `app` (store, sync, current screen), `go.*` navigation, `page()` / `fullScreen()`, `setKeys()`
-  - `screens/` one module per screen; they navigate through `go`, never import each other (except helpers in `decks.ts`). Three tabs: Study (`home.ts`), Words (`words.ts`: list with new/learning/known, select → know/delete; add/import/edit are sub-pages with a back button), Settings (sync + backup only)
+  - `screens/` one module per screen; they navigate through `go`, never import each other (except helpers in `decks.ts`). Three tabs: Study (`home.ts`), Words (`words.ts`: the whole list, rendered in chunks on scroll, with new/learning/known; select → know / don't know / delete; add/import/edit are sub-pages with a back button), Settings (sync + backup only)
   - `main.ts` boot only; `dev/` dev-only URL hooks (`?reset`, `?seed=N`), excluded from production builds
 - `rwkv/engine/` Rust RWKV-SRS V1 inference (→ Wasm), checked against upstream goldens in `rwkv/golden/`; `rwkv/models/` weights
 - `worker/` Cloudflare Worker: API under `/api/*`; everything else is static assets. `sync.ts` is the sync API, written against a small `SqlDb` slice of D1 so tests run it on bun:sqlite; `pictures.ts` draws and serves card pictures
@@ -66,7 +66,8 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 
 - Fewer buttons, no study settings. A deck is one language pair ("Spanish" = es→en); the UI says "language", names it after the studied language (`deckFor` reuses an existing pair) and the Words title switches it. The current language is per device (localStorage).
 - Target recall is fixed (`TARGET_RECALL` 0.9 in `src/domain/scheduler.ts`; presets' `desired_retention` is ignored). Day rollover (4) and new words per day (10) stay in the preset but have no UI; when today's words are done the study screen offers "Learn 5 more" (session-only `extraNew`).
-- "I know these" (`Store.markKnown`) answers Easy: the forward card of an unseen word, else every studied card.
+- Selected words: "I know" (`Store.markKnown`) answers Easy (the forward card of an unseen word, else every studied card); "Don't know" (`Store.markUnknown`) answers Again on studied cards and queues unseen words to be learned next (`notes_prioritized` event, latest request first).
+- The list status (`wordStatus`) is new / learning / known: known = every studied card last answered Easy, or ≥ target recall a week ahead. Never show P(recall) now as progress: it is ~100% right after any answer and dips minutes later.
 
 ## Picture notes
 
