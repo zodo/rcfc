@@ -114,6 +114,19 @@ describe("piles", () => {
     expect(s.moreCount()).toBe(0);
   });
 
+  it("knows the cards coming up: the top, the peeked one, then the draws, in the order they come", async () => {
+    const d = await Device.open();
+    await d.deck(8);
+    const s = await sitting(d);
+    s.next();
+    s.peek();
+    const ahead = s.upcoming(5);
+    expect(ahead).toHaveLength(5);
+    const names = ahead.map((id) => d.store.col.notes.get(d.store.col.cards.get(id)!.note_id)!.fields.front);
+    expect((await run(s)).slice(0, 5)).toEqual(names);
+    expect(s.upcoming(5)).toEqual([]);
+  });
+
   it("a pile left unfinished comes back smaller", async () => {
     const clock = new Clock();
     const d = await Device.open(clock);

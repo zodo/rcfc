@@ -212,6 +212,25 @@ describe("Pictures (client)", () => {
     pics.stop();
   });
 
+  it("draws pictures of cards coming up after the ones needed now, and nothing queued near the end is lost", async () => {
+    const { d, s, pics, add } = await client();
+    const drawn: string[] = [];
+    pics.fetch = async (url, init) => {
+      drawn.push((JSON.parse(String(init?.body)) as { word: string }).word);
+      return s.fetch(url, init);
+    };
+    const [a, b, c] = [await add("uno", "one"), await add("dos", "two"), await add("tres", "three")];
+    pics.pausedUntil = d.clock.now() + 3_600_000; // queue without drawing
+    await pics.ensure(a, true);
+    await pics.ensure(b, true);
+    await pics.ensure(c); // shown now
+    await pics.ensure(b); // and this one too, now: it moves up
+    pics.pausedUntil = 0;
+    await pics.kick();
+    expect(drawn).toEqual(["dos", "tres", "uno"]); // needed now, oldest first; then the one still ahead
+    pics.stop();
+  });
+
   it("does not redraw automatically, but redraws on request with the user's meaning and details", async () => {
     const { d, s, pics, add } = await client();
     const id = await add("el banco", "bank, bench");

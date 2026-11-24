@@ -15,6 +15,7 @@ import type { ReviewPayload } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import { pileLabel } from "../domain/labels";
 import type { Draw } from "../domain/piles";
+import { AHEAD } from "../pictures";
 import { StudySession } from "../session";
 import { Body, type Pose } from "../ui/body";
 import { h, toast } from "../ui/h";
@@ -220,6 +221,7 @@ class Table {
     const card = store.col.cards.get(pick.card)!;
     const note = store.col.notes.get(card.note_id)!;
     if (!note.picture) void app.pictures.ensure(note.id); // no picture yet: draw one for next time
+    void app.pictures.ahead(s.upcoming(AHEAD)); // and for the cards coming up
     this.left = left;
     this.status.textContent = pick.kind === "new" ? "New word" : `${left} left`;
     this.recall.textContent = pick.p !== undefined ? `recall ${(pick.p * 100).toFixed(0)}%` : "";

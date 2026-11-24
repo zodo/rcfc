@@ -37,6 +37,14 @@ export interface DrawOptions {
   details?: string;
 }
 
+/** Cards per pile whose pictures are drawn ahead, so they are there when the card comes up (offline too). */
+export const AHEAD = 10;
+
+/** Which job is drawn first: redraws, then pictures needed now, then ones drawn ahead. */
+function rank(j: PicJob): number {
+  return j.force ? 2 : j.ahead ? 0 : 1;
+}
+
 export class Pictures {
   /** How requests reach the API; tests route them to the Worker handler. */
   fetch: (url: string, init?: RequestInit) => Promise<Response> = (url, init) => fetch(url, init);
@@ -105,11 +113,32 @@ export class Pictures {
     return this.states.get(noteId);
   }
 
-  /** Queue a picture for a note that has none (no-op if it has one, was removed, or is queued). */
-  async ensure(noteId: EntityId): Promise<void> {
+  /**
+   * Queue a picture for a note that has none (no-op if it has one or was
+   * removed). `ahead`: for a card coming up, drawn after pictures needed now;
+   * needed now, a job queued ahead moves up.
+   */
+  async ensure(noteId: EntityId, ahead = false): Promise<void> {
     const n = this.store.col.liveNote(noteId);
-    if (!n || n.picture || n.noPicture || this.jobs.has(noteId)) return;
-    await this.enqueue({ note_id: noteId, tries: 0, not_before: 0, created: this.now() });
+    if (!n || n.picture || n.noPicture) return;
+    const queued = this.jobs.get(noteId);
+    if (queued) {
+      if (queued.ahead && !ahead) {
+        queued.ahead = false;
+        await this.store.putPicJob(queued);
+        this.kick();
+      }
+      return;
+    }
+    await this.enqueue({ note_id: noteId, tries: 0, not_before: 0, created: this.now(), ...(ahead ? { ahead } : {}) });
+  }
+
+  /** Queue pictures for cards coming up next (src/session.ts upcoming), in that order. */
+  async ahead(cardIds: Iterable<EntityId>): Promise<void> {
+    for (const id of cardIds) {
+      const c = this.store.col.cards.get(id);
+      if (c) await this.ensure(c.note_id, true);
+    }
   }
 
   /** Draw (or redraw) a note's picture with the user's meaning and details. */
@@ -136,16 +165,18 @@ export class Pictures {
 
   /** Process the queue now; concurrent calls coalesce. Resolves when the queue is idle. */
   kick(): Promise<void> {
-    if (this.running) {
-      this.again = true;
-      return this.running;
-    }
-    this.running = (async () => {
-      do {
-        this.again = false;
-        await this.runQueue();
-      } while (this.again);
-    })().finally(() => (this.running = null));
+    this.again = true;
+    // Checking for another round and stopping happen in one step, so a kick near the end is never lost.
+    this.running ??= (async () => {
+      try {
+        while (this.again) {
+          this.again = false;
+          await this.runQueue();
+        }
+      } finally {
+        this.running = null;
+      }
+    })();
     return this.running;
   }
 
@@ -154,8 +185,8 @@ export class Pictures {
     let best: PicJob | undefined;
     for (const j of this.jobs.values()) {
       if (j.not_before > now || this.states.get(j.note_id) === "failed") continue;
-      // Pictures the user is waiting for (typed words, redraws) go first.
-      if (!best || (j.force ?? false) > (best.force ?? false) || (j.force === best.force && j.created < best.created)) best = j;
+      // Pictures the user is waiting for (redraws, then typed or shown words) go first, cards coming up last; else oldest first.
+      if (!best || rank(j) > rank(best) || (rank(j) === rank(best) && j.created < best.created)) best = j;
     }
     return best;
   }

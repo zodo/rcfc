@@ -10,6 +10,7 @@ import { app, go, page, sheet as openSheet } from "../app";
 import { derivedEntityId } from "../domain/ids";
 import { labelPile } from "../domain/labels";
 import { languagePile, MORE } from "../domain/piles";
+import { AHEAD } from "../pictures";
 import { StudySession } from "../session";
 import { h, langName } from "../ui/h";
 import { haptic, seeded } from "../ui/paper";
@@ -82,6 +83,7 @@ async function spot(key: string, label: string, moved: Moved): Promise<HTMLEleme
     }
     return h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due"));
   }
+  void app.pictures.ahead(s.upcoming(AHEAD));
   const pile = h("span", { class: "pile-stack" });
   const faces = s.faces(Math.min(EDGES, n.left - 1));
   const r = seeded(seed);

@@ -259,6 +259,25 @@ export class StudySession {
     return null;
   }
 
+  /**
+   * The cards coming next, top first, as far as they are known now (at most
+   * `n`): the top card, the one peeked under it, then what the pile would
+   * draw if nothing changed. For work done ahead, such as drawing pictures.
+   */
+  upcoming(n: number): EntityId[] {
+    const replay = this.replay();
+    if (replay) return replay.slice(0, n);
+    const v = this.view();
+    const out = [this.screen.top?.card, this.screen.under?.card].filter((id): id is EntityId => id !== undefined);
+    const max = Math.min(n, Math.max(v.left(), out.length));
+    while (out.length < max) {
+      const d = v.next(out);
+      if (!d) break;
+      out.push(d.card);
+    }
+    return out.slice(0, n);
+  }
+
   /** Cards answered right from this pile today, in the order they were answered. */
   doneToday(): EntityId[] {
     return [...this.view().completed].reverse();

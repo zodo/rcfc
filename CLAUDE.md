@@ -62,7 +62,7 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 ## Domain notes
 
 - Entity ids are random positive integers < 2^53 (`src/domain/ids.ts`), not full 64-bit: fit rwkv-srs `i64`, exact in JS, JSON-safe.
-- Importers are pure (text in, events out) and dedup on normalized front+back so re-imports are safe. Imported notes must not auto-queue enrichment at import time (pictures are queued the first time a word is shown in study).
+- Importers are pure (text in, events out) and dedup on normalized front+back so re-imports are safe. Imported notes must not auto-queue enrichment at import time (pictures are queued when a word comes up: among a pile's next cards, or shown in study).
 
 ## UX notes
 
@@ -82,7 +82,7 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 - Pipeline (`src/domain/pictures.ts`): Granite 4.0 micro writes one scene, FLUX.2 klein 4B draws it at 768×512 in the house cut-paper style (medium first in the prompt, or it drifts to photos). The meaning is chosen in code (user's choice, else the example decides, else the first listed meaning): LLMs ignore that rule.
 - No writing in pictures: the picture is on the known side, so a drawn word gives the answer away. The scene LLM ignores the rule and writes quotes and dialogue, so `withoutQuotes` strips them in code. The style asks for one free-standing cut-out with an irregular hand-cut outline on white, not a full-frame panel.
 - Cost: must stay inside the free 10,000 neurons/day (UTC). The Worker reserves ~60 neurons per picture in D1 `ai_budget` and answers 429 past `PICTURE_NEURONS_PER_DAY`; the client queue waits for the reset. Error 3030 (false safety flag) is retried with new seeds.
-- When: typed words right after adding; any other word the first time it is shown in study redraws on request with meaning + details. A removed picture (`asset_attached` with `r2_key: null`) is never redrawn automatically.
+- When: typed words right after adding; any other word when it comes up: the next `AHEAD` (10) cards of each pile (`StudySession.upcoming`), queued from the table and after each card in study, drawn after pictures needed now (`PicJob.ahead`), so they are there when the card shows, offline too; and the card on top if still missing. Redraws on request with meaning + details. A removed picture (`asset_attached` with `r2_key: null`) is never redrawn automatically.
 - Client (`src/pictures.ts`): jobs in Dexie `pic_jobs` (per device, not synced; the result syncs as `asset_attached`), downloaded pictures get their photographed paper flattened to pure white (`src/domain/paper.ts`, so light cards show through with multiply blending; dark mode pastes them as a light cut-out), are re-encoded and kept in `pic_blobs` for offline study. Local dev has no AI binding: the Worker draws an SVG placeholder for free.
 
 ## Sync notes

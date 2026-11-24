@@ -32,6 +32,8 @@ export interface PicJob {
   details?: string;
   /** Redraw even if the note already has a picture. */
   force?: boolean;
+  /** Drawn ahead of time (a card coming up in a pile): after pictures needed now. */
+  ahead?: boolean;
   tries: number;
   /** ms epoch; not retried before. */
   not_before: number;
