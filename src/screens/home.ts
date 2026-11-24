@@ -83,11 +83,11 @@ const LANDING_MS = 420;
 /** One pile's spot (a language's or a sticker's): its pile, or the outline a finished pile leaves; `key` = what it shows. */
 function spot(s: StudySession, label: string, moved: Moved): { el: HTMLElement; key: string } {
   const name = h("div", { class: "pile-name" }, s.label === undefined ? label : stickerTag(app.store.col.liveLabel(s.label)!));
+  const seed = derivedEntityId(s.pile) % 233280; // the pile's own poses, the same every time
   if (s.label !== undefined && s.allCount() === 0) {
     const id = s.label;
-    return { el: h("div", { class: "pile-cell" }, h("button", { class: "spot empty", "aria-label": `${label}: add words`, onclick: () => editSticker(id) }), name, h("div", { class: "pile-count" }, "no words yet")), key: "empty" };
+    return { el: h("div", { class: "pile-cell" }, askew(h("button", { class: "spot empty", "aria-label": `${label}: add words`, onclick: () => editSticker(id) }), seed), name, h("div", { class: "pile-count" }, "no words yet")), key: "empty" };
   }
-  const seed = derivedEntityId(s.pile) % 233280; // the pile's own poses, the same every time
   s.settle();
   const n = s.next();
   if (!n) {
@@ -99,7 +99,7 @@ function spot(s: StudySession, label: string, moved: Moved): { el: HTMLElement; 
       b.append(...flecks(seed));
       setTimeout(() => haptic("double"), CHECK_DRAWN);
     }
-    return { el: h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due")), key: `finished:${done}` };
+    return { el: h("div", { class: "pile-cell" }, askew(b, seed), name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due")), key: `finished:${done}` };
   }
   void app.pictures.ahead(s.upcoming(AHEAD));
   const pile = h("span", { class: "pile-stack" });
@@ -125,8 +125,16 @@ function spot(s: StudySession, label: string, moved: Moved): { el: HTMLElement; 
     go.study(s.lang);
   };
   const b = h("button", { class: `spot${dealt ? " dealt" : ""}`, "aria-label": `Study ${label}`, onclick: study }, pile);
-  b.style.marginBottom = `${Math.round(faces.length * CARD_PX)}px`;
-  return { el: h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, `${n.left} ${n.left === 1 ? "card" : "cards"}`)), key: `${n.pick.card}:${n.left}:${faces.join(",")}` };
+  b.style.setProperty("--thick", `${Math.round(faces.length * CARD_PX)}px`);
+  return { el: h("div", { class: "pile-cell" }, askew(b, seed), name, h("div", { class: "pile-count" }, `${n.left} ${n.left === 1 ? "card" : "cards"}`)), key: `${n.pick.card}:${n.left}:${faces.join(",")}` };
+}
+
+/** A spot's outline, printed a little askew: 0.7–1.9°, either way, the same every time. */
+function askew(spot: HTMLElement, seed: number): HTMLElement {
+  const r = seeded(seed + 3);
+  const deg = (r() < 0.5 ? -1 : 1) * (0.7 + r() * 1.2);
+  spot.style.setProperty("--askew", `${deg.toFixed(2)}deg`);
+  return spot;
 }
 
 /** Bits of coloured paper that jump off a check as it is drawn. */
@@ -159,7 +167,7 @@ function topCard(cardId: number): HTMLElement {
 function newPile(): HTMLElement {
   const b = h("button", { class: "spot new-pile", "aria-label": "New pile", onclick: () => newStickerSheet(editSticker) });
   b.innerHTML = ICON_PLUS;
-  return h("div", { class: "pile-cell" }, b, h("div", { class: "pile-name" }, "New pile"), h("div", { class: "pile-count" }, "\u00a0"));
+  return h("div", { class: "pile-cell" }, askew(b, 41), h("div", { class: "pile-name" }, "New pile"), h("div", { class: "pile-count" }, "\u00a0"));
 }
 
 /**

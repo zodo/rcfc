@@ -623,7 +623,7 @@ header.top.sub .back svg {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 /* the spot: a card-sized place with its outline printed on the table */
@@ -632,7 +632,7 @@ header.top.sub .back svg {
   display: block;
   width: calc(100% - 14px);
   aspect-ratio: 3 / 4;
-  margin: 7px 0 0;
+  margin: 7px 0 calc(max(7px, var(--thick, 0px)) + 14px); /* below the outline or the pile's edges, whichever is lower: room above the name */
   padding: 0;
   color: var(--on-table-muted);
 }
@@ -642,6 +642,7 @@ header.top.sub .back svg {
   inset: -7px;
   border: 3px dotted var(--printed);
   border-radius: 6px;
+  rotate: var(--askew, 0deg);
   pointer-events: none;
 }
 .spot:focus-visible {
