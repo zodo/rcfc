@@ -11,7 +11,7 @@
 // back to the table (src/screens/home.ts), where its spot shows the check.
 import { app, errorText, fullScreen, go, setKeys } from "../app";
 import type { Card, Note } from "../domain/collection";
-import type { LangPair, ReviewPayload } from "../domain/events";
+import type { ReviewPayload } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import type { Draw } from "../domain/piles";
 import { StudySession } from "../session";
@@ -22,7 +22,7 @@ import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
 import { EDGE, Turn } from "../ui/turn";
 import { canSpeak, speak } from "../ui/speech";
-import { languages, lastLanguage, rememberLanguage, samePair } from "./languages";
+import { languages, lastLanguage, rememberLanguage } from "./languages";
 
 /** Cards drawn under the top one; the pile's shadow stands in for the rest. */
 const SHOWN = 6;
@@ -65,9 +65,10 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const ICON_CLOSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
 const ICON_SPEAK = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5c1.3 1 2 2.2 2 3.5s-.7 2.5-2 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
-export async function study(pair?: LangPair): Promise<void> {
-  const want = pair ?? lastLanguage();
-  const lang = languages().find((p) => want && samePair(p, want)) ?? languages()[0];
+export async function study(want?: string): Promise<void> {
+  const langs = languages();
+  const wanted = want ?? lastLanguage();
+  const lang = wanted && langs.includes(wanted) ? wanted : langs[0];
   if (!lang) return go.home();
   rememberLanguage(lang);
   fullScreen(h("p", { class: "muted center" }, "Preparing…"));

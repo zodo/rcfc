@@ -37,7 +37,7 @@ describe("sync end to end", () => {
     await a.deck(6);
     await a.sync.now();
     await b.sync.join(a.sync.code);
-    const sa = new StudySession(a.store, { from: "es", to: "en" });
+    const sa = new StudySession(a.store, "es");
     await sa.start();
     for (let i = 0; i < 2; i++) {
       const card = a.store.col.cards.get(sa.next()!.pick.card)!;
@@ -45,7 +45,7 @@ describe("sync end to end", () => {
     }
     await a.sync.now();
     await b.sync.now();
-    const sb = new StudySession(b.store, { from: "es", to: "en" });
+    const sb = new StudySession(b.store, "es");
     await sb.start();
     // One deal (made on a), two of its six cards done there.
     expect([...b.store.col.deals.values()].map((m) => [...m.values()])).toEqual([[{ deal: 6, more: 0 }]]);

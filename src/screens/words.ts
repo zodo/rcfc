@@ -7,9 +7,9 @@ import type { Note } from "../domain/collection";
 import type { AppEvent } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import { KNOWN_HORIZON_MS, wordStatus } from "../domain/scheduler";
-import { append, clear, h, toast } from "../ui/h";
+import { append, clear, h, langName, toast } from "../ui/h";
 import { pictureEditor } from "../ui/picture";
-import { languageForm, languageLabel, languages, openLanguage, rememberLanguage, samePair, setOpenLanguage } from "./languages";
+import { languageForm, languages, openLanguage, rememberLanguage, setOpenLanguage } from "./languages";
 
 /** Rows added at a time as the list scrolls into view. */
 const CHUNK = 150;
@@ -27,7 +27,7 @@ export function words(): void {
   const { store } = app;
   const langs = languages();
   const open = openLanguage();
-  const all = () => store.col.liveNotes().filter((n) => !open || samePair(n.lang_pair, open)).reverse();
+  const all = () => store.col.liveNotes().filter((n) => !open || n.lang_pair.from === open).reverse();
   let selecting = false;
   const selected = new Set<EntityId>();
   let found: Note[] = [];
@@ -83,7 +83,7 @@ export function words(): void {
 
   /** Re-predict a week ahead for the words listed, then update the statuses shown. */
   const refresh = async () => {
-    const cards = store.col.liveCards().filter((c) => !open || samePair(store.col.notes.get(c.note_id)!.lang_pair, open));
+    const cards = store.col.liveCards().filter((c) => !open || store.col.notes.get(c.note_id)!.lang_pair.from === open);
     for (const [id, p] of await store.predictAt(cards, Date.now() + KNOWN_HORIZON_MS)) weekAhead.set(id, p);
     for (const [id, r] of rows) showStatus(store.col.notes.get(id)!, r.st);
   };
@@ -199,8 +199,8 @@ export function words(): void {
           "div",
           { class: "chips lang-chips" },
           ...langs.map((p) => {
-            const on = !!open && samePair(p, open);
-            return h("button", { class: `chip${on ? " on" : ""}`, "aria-pressed": String(on), onclick: () => (setOpenLanguage(on ? null : p), go.words()) }, languageLabel(p, langs));
+            const on = p === open;
+            return h("button", { class: `chip${on ? " on" : ""}`, "aria-pressed": String(on), onclick: () => (setOpenLanguage(on ? null : p), go.words()) }, langName(p));
           }),
         )
       : null;

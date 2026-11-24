@@ -1,6 +1,5 @@
 // App shell shared by the screens (src/screens/): the open store and sync,
 // which screen is showing, page chrome, keyboard handling and navigation.
-import type { LangPair } from "./domain/events";
 import type { EntityId } from "./domain/ids";
 import type { Pictures } from "./pictures";
 import type { Store } from "./store";
@@ -13,8 +12,8 @@ export type ScreenName = Tab | "study";
 
 export interface Screens {
   home(): void | Promise<void>;
-  /** A language's pile (default: the last one studied). */
-  study(pair?: LangPair): void | Promise<void>;
+  /** A studied language's pile ("es"; default: the last one studied). */
+  study(lang?: string): void | Promise<void>;
   /** The Words tab: every word, or the language open there (languages.ts `openLanguage`). */
   words(): void;
   /** Add a word to the last language used (languages.ts `lastLanguage`). */

@@ -3,7 +3,7 @@ import type { PileDealt } from "../src/domain/events";
 import { StudySession } from "../src/session";
 import { Clock, DAY, Device } from "./support/harness";
 
-const ES = { from: "es", to: "en" };
+const ES = "es";
 const HOUR = 3_600_000;
 
 /** Answer the pile's cards in order (`rate` picks the rating per card) until it is empty or `max` answers. */
@@ -30,7 +30,7 @@ async function sitting(d: Device): Promise<StudySession> {
 }
 
 function deals(d: Device) {
-  return [...d.store.col.deals.get("lang:es>en")?.entries() ?? []].map(([, v]) => v);
+  return [...d.store.col.deals.get("lang:es")?.entries() ?? []].map(([, v]) => v);
 }
 
 async function newPerDay(d: Device, n: number) {
@@ -49,7 +49,7 @@ describe("piles", () => {
     // Opening it again the same day deals nothing new.
     expect((await sitting(d)).next()).toBeNull();
     expect(deals(d)).toHaveLength(1);
-    expect(d.store.col.reviews.every((r) => r.payload.pile === "lang:es>en")).toBe(true);
+    expect(d.store.col.reviews.every((r) => r.payload.pile === "lang:es")).toBe(true);
   });
 
   it("Got it takes a card out, Again tucks it under the pile", async () => {
@@ -278,6 +278,24 @@ describe("piles", () => {
     expect((await sitting(d)).next()!.pick.kind).toBe("again");
     clock.advance(DAY);
     expect((await sitting(d)).next()!.pick.kind).not.toBe("again");
+  });
+
+  it("one pile per studied language: a word translated into another language joins it", async () => {
+    const d = await Device.open();
+    const deckId = await d.deck(2);
+    await d.store.append(d.store.factory.note(deckId, { front: "el gato", back: "кот" }, { from: "es", to: "ru" }));
+    expect(await run(await sitting(d))).toEqual(["palabra 0", "palabra 1", "el gato"]); // the forward faces, today
+  });
+
+  it("piles named per pair before read as their studied language's pile", async () => {
+    const clock = new Clock();
+    const d = await Device.open(clock);
+    await d.deck(30);
+    const day = (await sitting(d)).view().today; // deals 10 as lang:es
+    clock.advance(DAY);
+    // Yesterday, as an older app recorded it: "more" on the pair's pile.
+    await d.store.append([d.store.factory.make<PileDealt>("pile_dealt", { pile: "lang:es>en", day, n: 5, more: true })]);
+    expect(deals(d)).toEqual([{ deal: 10, more: 5 }]);
   });
 
   it("two devices dealing the same day offline count the deal once", async () => {

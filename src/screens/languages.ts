@@ -1,45 +1,36 @@
-// Languages, shared by several screens. A language is a pair (Spanish →
-// English) that lives on each word; it exists while it has words, and the UI
-// names it after the language studied. Under it sits one hidden deck per pair,
-// because the model takes a deck id (src/domain/rows.ts): made with the pair's
-// first word, its id derived from the pair so devices adding offline agree.
+// Languages, shared by several screens. The UI shows only the language
+// studied (Spanish): it exists while it has words and has one pile. Each word
+// also records the language its translation is in (`note.lang_pair.to`), picked
+// per word on the Add screen, defaulting to the last one used for that
+// language. Under each studied language sits one hidden deck, because the
+// model takes a deck id (src/domain/rows.ts): made with its first word, its id
+// derived from the language so devices adding offline agree.
 import { app } from "../app";
-import type { LangPair } from "../domain/events";
 import { derivedEntityId, type EntityId } from "../domain/ids";
 import { languagePile } from "../domain/piles";
 import { h, LANGS, langName, langSelect } from "../ui/h";
 
 const LAST_KEY = "rcfc:lastLanguage";
 const OPEN_KEY = "rcfc:wordsLanguage";
+const TRANSLATION_KEY = "rcfc:translation:";
 
-export const samePair = (a: LangPair, b: LangPair) => a.from === b.from && a.to === b.to;
-const key = (p: LangPair) => languagePile(p);
-
-/** Every language with words, in the order their first word was added. */
-export function languages(): LangPair[] {
-  const out: LangPair[] = [];
-  for (const n of app.store.col.liveNotes()) if (!out.some((p) => samePair(p, n.lang_pair))) out.push(n.lang_pair);
+/** Every studied language with words, in the order its first word was added. */
+export function languages(): string[] {
+  const out: string[] = [];
+  for (const n of app.store.col.liveNotes()) if (!out.includes(n.lang_pair.from)) out.push(n.lang_pair.from);
   return out;
 }
 
-/** "Spanish"; "Spanish → English" when another language studies Spanish too. */
-export function languageLabel(p: LangPair, others: LangPair[] = languages()): string {
-  const twin = others.some((o) => !samePair(o, p) && o.from === p.from);
-  return twin ? `${langName(p.from)} → ${langName(p.to)}` : langName(p.from);
-}
-
-function read(k: string): LangPair | null {
+function read(k: string): string | null {
   try {
-    const v = localStorage.getItem(k);
-    const [from, to] = v ? v.split(">") : [];
-    return from && to ? { from, to } : null;
+    return localStorage.getItem(k)?.split(">")[0] || null; // older values were pairs, "es>en"
   } catch {
     return null; // storage unavailable
   }
 }
-function write(k: string, p: LangPair | null): void {
+function write(k: string, v: string | null): void {
   try {
-    if (p) localStorage.setItem(k, `${p.from}>${p.to}`);
+    if (v) localStorage.setItem(k, v);
     else localStorage.removeItem(k);
   } catch {
     /* ignore */
@@ -47,38 +38,55 @@ function write(k: string, p: LangPair | null): void {
 }
 
 /** The language last studied, added to or picked (maybe one with no words yet: just picked to add the first). */
-export function lastLanguage(): LangPair | undefined {
+export function lastLanguage(): string | undefined {
   return read(LAST_KEY) ?? languages()[0];
 }
-export function rememberLanguage(p: LangPair): void {
-  write(LAST_KEY, p);
+export function rememberLanguage(lang: string): void {
+  write(LAST_KEY, lang);
 }
 
 /** The language open in Words; null = all words. */
-export function openLanguage(): LangPair | null {
-  const p = read(OPEN_KEY);
-  return p && languages().some((o) => samePair(o, p)) ? p : null;
+export function openLanguage(): string | null {
+  const l = read(OPEN_KEY);
+  return l && languages().includes(l) ? l : null;
 }
-export function setOpenLanguage(p: LangPair | null): void {
-  write(OPEN_KEY, p);
-  if (p) rememberLanguage(p);
+export function setOpenLanguage(lang: string | null): void {
+  write(OPEN_KEY, lang);
+  if (lang) rememberLanguage(lang);
+}
+
+/** The language a new word's translation is in: the last one picked for this language, else its latest word's, else any word's. */
+export function translationFor(lang: string): string {
+  let pick: string | null = null;
+  try {
+    pick = localStorage.getItem(TRANSLATION_KEY + lang);
+  } catch {
+    /* storage unavailable */
+  }
+  if (pick) return pick;
+  const notes = app.store.col.liveNotes();
+  return (notes.findLast((n) => n.lang_pair.from === lang) ?? notes.at(-1))?.lang_pair.to ?? (lang === "en" ? "es" : "en");
+}
+export function rememberTranslation(lang: string, to: string): void {
+  write(TRANSLATION_KEY + lang, to);
 }
 
 /** The hidden deck new words of this language go into: the existing one, else one made now. */
-export async function deckFor(lang_pair: LangPair): Promise<EntityId> {
+export async function deckFor(lang: string): Promise<EntityId> {
   const { store } = app;
-  const same = [...store.col.decks.values()].filter((d) => samePair(d.lang_pair, lang_pair)).sort((a, b) => a.id - b.id)[0];
+  const same = [...store.col.decks.values()].filter((d) => d.lang_pair.from === lang).sort((a, b) => a.id - b.id)[0];
   if (same) return same.id;
-  const id = derivedEntityId(`deck:${key(lang_pair)}`);
-  await store.append([store.factory.deck(langName(lang_pair.from), store.preset().preset_id, lang_pair, id)]);
+  const id = derivedEntityId(`deck:${languagePile(lang)}`);
+  await store.append([store.factory.deck(langName(lang), store.preset().preset_id, { from: lang, to: translationFor(lang) }, id)]);
   return id;
 }
 
-/** "I'm learning … / I speak …": picks a language (made once its first word is added). */
-export function languageForm(onDone: (p: LangPair) => void, submitLabel: string): HTMLFormElement {
+/** "I'm learning … / I speak …": picks a language (made once its first word is added) and its translations' language. */
+export function languageForm(onDone: (lang: string) => void, submitLabel: string): HTMLFormElement {
   // Suggest a language not studied yet, translated into the language used so far.
-  const to = lastLanguage()?.to ?? "en";
-  const used = new Set(languages().map((p) => p.from));
+  const last = lastLanguage();
+  const to = last ? translationFor(last) : "en";
+  const used = new Set(languages());
   const learning = langSelect("from", LANGS.find((c) => !used.has(c) && c !== to) ?? "es");
   const speak = langSelect("to", to);
   return h(
@@ -87,9 +95,9 @@ export function languageForm(onDone: (p: LangPair) => void, submitLabel: string)
       class: "card-box",
       onsubmit: (e: Event) => {
         e.preventDefault();
-        const p = { from: learning.value, to: speak.value };
-        rememberLanguage(p);
-        onDone(p);
+        rememberLanguage(learning.value);
+        rememberTranslation(learning.value, speak.value);
+        onDone(learning.value);
       },
     },
     h("div", { class: "row2" }, h("label", {}, "I'm learning", learning), h("label", {}, "I speak", speak)),

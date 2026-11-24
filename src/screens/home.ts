@@ -5,13 +5,12 @@
 // for more cards or the same ones again: they land on the spot, and a tap on
 // the pile studies them. First launch asks which language to learn.
 import { app, go, page } from "../app";
-import type { LangPair } from "../domain/events";
 import { derivedEntityId } from "../domain/ids";
 import { StudySession } from "../session";
-import { h } from "../ui/h";
+import { h, langName } from "../ui/h";
 import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
-import { languageForm, languageLabel, languages, rememberLanguage, setOpenLanguage } from "./languages";
+import { languageForm, languages, rememberLanguage, setOpenLanguage } from "./languages";
 
 /** Edges drawn under the top card; deeper cards only make the pile no thicker. */
 const EDGES = 30;
@@ -37,7 +36,7 @@ export async function home(): Promise<void> {
   const moved = { cleared: app.cleared, refilled: app.refilled };
   app.cleared = app.refilled = null;
   const spots = [];
-  for (const p of langs) spots.push(await spot(p, languageLabel(p, langs), moved));
+  for (const l of langs) spots.push(await spot(l, moved));
   if (app.current !== "home") return; // left while loading
   page("home", "Study", h("div", { class: "table" }, ...spots));
 }
@@ -54,9 +53,10 @@ const CHECK_DRAWN = 780;
 const LANDING_MS = 420;
 
 /** One language's spot: its pile, or the outline a finished pile leaves. */
-async function spot(pair: LangPair, label: string, moved: Moved): Promise<HTMLElement> {
+async function spot(lang: string, moved: Moved): Promise<HTMLElement> {
+  const label = langName(lang);
   const name = h("div", { class: "pile-name" }, label);
-  const s = new StudySession(app.store, pair);
+  const s = new StudySession(app.store, lang);
   const seed = derivedEntityId(s.pile) % 233280; // the pile's own poses, the same every time
   await s.prepare();
   const n = s.next();
@@ -88,7 +88,7 @@ async function spot(pair: LangPair, label: string, moved: Moved): Promise<HTMLEl
     cards.forEach((c, i) => c.style.setProperty("--d", `${Math.round(i * step)}ms`));
     setTimeout(() => haptic("thud"), Math.round(cards.length * step) + 180);
   }
-  const b = h("button", { class: `spot${dealt ? " dealt" : ""}`, "aria-label": `Study ${label}`, onclick: () => (rememberLanguage(pair), go.study(pair)) }, pile);
+  const b = h("button", { class: `spot${dealt ? " dealt" : ""}`, "aria-label": `Study ${label}`, onclick: () => (rememberLanguage(lang), go.study(lang)) }, pile);
   b.style.marginBottom = `${Math.round(faces.length * CARD_PX)}px`;
   return h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, `${n.left} ${n.left === 1 ? "card" : "cards"}`));
 }
@@ -132,7 +132,7 @@ function sheet(label: string, s: StudySession): void {
   /** The pile is on its spot again: back to the table to watch it land. */
   const refill = () => {
     close();
-    rememberLanguage(s.pair);
+    rememberLanguage(s.lang);
     app.refilled = s.pile;
     void home();
   };
@@ -157,7 +157,7 @@ function sheet(label: string, s: StudySession): void {
     done.length
       ? h("button", { class: more ? "secondary wide" : "primary wide", onclick: () => (s.againThese(done), refill()) }, done.length === 1 ? "Go through it again" : `Go through these ${done.length} again`)
       : null,
-    !more && !s.unseenLeft() ? h("button", { class: "secondary wide", onclick: () => (close(), setOpenLanguage(s.pair), go.add()) }, "Add words") : null,
+    !more && !s.unseenLeft() ? h("button", { class: "secondary wide", onclick: () => (close(), setOpenLanguage(s.lang), go.add()) }, "Add words") : null,
   );
   document.addEventListener("keydown", onKey);
   app.root.append(backdrop, el);

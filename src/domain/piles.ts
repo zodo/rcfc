@@ -12,7 +12,7 @@
 // Everything here is derived from the log, so it syncs. Pure: a function of
 // the folded collection, predictions and a clock.
 import type { Card, Collection } from "./collection";
-import type { CardTemplate, LangPair } from "./events";
+import type { CardTemplate } from "./events";
 import type { EntityId } from "./ids";
 import { newQueue, type DayClock } from "./newcards";
 import { studyDay } from "./rows";
@@ -28,9 +28,9 @@ export const MORE = 5;
 /** A face is not drawn this soon after its twin was answered (its answer was just on screen). */
 export const TWIN_GAP_MS = 3_600_000;
 
-/** The pile of every word in one language pair. */
-export function languagePile(pair: LangPair): string {
-  return `lang:${pair.from}>${pair.to}`;
+/** The pile of every word in one studied language, whatever its translations are in. */
+export function languagePile(lang: string): string {
+  return `lang:${lang}`;
 }
 
 export type DrawKind = "again" | "due" | "new";

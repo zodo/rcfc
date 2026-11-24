@@ -400,6 +400,14 @@ async function run(s: Browser, url: string) {
   await s.type("input[name=back]", "key");
   await s.click("button[type=submit]", "Add");
   await s.until("toast", `document.getElementById("toast")?.textContent === 'Added "der Schlüssel"'`);
+  log("a Spanish word translated into Russian joins the Spanish pile");
+  await s.js(`const l = document.querySelector("select[name=language]"); l.value = "es"; l.dispatchEvent(new Event("change"));`);
+  await s.until("Add: Spanish", `document.querySelector("select[name=language]")?.value === "es" && document.querySelector("select[name=to]")?.value === "en"`);
+  await s.js(`const t = document.querySelector("select[name=to]"); t.value = "ru"; t.dispatchEvent(new Event("change"));`);
+  await s.type("input[name=front]", "el gato");
+  await s.type("input[name=back]", "кот");
+  await s.click("button[type=submit]", "Add");
+  await s.until("toast", `document.getElementById("toast")?.textContent === 'Added "el gato"'`);
   await s.click("button[aria-label=Back]");
   await s.until("chips", `document.querySelectorAll(".lang-chips .chip").length === 2`);
   await shot(s, "words-languages");

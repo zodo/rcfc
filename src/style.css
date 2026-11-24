@@ -204,6 +204,39 @@ textarea::placeholder {
 textarea {
   resize: vertical;
 }
+/* a field whose label is a picker: the translation's language on the Add screen */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-lang {
+  position: relative;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14.5px;
+}
+.field-lang > span:first-child {
+  text-decoration: underline dotted 1.5px;
+  text-underline-offset: 4px;
+}
+.field-lang .chev {
+  font-size: 12px;
+  color: var(--muted);
+}
+/* the visible text is plain; the native select sits invisibly on top, so it opens the system picker */
+.field-lang select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.field-lang:has(select:focus-visible) {
+  outline: 2px solid var(--good);
+  outline-offset: 3px;
+}
 .row2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

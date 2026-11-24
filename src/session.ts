@@ -3,7 +3,7 @@
 // only this device knows: the cards on screen. UI-free (src/screens/study.ts
 // renders it), so tests drive it with a stub engine.
 import type { Card } from "./domain/collection";
-import type { CardTemplate, LangPair, PileDealt, ReviewPayload } from "./domain/events";
+import type { CardTemplate, PileDealt, ReviewPayload } from "./domain/events";
 import type { EntityId } from "./domain/ids";
 import { languagePile, MORE, pileSize, PileView, type Draw } from "./domain/piles";
 import type { Store } from "./store";
@@ -41,9 +41,10 @@ export class StudySession {
 
   constructor(
     private store: Store,
-    readonly pair: LangPair,
+    /** The studied language (a code, "es"): its words, whatever their translations are in. */
+    readonly lang: string,
   ) {
-    this.pile = languagePile(pair);
+    this.pile = languagePile(lang);
     const key = `${store.deviceId}|${this.pile}`;
     this.screen = shown.get(key) ?? { top: null, under: null, faces: [], again: null };
     shown.set(key, this.screen);
@@ -51,11 +52,7 @@ export class StudySession {
 
   /** The pile's words. */
   source(): Card[] {
-    const { from, to } = this.pair;
-    return this.store.col.liveCards().filter((c) => {
-      const p = this.store.col.notes.get(c.note_id)!.lang_pair;
-      return p.from === from && p.to === to;
-    });
+    return this.store.col.liveCards().filter((c) => this.store.col.notes.get(c.note_id)!.lang_pair.from === this.lang);
   }
 
   view(): PileView {

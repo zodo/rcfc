@@ -59,7 +59,7 @@ Entity ids (`note_id`, `card_id`, `deck_id`, `preset_id`) are random 64-bit inte
 | `asset_attached` | `note_id, kind (image or audio), r2_key` | Media lives in R2, not in events |
 | `review` | see below | Append-only, never edited |
 
-Planned: `notes_labeled`, `pile_more` and a `pile` field on `review`; decks become a hidden per-pair group (see [Piles, labels and languages](#piles-labels-and-languages)).
+Planned: `notes_labeled`, `pile_more` and a `pile` field on `review`; decks become a hidden group per studied language (see [Piles, labels and languages](#piles-labels-and-languages)).
 
 **Review payload (fields rwkv-srs needs)**
 
@@ -164,7 +164,7 @@ Adding a word creates the card immediately; enrichment fills it in afterwards as
 
 **Flow**
 
-1. User types a word and picks the language pair.
+1. User types a word in a studied language and picks its translation's language.
 2. Client emits `note_created` with just the word; the card is usable at once.
 3. Client queues an enrichment job (kept in IndexedDB, retried when online).
 4. Worker `POST /enrich {word, from, to}` calls Workers AI and returns JSON; the image is stored in R2.
@@ -195,19 +195,19 @@ Nov 24, 2026. Agreed, not built yet; built in the order of the plan at the end o
 **Words, faces and languages**
 
 - A word (note) is one physical card with two faces: the studied language on the white side, the known language on the cream side. Each face is a separate card in the data (forward, reverse) with its own memory in the model.
-- The word carries its language pair, set when it is added and never changed: a word added under the wrong pair is deleted and added again.
-- There are no decks in the UI. The model still gets a group per language pair as `deck_id`, derived from the pair (old words keep their deck ids), so two devices that add a pair offline get the same group. Nothing else reads it.
+- The UI shows only the studied language ("Spanish"). Each word also records its translation's language, picked per word when it is added (default: the last pick for that studied language) and never changed: a word added wrong is deleted and added again. The translation's language marks the cream side's language and will choose the language for filled-in translations and explanations; nothing groups by it.
+- There are no decks in the UI. The model still gets a group per studied language as `deck_id`, derived from the language (old words keep their deck ids), so two devices that add a language offline get the same group. Nothing else reads it.
 - Word ids stay random on every add. The same word added on two offline devices becomes two words after sync, and re-adding a deleted word starts fresh. Both are accepted.
 
 **Labels**
 
 - A label is a name stuck on words (the UI metaphor is stickers). Many to many, across languages. Its identity is its name, compared ignoring case and surrounding spaces, so the same label made on two devices merges. Labels never reach the model.
 - A label exists while some word wears it. Renaming is peeling the old name off and sticking the new one on the same words.
-- Language is not a label: it cannot be peeled off. Words in the user's own language (a subject such as pharmacology) are a pair like ru→ru plus a label.
+- Language is not a label: it cannot be peeled off. Words in the user's own language (a subject such as pharmacology) are Russian words with Russian explanations plus a label.
 
 **The table (Study tab)**
 
-- One pile per language pair (a single pile, named after the language, while there is only one pair), plus one spot for every label that exists.
+- One pile per studied language, whatever its words' translations are in, plus one spot for every label that exists. Piles named per pair before (`lang:es>en`) read as the studied language's pile.
 - Spots are printed on the table, two per row. A pile is a stack on its spot whose thickness shows how many cards are left, with the count written under it. The top card lies face up, and the cards under it show their edges, white or cream.
 - After the last pile, one more spot printed empty with a plus: the place for a new pile, so it is clear more piles can be made. Once labels exist it opens where labels are made and stuck on words (a new label is a new pile). Until then it is not shown.
 - Looking at the table deals nothing: it shows the pile the dealer would deal. The deal is recorded when the pile is first studied that day.
@@ -241,7 +241,7 @@ What "needs the user most" means:
 
 **Adding a word**
 
-- The pair comes from context (the open language or label, a label's most common pair), else the last one used. Recent pairs are chips on the Add screen; a new pair is one tap away.
+- The studied language comes from context (the open language or label, a label's most common language), else the last one used. Recent languages are chips on the Add screen; a new one is one tap away. The translation's language sits above its field, remembered per studied language.
 - Two fields, one per language. The user types in either, and the other can be filled by the LLM: the field typed into is the side, so nothing needs detecting.
 
 **Events and sync**
@@ -251,7 +251,7 @@ Everything above is a fold over the log, so it syncs:
 | Addition | Payload | Rule |
 | --- | --- | --- |
 | `notes_labeled` | `note_ids, label, on` | Last write wins per word and label |
-| `review.pile` | the pile key: `lang:es>en` or (later) a label; absent when not answered from a pile | Which pile the answer came from |
+| `review.pile` | the pile key: `lang:es` (older: `lang:es>en`, read as `lang:es`) or (later) a label; absent when not answered from a pile | Which pile the answer came from |
 | `pile_dealt` | `pile, day, n, more` | The day's deal (`more` false; two devices dealing offline count the largest once) and each "more" |
 
 Done today, cards waiting under a pile, cards left in a pile and each pile's size are all derived from these. The deal is recorded (not just "more") so that a pile left unfinished can be told from one that ran out of cards. Only what is on screen right now (the top card and the one under it) stays on the device. Two devices studying the same pile offline both deal it; after sync the answers merge and the pile may show none left.
@@ -261,7 +261,7 @@ Done today, cards waiting under a pile, cards left in a pile and each pile's siz
 1. This section.
 2. Fixed piles inside the current Study screen and its end screen. Hands-on review on a phone.
 3. The table on the Study tab (layout B: printed spots; finished spots tapped for choices). Built; hands-on review.
-4. No decks: the pair on the word, the model group from the pair, language piles, language chips in Words. Built; hands-on review. The Add screen got only a language picker ("Add a language…" last); its chips and the two-way fields wait for its rework.
+4. No decks: languages on the word, one pile and model group per studied language, the translation's language per word, language chips in Words. Built; hands-on review. The Add screen got only a language picker ("Add a language…" last) and the translation's language as its field's label; its chips and the two-way fields wait for its rework.
 5. Labels: events, the Words chips, the Stickers sheet, label piles on the table, the empty "new pile" spot. Mockups first.
 
 Later: the LLM fills the other field when adding; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; editing words.

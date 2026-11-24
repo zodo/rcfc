@@ -3,6 +3,16 @@
 import type { AppEvent, AssetAttachedPayload, CardTemplate, EventEnvelope, LangPair, NoteFields, NoteSource, PresetUpdatedPayload, Review } from "./events";
 import { newEntityId, uuidv7, type EntityId } from "./ids";
 
+/**
+ * A pile key as the app now names it. Language piles were once one per pair
+ * (`lang:es>en`); now one per studied language (`lang:es`), so older events
+ * read as the pile of their studied language.
+ */
+export function pileKey(pile: string): string {
+  const m = /^lang:([^>]+)>/.exec(pile);
+  return m ? `lang:${m[1]}` : pile;
+}
+
 export interface Deck {
   id: EntityId;
   name: string;
@@ -142,6 +152,8 @@ export class Collection {
         break;
       }
       case "review": {
+        // Older pile names read as today's; the stored event is left as it is.
+        if (e.payload.pile !== undefined && pileKey(e.payload.pile) !== e.payload.pile) e = { ...e, payload: { ...e.payload, pile: pileKey(e.payload.pile) } };
         // Late (out-of-order) reviews only come with sync; keep the list sorted.
         let i = this.reviews.length;
         while (i > 0 && eventOrder(this.reviews[i - 1], e) > 0) i--;
@@ -162,7 +174,8 @@ export class Collection {
         break;
       }
       case "pile_dealt": {
-        const { pile, day, n, more } = e.payload;
+        const { day, n, more } = e.payload;
+        const pile = pileKey(e.payload.pile);
         const days = this.deals.get(pile) ?? new Map<number, DayDeal>();
         this.deals.set(pile, days);
         const d = days.get(day) ?? { deal: 0, more: 0 };

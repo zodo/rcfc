@@ -1,32 +1,41 @@
 // Add a word: a note with forward and reverse cards, in the last language used
 // (switchable here; "Add a language…" picks a new one, made with its first word).
+// The translation's language is picked per word, above its field.
 import { app, go, subPage } from "../app";
 import type { NoteFields } from "../domain/events";
 import { noteKey } from "../import/duocards";
 import type { NoteCreatedPayload } from "../domain/events";
-import { clear, h, langName, toast } from "../ui/h";
+import { clear, h, langName, langSelect, toast } from "../ui/h";
 import { pictureEditor } from "../ui/picture";
-import { deckFor, languageLabel, languages, lastLanguage, rememberLanguage, samePair } from "./languages";
+import { deckFor, languages, lastLanguage, rememberLanguage, rememberTranslation, translationFor } from "./languages";
 
 const NEW = "new";
 
 export function add(): void {
-  const pair = lastLanguage();
-  if (!pair) return void go.addLanguage();
+  const lang = lastLanguage();
+  if (!lang) return void go.addLanguage();
   const { store } = app;
   // Which language: a native picker, the languages with words plus this one if it has none yet.
   const langs = languages();
-  const all = langs.some((p) => samePair(p, pair)) ? langs : [...langs, pair];
+  const all = langs.includes(lang) ? langs : [...langs, lang];
   const picker = h("select", { name: "language" });
-  all.forEach((p, i) => picker.appendChild(h("option", { value: String(i), selected: samePair(p, pair) }, languageLabel(p, all))));
+  for (const l of all) picker.appendChild(h("option", { value: l, selected: l === lang }, langName(l)));
   picker.appendChild(h("option", { value: NEW }, "Add a language…"));
   picker.addEventListener("change", () => {
     if (picker.value === NEW) return go.addLanguage();
-    rememberLanguage(all[Number(picker.value)]);
+    rememberLanguage(picker.value);
     go.add();
   });
+  // The translation's language, as the label of its field: this word only, remembered for the next one.
+  const to = langSelect("to", translationFor(lang));
+  to.setAttribute("aria-label", "Translation in");
+  const toName = h("span", {}, langName(to.value));
+  to.addEventListener("change", () => {
+    toName.textContent = langName(to.value);
+    rememberTranslation(lang, to.value);
+  });
   const front = h("input", { name: "front", required: true, autocomplete: "off", autocapitalize: "off", spellcheck: false });
-  const back = h("input", { name: "back", required: true, autocomplete: "off" });
+  const back = h("input", { name: "back", required: true, autocomplete: "off", "aria-label": "Translation" });
   const example = h("textarea", { name: "example", rows: 2 });
   const hint = h("p", { class: "muted small" });
   // The word just added, with its picture arriving; adjustable right here.
@@ -51,7 +60,7 @@ export function add(): void {
           const fields: NoteFields = { front: f, back: b };
           const ex = example.value.trim();
           if (ex) fields.example = ex;
-          const evs = store.factory.note(await deckFor(pair), fields, pair);
+          const evs = store.factory.note(await deckFor(lang), fields, { from: lang, to: to.value });
           await store.append(evs);
           const noteId = (evs[0].payload as NoteCreatedPayload).note_id;
           void app.pictures.ensure(noteId);
@@ -64,8 +73,8 @@ export function add(): void {
         },
       },
       h("label", {}, "Language", picker),
-      h("label", {}, langName(pair.from), front),
-      h("label", {}, langName(pair.to), back),
+      h("label", {}, langName(lang), front),
+      h("div", { class: "field" }, h("span", { class: "field-lang" }, toName, h("span", { class: "chev", "aria-hidden": "true" }, "▾"), to), back),
       h("label", {}, "Example (optional)", example),
       hint,
       h("button", { class: "primary", type: "submit" }, "Add"),
