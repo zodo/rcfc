@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AppEvent, Review, ReviewPayload } from "../src/domain/events";
 import { RowBuilder, ROW_WIDTH, nextPhase, studyDay } from "../src/domain/rows";
-import { dueCount, pickNext, wordStatus } from "../src/domain/scheduler";
+import { wordStatus } from "../src/domain/scheduler";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -105,31 +105,6 @@ describe("Collection", () => {
 
     c.apply({ event_id: "del", type: "note_deleted", ts: 10000, device_id: "dev-a", payload: { note_id: noteId } });
     expect(c.liveCards()).toEqual([]);
-  });
-});
-
-describe("pickNext", () => {
-  const preds = new Map([
-    [1, 0.95],
-    [2, 0.6],
-    [3, 0.8],
-  ]);
-  const base = { preds, recent: [], newQueue: [], newLeft: 0, sinceNew: 0, desired: 0.9 };
-  it("lowest P below retention first", () => {
-    expect(pickNext(base)).toEqual({ card: 2, kind: "due", p: 0.6 });
-    expect(dueCount(preds, 0.9)).toBe(2);
-  });
-  it("just-answered cards wait", () => {
-    expect(pickNext({ ...base, recent: [2] })?.card).toBe(3);
-    expect(pickNext({ ...base, recent: [2, 3] })).toBeNull();
-    expect(pickNext({ ...base, recent: [2, 3], ahead: true })).toEqual({ card: 1, kind: "ahead", p: 0.95 });
-  });
-  it("interleaves new cards under the daily limit", () => {
-    const n = { ...base, newQueue: [10, 11], newLeft: 1 };
-    expect(pickNext({ ...n, sinceNew: 1 })?.card).toBe(2); // due first
-    expect(pickNext({ ...n, sinceNew: 4 })).toEqual({ card: 10, kind: "new" });
-    expect(pickNext({ ...n, preds: new Map() })?.card).toBe(10); // nothing due
-    expect(pickNext({ ...n, newLeft: 0, preds: new Map() })).toBeNull();
   });
 });
 

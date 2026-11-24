@@ -4,13 +4,14 @@
 // up = Easy. Buttons and arrow keys do the same.
 //
 // The pile is real: every card has its own spot (a little off, a little
-// turned), so taking the top one moves nothing else. The card under the top
-// one shows the card most likely to come next (StudySession.peek).
+// turned), so taking the top one moves nothing else. Its height is the number
+// of cards dealt and left (src/domain/piles.ts); the card under the top one is
+// the next card, fixed once shown (StudySession.peek).
 import { app, errorText, fullScreen, go, setKeys } from "../app";
 import type { Card, Note } from "../domain/collection";
 import type { ReviewPayload } from "../domain/events";
 import type { EntityId } from "../domain/ids";
-import type { Pick } from "../domain/scheduler";
+import type { Draw } from "../domain/piles";
 import { StudySession } from "../session";
 import { Body, type Pose } from "../ui/body";
 import { h, toast } from "../ui/h";
@@ -19,10 +20,8 @@ import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
 import { EDGE, Turn } from "../ui/turn";
 import { canSpeak, speak } from "../ui/speech";
-import { rememberDeck } from "./decks";
+import { currentDeck, rememberDeck } from "./decks";
 
-/** New words one "Learn more" adds beyond today's limit. */
-const MORE_WORDS = 5;
 /** Cards drawn under the top one; the pile's shadow stands in for the rest. */
 const SHOWN = 6;
 
@@ -65,34 +64,37 @@ const ICON_CLOSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10
 const ICON_SPEAK = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5c1.3 1 2 2.2 2 3.5s-.7 2.5-2 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
 export async function study(deckId?: EntityId): Promise<void> {
-  if (deckId !== undefined) rememberDeck(deckId);
+  const deck = deckId === undefined ? currentDeck() : app.store.col.decks.get(deckId);
+  if (!deck) return go.home();
+  rememberDeck(deck.id);
   fullScreen(h("p", { class: "muted center" }, "Preparing…"));
-  const s = new StudySession(app.store, deckId);
+  const s = new StudySession(app.store, deck.lang_pair);
   await s.start();
   new Table(s).next();
 }
 
+/** The pile is empty: more cards from the same words, the same cards again, or stop. */
 function done(s: StudySession) {
-  // Today's words are done: offer more of them, extra practice, or adding words.
-  const more = Math.min(MORE_WORDS, s.unseenLeft());
-  const learnMore = () => {
-    s.extraNew += more;
+  const more = s.moreCount();
+  const again = s.sitting.length;
+  const dealMore = async () => {
+    await s.more();
     new Table(s).next();
   };
-  const practice = () => {
-    s.ahead = true;
+  const goAgain = () => {
+    s.againThese();
     new Table(s).next();
   };
-  const canPractice = s.preds().size > 0;
+  const addWords = !more && !s.unseenLeft();
   fullScreen(
     h(
       "section",
       { class: "done" },
-      h("h2", {}, s.answered ? "All caught up" : "Nothing due right now"),
-      h("p", { class: "muted" }, s.answered ? `${s.answered} ${s.answered === 1 ? "answer" : "answers"} this session.` : "Today's words are done.", more ? "" : " No new words left to learn."),
-      more ? h("button", { class: "primary wide", onclick: learnMore }, `Learn ${more} more ${more === 1 ? "word" : "words"}`) : null,
-      canPractice ? h("button", { class: "secondary wide", onclick: practice }, "Keep practicing") : null,
-      more ? null : h("button", { class: more || canPractice ? "secondary wide" : "primary wide", onclick: () => go.words() }, "Add words"),
+      h("h2", {}, s.answered ? "Pile done" : "Nothing to study right now"),
+      h("p", { class: "muted" }, s.answered ? `${s.answered} ${s.answered === 1 ? "answer" : "answers"}.` : "Today's cards are done.", addWords ? " No new words left to learn." : ""),
+      more ? h("button", { class: "primary wide", onclick: () => void dealMore() }, `${more} more`) : null,
+      again ? h("button", { class: more ? "secondary wide" : "primary wide", onclick: goAgain }, again === 1 ? "Again, this one" : `Again, these ${again}`) : null,
+      addWords ? h("button", { class: "secondary wide", onclick: () => go.words() }, "Add words") : null,
       h("button", { class: "secondary wide", onclick: () => go.home() }, "Done"),
     ),
   );
@@ -166,7 +168,7 @@ class Table {
     const n = this.s.next();
     if (!n) return done(this.s);
     this.n++;
-    this.show(n.pick, n.due);
+    this.show(n.pick, n.left);
   }
 
   /** Each card's own spot in the pile. */
@@ -201,8 +203,8 @@ class Table {
   }
 
   /** The card right under the top one shows the next card's front, so dragging the top away uncovers it. */
-  private showPeek(pick: Pick): void {
-    const id = this.s.peek(pick);
+  private showPeek(): void {
+    const id = this.s.peek();
     const sheet = this.pile.querySelector<HTMLElement>(`.under[data-i="${this.n + 1}"] > .sheet`);
     if (!sheet || id === this.peekId) return;
     this.peekId = id;
@@ -216,14 +218,14 @@ class Table {
     sheet.append(f);
   }
 
-  private show(pick: Pick, due: number): void {
+  private show(pick: Draw, left: number): void {
     const { store } = app;
     const s = this.s;
     const card = store.col.cards.get(pick.card)!;
     const note = store.col.notes.get(card.note_id)!;
     if (!note.picture) void app.pictures.ensure(note.id); // no picture yet: draw one for next time
-    this.left = Math.max(1, s.left(due));
-    this.status.textContent = pick.kind === "new" ? "New word" : pick.kind === "ahead" ? "Extra practice" : `${due} due`;
+    this.left = left;
+    this.status.textContent = pick.kind === "new" ? "New word" : `${left} left`;
     this.recall.textContent = pick.p !== undefined ? `recall ${(pick.p * 100).toFixed(0)}%` : "";
     // The top card was the peeked one in most cases; otherwise it takes that spot anyway.
     this.pile.querySelector(`.under[data-i="${this.n}"]`)?.remove();
@@ -246,7 +248,7 @@ class Table {
     Object.assign(body, body.home);
     body.render();
     this.syncPile();
-    this.showPeek(pick);
+    this.showPeek();
 
     const shownAt = performance.now();
     let revealed = false;
@@ -331,10 +333,10 @@ class Table {
       else body.fly(dir * Math.max(Math.abs(vx), 1.5), clamp(vy, -0.6, 0.6), dir * (0.12 + Math.random() * 0.1), body.w * 2.2, () => el.remove());
 
       try {
-        await s.answer(card, pick, RATING[dir], duration);
+        await s.answer(card, RATING[dir], duration);
       } catch (e) {
         toast(`Could not save: ${errorText(e)}`);
-        this.show(pick, due); // nothing was saved: the same card again
+        this.show(pick, left); // nothing was saved: the same card again
         return;
       }
       await s.refresh(card);

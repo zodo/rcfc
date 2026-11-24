@@ -248,10 +248,10 @@ Everything above is a fold over the log, so it syncs:
 | Addition | Payload | Rule |
 | --- | --- | --- |
 | `notes_labeled` | `note_ids, label, on` | Last write wins per word and label |
-| `review.pile` | the label, or none for a language pile | Which pile the answer came from |
-| `pile_more` | `pile, day, n` | The "5 more" taps |
+| `review.pile` | the pile key: `lang:es>en` or (later) a label; absent when not answered from a pile | Which pile the answer came from |
+| `pile_dealt` | `pile, day, n, more` | The day's deal (`more` false; two devices dealing offline count the largest once) and each "more" |
 
-Done today, cards waiting under a pile, cards left in a pile and each pile's size are all derived from these. Only what is on screen right now (the top card and the one under it) stays on the device. Two devices studying the same pile offline both deal it; after sync the answers merge and the pile may show none left.
+Done today, cards waiting under a pile, cards left in a pile and each pile's size are all derived from these. The deal is recorded (not just "more") so that a pile left unfinished can be told from one that ran out of cards. Only what is on screen right now (the top card and the one under it) stays on the device. Two devices studying the same pile offline both deal it; after sync the answers merge and the pile may show none left.
 
 **Plan**
 

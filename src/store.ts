@@ -6,7 +6,7 @@ import Dexie, { type DexieOptions, type Table } from "dexie";
 import { Collection, EventFactory, eventOrder, type Card, type Preset } from "./domain/collection";
 import type { AppEvent, Review, ReviewPayload } from "./domain/events";
 import type { EntityId } from "./domain/ids";
-import { knownCards, newQueue, unknownPlan, unseenCards, type DayClock } from "./domain/newcards";
+import { knownCards, newQueue, unknownPlan, unseenCards, type DayClock, type Scope } from "./domain/newcards";
 import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin } from "./domain/rows";
 import { needsReplay } from "./domain/sync";
 import { Engine, type EngineApi } from "./engine/client";
@@ -186,8 +186,8 @@ export class Store {
     return { added: fresh.length, replay: this.stale };
   }
 
-  /** Record an answer and feed it to RWKV. Returns the pre-answer P(recall). */
-  async answer(card: Card, rating: ReviewPayload["rating"], durationMs: number): Promise<number> {
+  /** Record an answer (from `pile`, if any) and feed it to RWKV. Returns the pre-answer P(recall). */
+  async answer(card: Card, rating: ReviewPayload["rating"], durationMs: number, pile?: string): Promise<number> {
     const note = this.col.notes.get(card.note_id)!;
     const deck = this.col.decks.get(note.deck_id)!;
     const ev = this.factory.make<Review>("review", {
@@ -198,6 +198,7 @@ export class Store {
       rating,
       duration_ms: Math.round(durationMs),
       tz_offset_min: this.tz(),
+      ...(pile === undefined ? {} : { pile }),
     });
     await this.db.events.add(ev);
     this.col.apply(ev);
@@ -256,13 +257,13 @@ export class Store {
   }
 
   /** First cards of words never studied, all of them (what "Learn more" can introduce). */
-  unseenWords(deckId?: EntityId): Card[] {
-    return unseenCards(this.col, this.clock(), deckId).fresh;
+  unseenWords(scope?: Scope): Card[] {
+    return unseenCards(this.col, this.clock(), scope).fresh;
   }
 
   /** New cards that may be shown now (src/domain/newcards.ts); `extra` raises today's limit. */
-  newQueue(deckId?: EntityId, extra = 0): Card[] {
-    return newQueue(this.col, this.clock(), this.preset().new_per_day + extra, deckId);
+  newQueue(scope?: Scope, extra = 0): Card[] {
+    return newQueue(this.col, this.clock(), this.preset().new_per_day + extra, scope);
   }
 
   /**

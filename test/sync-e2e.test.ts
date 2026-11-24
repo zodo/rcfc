@@ -2,6 +2,7 @@
 // Worker handler (worker/sync.ts) on bun:sqlite.
 import { describe, expect, it } from "bun:test";
 import { PULL_PAGE, PUSH_MAX } from "../src/domain/sync";
+import { StudySession } from "../src/session";
 import { Clock, DAY, Device, Server } from "./support/harness";
 
 async function pair(clock = new Clock()) {
@@ -29,6 +30,26 @@ describe("sync end to end", () => {
     expect(a.store.col.presets.size).toBe(2);
     expect(a.store.preset().preset_id).toBe(b.store.preset().preset_id);
     expect(server.count(b.sync.code)).toBe((await a.store.allEvents()).length);
+  });
+
+  it("a pile is shared: cards answered on one device are done on the other", async () => {
+    const { a, b } = await pair();
+    await a.deck(6);
+    await a.sync.now();
+    await b.sync.join(a.sync.code);
+    const sa = new StudySession(a.store, { from: "es", to: "en" });
+    await sa.start();
+    for (let i = 0; i < 2; i++) {
+      const card = a.store.col.cards.get(sa.next()!.pick.card)!;
+      await sa.answer(card, 3, 1000);
+    }
+    await a.sync.now();
+    await b.sync.now();
+    const sb = new StudySession(b.store, { from: "es", to: "en" });
+    await sb.start();
+    // One deal (made on a), two of its six cards done there.
+    expect([...b.store.col.deals.values()].map((m) => [...m.values()])).toEqual([[{ deal: 6, more: 0 }]]);
+    expect(sb.next()!.left).toBe(4);
   });
 
   it("pushes and pulls in pages", async () => {

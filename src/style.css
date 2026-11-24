@@ -500,12 +500,6 @@ h1.picker .chev {
   padding: 0 16px;
   font-size: 17px;
 }
-.due {
-  color: var(--again);
-}
-.new {
-  color: var(--new);
-}
 
 /* ---------- study ---------- */
 .study {

@@ -257,9 +257,9 @@ async function run(s: Browser, url: string) {
   await s.click("button[aria-label=Back]");
   await s.until("2 words listed", `document.querySelectorAll(".list button.word").length === 2`);
 
-  log("Study tab counts the new words");
+  log("Study tab counts the pile: both new words");
   await s.click("nav .nav-item", "Study");
-  await s.until("2 new", `document.querySelector(".counts .new")?.textContent === "2 new"`);
+  await s.until("2 cards", `document.querySelector(".counts")?.textContent === "2 cards"`);
 
   log("study both words");
   await s.click(".deck button", "Study");
@@ -276,7 +276,7 @@ async function run(s: Browser, url: string) {
   log("done screen: no words left to learn, so it offers adding some");
   await s.until("Add words", `[...document.querySelectorAll(".done button")].some((b) => b.textContent === "Add words")`);
   await s.click("button", "Done");
-  await s.until("no new left", `document.querySelector(".deck") && !document.querySelector(".counts .new")`);
+  await s.until("pile done", `document.querySelector(".counts")?.textContent === "done for today"`);
 
   log("words list and edit");
   await s.click("nav .nav-item", "Words");
@@ -295,8 +295,8 @@ async function run(s: Browser, url: string) {
   log("seeded collection: replay, due cards");
   await s.go(`${url}/?reset&seed=60`);
   await s.until("seeded home", `document.querySelector(".deck-name")?.textContent === "Demo Spanish"`, 90_000);
-  const due = Number((await s.text(".counts .due")).split(" ")[0]);
-  if (!(due > 0)) throw new Error(`seeded deck shows ${due} due`);
+  const pile = Number((await s.text(".counts")).split(" ")[0]);
+  if (!(pile > 0)) throw new Error(`seeded deck shows a pile of ${pile}`);
   await s.click(".deck button", "Study");
   await answerUntilDone(s, 6);
   await s.click("button[aria-label=Close]");
@@ -330,10 +330,16 @@ async function run(s: Browser, url: string) {
   log("the word asked for comes first in study");
   await s.click("nav .nav-item", "Study");
   await s.click(".deck button", "Study");
-  // Due reviews interleave with new words, so look for the first new card.
+  // New words come after the due ones; deal more until one shows.
   for (let i = 0; ; i++) {
-    if (i > 30) throw new Error("no new card in 30 answers");
-    await s.until("card", `document.querySelector(".flashcard:not(.leaving)")`);
+    if (i > 80) throw new Error("no new card in 80 answers");
+    const state = await s.until<string>("a card or the end", `document.querySelector(".flashcard:not(.leaving)") ? "card" : document.querySelector(".done") ? "done" : ""`);
+    if (state === "done") {
+      const more = await s.js<string | null>(`return [...document.querySelectorAll(".done button")].map((b) => b.textContent).find((t) => / more$/.test(t)) ?? null;`);
+      if (!more) throw new Error("pile done without the new word, and nothing more to deal");
+      await s.click(".done button", more);
+      continue;
+    }
     if ((await s.text(".study-top")).includes("New word")) {
       const w = await s.text(".flashcard:not(.leaving) .face.prompt");
       if (w !== fresh[2]) throw new Error(`first new word is "${w}", expected "${fresh[2]}"`);

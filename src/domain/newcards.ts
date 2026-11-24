@@ -38,12 +38,19 @@ export function introducedToday(col: Collection, clock: DayClock): { words: numb
   return { words: words.size, second };
 }
 
+/** Which cards to look at: one deck, the given cards, or every live card. */
+export type Scope = EntityId | readonly Card[] | undefined;
+
+function inScope(col: Collection, scope: Scope): readonly Card[] {
+  return Array.isArray(scope) ? scope : col.liveCards(scope as EntityId | undefined);
+}
+
 /** Never-seen live cards: first cards of unseen words, and second directions ready to start. */
-export function unseenCards(col: Collection, clock: DayClock, deckId?: EntityId): { fresh: Card[]; second: Card[] } {
+export function unseenCards(col: Collection, clock: DayClock, scope?: Scope): { fresh: Card[]; second: Card[] } {
   const today = dayOf(clock.now, clock);
   const second: Card[] = [];
   const fresh: Card[] = [];
-  for (const c of col.liveCards(deckId)) {
+  for (const c of inScope(col, scope)) {
     if (c.reviews > 0) continue;
     const siblings = siblingsOf(col, c);
     const seen = siblings.filter((s) => s.first_review_ts !== undefined);
@@ -62,9 +69,9 @@ export function unseenCards(col: Collection, clock: DayClock, deckId?: EntityId)
  * other side of a word started on an earlier day) each get the daily limit,
  * so a big batch of known words doesn't crowd out new ones.
  */
-export function newQueue(col: Collection, clock: DayClock, limit: number, deckId?: EntityId): Card[] {
-  // `limit` may include today's extra words ("Learn more" when the day's are done).
-  const { fresh, second } = unseenCards(col, clock, deckId);
+export function newQueue(col: Collection, clock: DayClock, limit: number, scope?: Scope): Card[] {
+  // `limit` may include today's extra words ("5 more" when the day's are done).
+  const { fresh, second } = unseenCards(col, clock, scope);
   const today = introducedToday(col, clock);
   return [...second.slice(0, Math.max(0, limit - today.second)), ...fresh.slice(0, Math.max(0, limit - today.words))];
 }

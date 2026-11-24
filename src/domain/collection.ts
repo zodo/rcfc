@@ -44,6 +44,14 @@ export interface Card {
   last_review_ts?: number;
   /** Rating of the latest review (4 after "I know these"). */
   last_rating?: number;
+  /** Pile of the latest review, if it was answered from one. */
+  last_pile?: string;
+}
+
+/** A pile's deals on one study day: the deal (largest, if devices dealt it twice offline) and "more" added on top. */
+export interface DayDeal {
+  deal: number;
+  more: number;
 }
 
 export const DEFAULT_PRESET: Omit<Preset, "preset_id"> = {
@@ -66,6 +74,8 @@ export class Collection {
   /** All reviews in replay order. */
   readonly reviews: Review[] = [];
   readonly eventIds = new Set<string>();
+  /** pile → study day → what was dealt. */
+  readonly deals = new Map<string, Map<number, DayDeal>>();
   private order = 0;
   /** Last-write-wins stamps for mutable fields, key → [ts, device_id]. */
   private stamps = new Map<string, [number, string]>();
@@ -146,11 +156,23 @@ export class Collection {
           if (c.last_review_ts === undefined || e.ts >= c.last_review_ts) {
             c.last_review_ts = e.ts;
             c.last_rating = e.payload.rating;
+            c.last_pile = e.payload.pile;
           }
         }
         break;
       }
+      case "pile_dealt": {
+        const { pile, day, n, more } = e.payload;
+        const days = this.deals.get(pile) ?? new Map<number, DayDeal>();
+        this.deals.set(pile, days);
+        const d = days.get(day) ?? { deal: 0, more: 0 };
+        if (more) d.more += n;
+        else d.deal = Math.max(d.deal, n);
+        days.set(day, d);
+        break;
+      }
       default: {
+        // An event type from a newer app version: ignore it.
         const never: never = e;
         void never;
         void p;

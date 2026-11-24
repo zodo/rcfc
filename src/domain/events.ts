@@ -101,6 +101,20 @@ export interface ReviewPayload {
   duration_ms: number;
   /** Minutes east of UTC at answer time (local day boundaries survive travel). */
   tz_offset_min: number;
+  /** The pile it was answered from (src/domain/piles.ts); absent when answered elsewhere (e.g. "I know"). */
+  pile?: string;
+}
+
+/**
+ * Cards dealt to a pile (src/domain/piles.ts): the day's deal (`more` false)
+ * or "5 more". Only the count is recorded; cards are chosen when drawn.
+ */
+export interface PileDealtPayload {
+  pile: string;
+  /** Absolute study day (src/domain/rows.ts studyDay) the deal belongs to. */
+  day: number;
+  n: number;
+  more: boolean;
 }
 
 /**
@@ -130,6 +144,7 @@ export type NotesPrioritized = EventEnvelope<"notes_prioritized", NotesPrioritiz
 export type CardCreated = EventEnvelope<"card_created", CardCreatedPayload>;
 export type Review = EventEnvelope<"review", ReviewPayload>;
 export type AssetAttached = EventEnvelope<"asset_attached", AssetAttachedPayload>;
+export type PileDealt = EventEnvelope<"pile_dealt", PileDealtPayload>;
 
 export type AppEvent =
   | PresetUpdated
@@ -141,6 +156,7 @@ export type AppEvent =
   | NotesPrioritized
   | CardCreated
   | Review
-  | AssetAttached;
+  | AssetAttached
+  | PileDealt;
 
 export type EventType = AppEvent["type"];

@@ -1,7 +1,7 @@
-// Study tab: one row per language with what is waiting today; first launch
-// asks which language to learn.
+// Study tab: one row per language with the cards left in its pile today;
+// first launch asks which language to learn.
 import { app, go, page } from "../app";
-import { dueCount, TARGET_RECALL } from "../domain/scheduler";
+import { StudySession } from "../session";
 import { h } from "../ui/h";
 import { deckLabel, decks, languageForm, rememberDeck } from "./decks";
 
@@ -21,12 +21,11 @@ export async function home(): Promise<void> {
   await store.predict(store.col.liveCards());
   const rows = decks().map((d) => {
     const cards = store.col.liveCards(d.id);
-    const due = dueCount(store.predsOf(cards), TARGET_RECALL);
-    const fresh = store.newQueue(d.id).length;
+    const left = cards.length ? new StudySession(store, d.lang_pair).view().left() : 0;
     const counts = !cards.length
       ? h("span", { class: "muted" }, "no words yet")
-      : due || fresh
-        ? h("span", {}, due ? h("span", { class: "due" }, `${due} to review`) : null, due > 0 && fresh > 0 ? " · " : null, fresh ? h("span", { class: "new" }, `${fresh} new`) : null)
+      : left
+        ? h("span", {}, `${left} ${left === 1 ? "card" : "cards"}`)
         : h("span", { class: "muted" }, "done for today");
     return h(
       "div",
