@@ -276,6 +276,7 @@ export class Store {
   async markKnown(noteIds: EntityId[]): Promise<number> {
     const cards = knownCards(this.col, noteIds);
     for (const c of cards) await this.answer(c, 4, MARKED_DURATION_MS);
+    await this.predict(cards); // the table draws from the last predictions
     return new Set(cards.map((c) => c.note_id)).size;
   }
 
@@ -286,6 +287,7 @@ export class Store {
   async markUnknown(noteIds: EntityId[]): Promise<{ forgotten: number; next: number }> {
     const { again, next } = unknownPlan(this.col, noteIds);
     for (const c of again) await this.answer(c, 1, MARKED_DURATION_MS);
+    await this.predict(again);
     if (next.length) await this.append([this.factory.make("notes_prioritized", { note_ids: next })]);
     return { forgotten: new Set(again.map((c) => c.note_id)).size, next: next.length };
   }

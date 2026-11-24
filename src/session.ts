@@ -129,8 +129,19 @@ export class StudySession {
 
   /** Fresh predictions and the cards on screen checked, without dealing: the pile as the table shows it. */
   async prepare(): Promise<void> {
+    await this.store.predict(this.source());
+    this.settle();
+  }
+
+  /** Whether every studied card of the pile has a prediction already, so the table can draw it now and refresh them after. */
+  predicted(): boolean {
+    const { preds } = this.store;
+    return this.source().every((c) => c.reviews === 0 || preds.has(c.id));
+  }
+
+  /** The pile from the predictions there are: its size, and the cards on screen checked. */
+  settle(): void {
     const { store } = this;
-    await store.predict(this.source());
     this.size = pileSize(store.col, this.pile, store.clock());
     const v = this.view();
     // Cards on screen last time: still valid unless deleted or answered right since (e.g. on another device).

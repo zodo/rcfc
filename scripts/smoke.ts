@@ -359,7 +359,11 @@ async function run(s: Browser, url: string) {
   await s.click(".select-info button", "Cancel");
   await s.until("tab bar back", `!document.querySelector(".list.selecting") && document.querySelector(".select-actions.hidden")`);
   log("the word asked for comes first in study");
+  // Back on the table: drawn at once from the last predictions, never "Loading…" first.
+  await s.js(`window.sawLoading = false; new MutationObserver(() => { if (document.body.textContent.includes("Loading…")) window.sawLoading = true; }).observe(document.body, { childList: true, subtree: true });`);
   await s.click("nav .nav-item", "Study");
+  await s.until("table", `document.querySelector(".table")`);
+  if (await s.js<boolean>(`return window.sawLoading;`)) throw new Error("the Study tab showed Loading… before the table");
   await s.click("button.spot");
   // New words come after the due ones; deal more until one shows.
   for (let i = 0; ; i++) {

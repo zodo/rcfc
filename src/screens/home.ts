@@ -38,17 +38,36 @@ export async function home(): Promise<void> {
     );
     return;
   }
-  // Re-drawn in place (a pile refilled): the table stays while the new one is made.
-  if (!(app.current === "home" && app.root.querySelector(".table"))) page("home", "Study", h("p", { class: "muted" }, "Loading…"));
+  const gen = ++drawn;
+  const { store } = app;
+  const piles = [...langs.map((l) => ({ s: new StudySession(store, languagePile(l)), label: langName(l) })), ...store.col.liveLabels().map((l) => ({ s: new StudySession(store, labelPile(l.id)), label: l.name }))];
+  const cards = new Map(piles.flatMap(({ s }) => s.source().map((c) => [c.id, c] as const)));
+  const refresh = () => store.predict([...cards.values()]);
+  // With the last predictions the table is drawn at once; fresh ones come after
+  // (all piles in one go) and redraw only the spots they change. The first time
+  // there are none yet: the table waits for them.
+  const ready = piles.every(({ s }) => s.predicted());
+  if (!ready) {
+    // Re-drawn in place (a pile refilled): the table stays while the new one is made.
+    if (!(app.current === "home" && app.root.querySelector(".table"))) page("home", "Study", h("p", { class: "muted" }, "Loading…"));
+    await refresh();
+    if (gen !== drawn || app.current !== "home") return; // drawn again, or left, meanwhile
+  }
   const moved = { cleared: app.cleared, refilled: app.refilled };
   app.cleared = app.refilled = null;
-  const spots = [];
-  for (const l of langs) spots.push(await spot(languagePile(l), langName(l), moved));
-  for (const l of app.store.col.liveLabels()) spots.push(await spot(labelPile(l.id), l.name, moved));
-  spots.push(newPile());
-  if (app.current !== "home") return; // left while loading
-  page("home", "Study", h("div", { class: "table" }, ...spots));
+  const spots = piles.map(({ s, label }) => spot(s, label, moved));
+  page("home", "Study", h("div", { class: "table" }, ...spots.map((x) => x.el), newPile()));
+  if (!ready) return;
+  await refresh();
+  if (gen !== drawn || app.current !== "home") return;
+  piles.forEach(({ s, label }, i) => {
+    const fresh = spot(s, label, { cleared: null, refilled: null });
+    if (fresh.key !== spots[i].key) spots[i].el.replaceWith(fresh.el);
+  });
 }
+
+/** Draws of the table: a later one wins over an earlier one still waiting for predictions. */
+let drawn = 0;
 
 /** What just happened to a pile, for its spot to show it. */
 interface Moved {
@@ -61,16 +80,15 @@ const CHECK_DRAWN = 780;
 /** How long the cards of a refilled pile take to land, all of them (style.css .spot.dealt). */
 const LANDING_MS = 420;
 
-/** One pile's spot (a language's or a sticker's): its pile, or the outline a finished pile leaves. */
-async function spot(key: string, label: string, moved: Moved): Promise<HTMLElement> {
-  const s = new StudySession(app.store, key);
+/** One pile's spot (a language's or a sticker's): its pile, or the outline a finished pile leaves; `key` = what it shows. */
+function spot(s: StudySession, label: string, moved: Moved): { el: HTMLElement; key: string } {
   const name = h("div", { class: "pile-name" }, s.label === undefined ? label : stickerTag(app.store.col.liveLabel(s.label)!));
   if (s.label !== undefined && s.allCount() === 0) {
     const id = s.label;
-    return h("div", { class: "pile-cell" }, h("button", { class: "spot empty", "aria-label": `${label}: add words`, onclick: () => editSticker(id) }), name, h("div", { class: "pile-count" }, "no words yet"));
+    return { el: h("div", { class: "pile-cell" }, h("button", { class: "spot empty", "aria-label": `${label}: add words`, onclick: () => editSticker(id) }), name, h("div", { class: "pile-count" }, "no words yet")), key: "empty" };
   }
   const seed = derivedEntityId(s.pile) % 233280; // the pile's own poses, the same every time
-  await s.prepare();
+  s.settle();
   const n = s.next();
   if (!n) {
     const done = s.doneToday().length;
@@ -81,7 +99,7 @@ async function spot(key: string, label: string, moved: Moved): Promise<HTMLEleme
       b.append(...flecks(seed));
       setTimeout(() => haptic("double"), CHECK_DRAWN);
     }
-    return h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due"));
+    return { el: h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due")), key: `finished:${done}` };
   }
   void app.pictures.ahead(s.upcoming(AHEAD));
   const pile = h("span", { class: "pile-stack" });
@@ -108,7 +126,7 @@ async function spot(key: string, label: string, moved: Moved): Promise<HTMLEleme
   };
   const b = h("button", { class: `spot${dealt ? " dealt" : ""}`, "aria-label": `Study ${label}`, onclick: study }, pile);
   b.style.marginBottom = `${Math.round(faces.length * CARD_PX)}px`;
-  return h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, `${n.left} ${n.left === 1 ? "card" : "cards"}`));
+  return { el: h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, `${n.left} ${n.left === 1 ? "card" : "cards"}`)), key: `${n.pick.card}:${n.left}:${faces.join(",")}` };
 }
 
 /** Bits of coloured paper that jump off a check as it is drawn. */
