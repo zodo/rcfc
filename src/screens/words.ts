@@ -123,18 +123,27 @@ export function words(): void {
   const setMode = (m: Mode) => {
     releaseMode?.();
     releaseMode = null;
+    const was = mode;
     mode = m;
     selected.clear();
     document.querySelector("nav.nav:not(.select-actions)")?.classList.toggle("hidden", m === "select");
     actions.classList.toggle("hidden", m !== "select");
-    list.classList.toggle("selecting", m === "select");
-    list.classList.toggle("editing", m === "edit");
     if (m !== "list")
       releaseMode = hold(() => {
         releaseMode = null;
         toList();
       });
-    rebuild();
+    // Select keeps the same rows (and the scroll); Edit shows other words, so it rebuilds,
+    // laid out in the old mode first so the words still slide over to make room.
+    if (was !== "edit" && m !== "edit") {
+      for (const r of rows.values()) r.el.classList.remove("selected");
+      renderInfo();
+    } else {
+      rebuild();
+      void list.offsetWidth;
+    }
+    list.classList.toggle("selecting", m === "select");
+    list.classList.toggle("editing", m === "edit");
   };
 
   const link = (label: string, f: () => void, cls = "") => h("button", { class: `link small${cls}`, onclick: f }, label);

@@ -335,8 +335,11 @@ async function run(s: Browser, url: string) {
 
   log("select words: know, don't know, delete");
   const before = await words(s);
+  await s.js(`window.firstRow = document.querySelector(".list button.word");`);
   await s.click(".select-info button", "Select");
   await s.until("selecting", `document.querySelector(".list.selecting")`);
+  // The same rows stay, so the words slide over to make room for the circles.
+  await s.until("same rows slide over", `document.querySelector(".list button.word") === window.firstRow`, 1000);
   // Two words never studied: the model must call them known once marked.
   const fresh = await s.js<string[]>(`return [...document.querySelectorAll(".list button.word")].filter((b) => b.querySelector(".st-new")).slice(0, 3).map((b) => b.querySelector(".w-front").textContent);`);
   if (fresh.length < 3) throw new Error("seeded list has fewer than 3 new words");
