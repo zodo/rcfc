@@ -38,6 +38,26 @@ describe("flattenPaper", () => {
     expect(px).toEqual(before);
   });
 
+  it("removes grain and a stray sheet edge outside the scene, keeps a pale piece at its edge", () => {
+    let seed = 1;
+    const noise = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 8;
+    const px = photo((x, y) => {
+      const v = 238 + noise();
+      if (x > 60 && x < 130 && y > 40 && y < 90) return [210, 100, 70]; // coloured piece
+      if (x >= 130 && x < 140 && y > 40 && y < 90) return [150, 160, 150]; // pale grey-green piece at its edge
+      if (x === 170 || x === 171) return [200, 200, 200]; // thin sheet edge, far from the scene
+      return [v, v, v];
+    });
+    expect(flattenPaper(px, W, H)).toBe(true);
+    expect(Math.min(...at(px, 170, 64))).toBeGreaterThanOrEqual(252); // sheet edge gone
+    // Grain is gone: at most 3 levels from white (invisible).
+    for (const [x, y] of [[20, 20], [100, 115], [180, 100], [40, 60]]) expect(Math.min(...at(px, x, y))).toBeGreaterThanOrEqual(252);
+    const [r, g, b] = at(px, 135, 64);
+    expect(Math.abs(r - 160)).toBeLessThan(10);
+    expect(g).toBeGreaterThan(r);
+    expect(b).toBeLessThan(g);
+  });
+
   it("leaves dark or coloured backgrounds alone", () => {
     expect(flattenPaper(photo(() => [60, 70, 80]), W, H)).toBe(false);
     expect(flattenPaper(photo(() => [240, 180, 120]), W, H)).toBe(false);

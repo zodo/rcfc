@@ -18,7 +18,7 @@ export type PicState = "queued" | "drawing" | "waiting" | "failed";
 const MAX_TRIES = 5;
 const JPEG_QUALITY = 0.82;
 /** Bump when downloaded pictures should be processed again. */
-export const BLOB_VERSION = 2;
+export const BLOB_VERSION = 3;
 
 export interface Prepared {
   data: ArrayBuffer;
