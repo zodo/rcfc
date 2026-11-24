@@ -42,8 +42,8 @@ function setup(h = new FakeHistory()) {
   const shown: string[] = [];
   const screen = (name: string) => (...args: unknown[]) => void shown.push(args.length ? `${name}(${args.join(",")})` : name);
   const screens = { home: screen("home"), study: screen("study"), words: screen("words"), add: screen("add"), import: screen("import"), edit: screen("edit"), addLanguage: screen("addLanguage"), settings: screen("settings") } as Screens;
-  const go = router(screens, h, h);
-  return { h, go, shown, last: () => shown[shown.length - 1] };
+  const { go, hold } = router(screens, h, h);
+  return { h, go, hold, shown, last: () => shown[shown.length - 1] };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -117,5 +117,51 @@ describe("router", () => {
     expect(shown).toEqual(["edit(5)"]);
     h.back();
     expect(last()).toBe("words");
+  });
+
+  it("back closes what a screen holds open, innermost first, and stays on the screen", () => {
+    const { h, go, hold, shown } = setup();
+    go.words();
+    const closed: string[] = [];
+    hold(() => closed.push("select"));
+    hold(() => closed.push("sheet"));
+    h.back();
+    expect(closed).toEqual(["sheet"]);
+    h.back();
+    expect(closed).toEqual(["sheet", "select"]);
+    expect(shown.at(-1)).toBe("words");
+    h.back();
+    expect(shown.at(-1)).toBe("home");
+  });
+
+  it("closing a hold by other means steps back over its entry without re-rendering", async () => {
+    const { h, go, hold, shown } = setup();
+    go.words();
+    const release = hold(() => {
+      throw new Error("not by back");
+    });
+    release();
+    await tick();
+    expect(h.names()).toEqual(["home", "words"]);
+    expect(shown).toEqual(["home", "words"]);
+    h.back();
+    expect(shown.at(-1)).toBe("home");
+  });
+
+  it("going on from inside a hold drops it first", async () => {
+    const { h, go, hold, last } = setup();
+    hold(() => {});
+    go.add();
+    await tick();
+    await tick();
+    expect(last()).toBe("add");
+    expect(h.names()).toEqual(["home", "words", "add"]);
+    const release = hold(() => {});
+    release();
+    go.words();
+    await tick();
+    await tick();
+    expect(last()).toBe("words");
+    expect(h.names()).toEqual(["home", "words"]);
   });
 });

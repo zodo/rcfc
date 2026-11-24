@@ -20,16 +20,24 @@ function siblingsOf(col: Collection, c: Card): Card[] {
   return (col.cardsByNote.get(c.note_id) ?? []).filter((id) => id !== c.id).map((id) => col.cards.get(id)!);
 }
 
+/** The studied language of a card's word. */
+function langOf(col: Collection, c: Card): string {
+  return col.notes.get(c.note_id)?.lang_pair.from ?? "";
+}
+
 /**
  * Cards introduced today (except ones known on first sight), split into fresh words (no card of the note seen
- * before today) and second directions (a sibling was seen on an earlier day).
+ * before today) and second directions (a sibling was seen on an earlier day). Only words of `lang`, when given;
+ * cards first answered from a pile in `notCounted` (a sticker pile the user asked for more) don't count.
  */
-export function introducedToday(col: Collection, clock: DayClock): { words: number; second: number } {
+export function introducedToday(col: Collection, clock: DayClock, lang?: string, notCounted?: ReadonlySet<string>): { words: number; second: number } {
   const today = dayOf(clock.now, clock);
   const words = new Set<EntityId>();
   let second = 0;
   for (const c of col.cards.values()) {
     if (c.first_review_ts === undefined || dayOf(c.first_review_ts, clock) !== today) continue;
+    if (lang !== undefined && langOf(col, c) !== lang) continue;
+    if (c.first_pile !== undefined && notCounted?.has(c.first_pile)) continue;
     // Already known on first sight (Easy, e.g. sorted as known): not a new burden.
     if (c.first_rating === 4) continue;
     if (siblingsOf(col, c).some((s) => s.first_review_ts !== undefined && dayOf(s.first_review_ts, clock) < today)) second++;
@@ -65,15 +73,28 @@ export function unseenCards(col: Collection, clock: DayClock, scope?: Scope): { 
 }
 
 /**
- * New cards that may be shown now. Fresh words and second directions (the
- * other side of a word started on an earlier day) each get the daily limit,
- * so a big batch of known words doesn't crowd out new ones.
+ * New cards that may be shown now. Each studied language has its own daily
+ * limit (`limit`, or `limit(lang)`; Infinity = none). Fresh words and second
+ * directions (the other side of a word started on an earlier day) each get
+ * it, so a big batch of known words doesn't crowd out new ones.
  */
-export function newQueue(col: Collection, clock: DayClock, limit: number, scope?: Scope): Card[] {
-  // `limit` may include today's extra words ("5 more" when the day's are done).
+export function newQueue(col: Collection, clock: DayClock, limit: number | ((lang: string) => number), scope?: Scope, notCounted?: ReadonlySet<string>): Card[] {
+  // A limit may include today's extra words ("5 more" when the day's are done).
+  const limitOf = typeof limit === "number" ? () => limit : limit;
   const { fresh, second } = unseenCards(col, clock, scope);
-  const today = introducedToday(col, clock);
-  return [...second.slice(0, Math.max(0, limit - today.second)), ...fresh.slice(0, Math.max(0, limit - today.words))];
+  const used = new Map<string, { words: number; second: number }>();
+  const usedOf = (l: string) => used.get(l) ?? used.set(l, introducedToday(col, clock, l, notCounted)).get(l)!;
+  const take = (cards: Card[], kind: "words" | "second") => {
+    const taken = new Map<string, number>();
+    return cards.filter((c) => {
+      const l = langOf(col, c);
+      const k = taken.get(l) ?? 0;
+      if (k >= limitOf(l) - usedOf(l)[kind]) return false;
+      taken.set(l, k + 1);
+      return true;
+    });
+  };
+  return [...take(second, "second"), ...take(fresh, "words")];
 }
 
 /**

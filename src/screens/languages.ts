@@ -5,13 +5,15 @@
 // language. Under each studied language sits one hidden deck, because the
 // model takes a deck id (src/domain/rows.ts): made with its first word, its id
 // derived from the language so devices adding offline agree.
-import { app } from "../app";
+import { app, go } from "../app";
 import { derivedEntityId, type EntityId } from "../domain/ids";
+import { labelPile, pileLabel } from "../domain/labels";
 import { languagePile } from "../domain/piles";
 import { h, LANGS, langName, langSelect } from "../ui/h";
 
 const LAST_KEY = "rcfc:lastLanguage";
-const OPEN_KEY = "rcfc:wordsLanguage";
+const OPEN_KEY = "rcfc:wordsOpen";
+const OLD_OPEN_KEY = "rcfc:wordsLanguage"; // a language code, before stickers
 const TRANSLATION_KEY = "rcfc:translation:";
 
 /** Every studied language with words, in the order its first word was added. */
@@ -45,14 +47,48 @@ export function rememberLanguage(lang: string): void {
   write(LAST_KEY, lang);
 }
 
-/** The language open in Words; null = all words. */
+/** The chip open in Words, as a pile key: a language (`lang:es`) or a sticker (`label:7`); null = all words. */
+export function openChip(): string | null {
+  const old = read(OLD_OPEN_KEY);
+  const k = read(OPEN_KEY) ?? (old ? languagePile(old) : null);
+  if (!k) return null;
+  const label = pileLabel(k);
+  if (label !== undefined) return app.store.col.liveLabel(label) ? k : null;
+  return languages().includes(k.slice("lang:".length)) ? k : null;
+}
+export function setOpenChip(k: string | null): void {
+  write(OPEN_KEY, k);
+  write(OLD_OPEN_KEY, null);
+  if (k?.startsWith("lang:")) rememberLanguage(k.slice("lang:".length));
+}
+
+/** The language open in Words; null = all words or a sticker. */
 export function openLanguage(): string | null {
-  const l = read(OPEN_KEY);
-  return l && languages().includes(l) ? l : null;
+  const k = openChip();
+  return k?.startsWith("lang:") ? k.slice("lang:".length) : null;
 }
 export function setOpenLanguage(lang: string | null): void {
-  write(OPEN_KEY, lang);
-  if (lang) rememberLanguage(lang);
+  setOpenChip(lang ? languagePile(lang) : null);
+}
+
+/** The sticker open in Words, if one is. */
+export function openLabel(): EntityId | undefined {
+  const k = openChip();
+  return k ? pileLabel(k) : undefined;
+}
+
+let editNext = false;
+/** Open Words on this sticker, in Edit (sticking words on and off). */
+export function editSticker(id: EntityId): void {
+  setOpenChip(labelPile(id));
+  editNext = true;
+  go.words();
+}
+/** Whether Words should open in Edit (once). */
+export function takeEditNext(): boolean {
+  const e = editNext;
+  editNext = false;
+  return e;
 }
 
 /** The language a new word's translation is in: the last one picked for this language, else its latest word's, else any word's. */

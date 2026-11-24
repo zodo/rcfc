@@ -71,9 +71,10 @@ export function pileSize(col: Collection, pile: string, clock: DayClock): number
   if (!days.length) return PILE_START;
   const done = doneFromPile(col, pile, clock.rolloverHour, days[0][0]);
   let size = PILE_START;
-  for (const [day, { deal, more }] of days) {
-    const unfinished = (done.get(day)?.size ?? 0) < deal + more;
-    size += (more > 0 ? PILE_STEP : 0) - (unfinished ? PILE_STEP : 0);
+  for (const [day, { deal, more, all }] of days) {
+    const asked = more - all; // "5 more"; "All N" is a one-off
+    const unfinished = (done.get(day)?.size ?? 0) < deal + asked;
+    size += (asked > 0 ? PILE_STEP : 0) - (unfinished ? PILE_STEP : 0);
     size = Math.max(PILE_MIN, Math.min(PILE_MAX, size));
   }
   return size;
@@ -89,8 +90,19 @@ export interface PileInput {
   clock: DayClock;
   /** Today's size (pileSize). */
   size: number;
-  /** New words a day; undefined = no limit (a label pile). */
-  newPerDay?: number;
+  /** New words allowed today per studied language, "more" included (Infinity = no limit). */
+  newLimit: (lang: string) => number;
+  /** Piles whose new words don't count toward the limit (sticker piles the user asked for more today). */
+  notCounted?: ReadonlySet<string>;
+  /**
+   * Draw every word once, weakest first, due or not and done today or not
+   * (those last): a sticker pile after "5 more" or "All N". One face per word.
+   */
+  wide?: boolean;
+  /** Words on top of another pile: not drawn here unless nothing else is left. */
+  avoid?: ReadonlySet<EntityId>;
+  /** Cards that belong elsewhere (tucked under another pile): never drawn here. */
+  skip?: (c: Card) => boolean;
 }
 
 /** A pile as it lies on the table today. */
@@ -108,16 +120,21 @@ export class PileView {
   readonly againToday: EntityId[] = [];
   private readonly waiting = new Set<EntityId>();
   private readonly doneToday = new Set<EntityId>();
+  /** The pile's words, without cards tucked under other piles. */
+  private readonly source: readonly Card[];
+  /** Wide: words answered right from this pile since the latest "All N" (today, without one). */
+  private taken?: Set<EntityId>;
 
   constructor(private i: PileInput) {
     const { col, pile, clock } = i;
+    this.source = i.skip ? i.source.filter((c) => !i.skip!(c)) : i.source;
     this.today = today(clock);
     const d = col.deals.get(pile)?.get(this.today);
     this.dealt = d ? d.deal + d.more : 0;
     this.more = d?.more ?? 0;
     this.completed = doneFromPile(col, pile, clock.rolloverHour, this.today).get(this.today) ?? new Set();
     const tucked: Card[] = [];
-    for (const c of i.source) {
+    for (const c of this.source) {
       if (c.last_review_ts === undefined) continue;
       if (c.last_rating === 1 && c.last_pile === pile) tucked.push(c);
       else if (c.last_rating! >= 2 && this.dayOf(c.last_review_ts) === this.today) this.doneToday.add(c.id);
@@ -162,14 +179,9 @@ export class PileView {
     return Math.min(this.i.size, this.waiting.size + this.available());
   }
 
-  /** New words allowed now: the daily limit plus today's "more". */
-  private newLimit(): number {
-    return this.i.newPerDay === undefined ? Infinity : this.i.newPerDay + this.more;
-  }
-
   private dueCards(): { card: Card; p: number }[] {
     const out: { card: Card; p: number }[] = [];
-    for (const c of this.i.source) {
+    for (const c of this.source) {
       const p = this.i.preds.get(c.id);
       if (c.reviews > 0 && p !== undefined && p < TARGET_RECALL && !this.doneToday.has(c.id) && !this.waiting.has(c.id)) out.push({ card: c, p });
     }
@@ -177,12 +189,60 @@ export class PileView {
   }
 
   private newCards(): Card[] {
-    return newQueue(this.i.col, this.i.clock, this.newLimit(), this.i.source);
+    return newQueue(this.i.col, this.i.clock, this.i.newLimit, this.source, this.i.notCounted);
   }
 
-  /** Cards that could be drawn into the pile now (twin gap ignored): due ones, then new words. */
+  /** Words answered right from this pile since the latest "All N", or today. */
+  private takenNotes(): Set<EntityId> {
+    if (this.taken) return this.taken;
+    const { col, pile } = this.i;
+    const since = col.deals.get(pile)?.get(this.today)?.allTs;
+    this.taken = new Set();
+    if (since === undefined) for (const id of this.completed) this.taken.add(col.cards.get(id)!.note_id);
+    else
+      for (let k = col.reviews.length - 1; k >= 0 && col.reviews[k].ts >= since; k--) {
+        const r = col.reviews[k];
+        if (r.payload.pile === pile && r.payload.rating >= 2) this.taken.add(r.payload.note_id);
+      }
+    return this.taken;
+  }
+
+  /**
+   * Wide: one face per word not taken yet and not waiting under the pile, the
+   * one needing the user most (a studied face, weakest first; else its new
+   * face). Words not done today first, studied before new; then done ones.
+   */
+  private wideCards(fits: (c: Card) => boolean = () => true): Card[] {
+    const { col, clock, preds } = this.i;
+    const taken = this.takenNotes();
+    const fresh = newQueue(col, clock, Infinity, this.source);
+    const freshIds = new Set(fresh.map((c) => c.id));
+    const newRank = new Map(fresh.map((c, k) => [c.id, k]));
+    const byNote = new Map<EntityId, Card[]>();
+    const held = new Set<EntityId>();
+    for (const c of this.source) {
+      if (this.waiting.has(c.id)) held.add(c.note_id);
+      if (!fits(c) || !(c.reviews > 0 ? preds.has(c.id) : freshIds.has(c.id))) continue;
+      const list = byNote.get(c.note_id) ?? [];
+      list.push(c);
+      byNote.set(c.note_id, list);
+    }
+    const ranked: { card: Card; key: [number, number] }[] = [];
+    for (const [note, faces] of byNote) {
+      if (taken.has(note) || held.has(note)) continue;
+      const open = faces.filter((c) => !this.doneToday.has(c.id));
+      const pool = open.length ? open : faces;
+      const studied = pool.filter((c) => c.reviews > 0).sort((a, b) => preds.get(a.id)! - preds.get(b.id)!);
+      const card = studied[0] ?? pool[0];
+      const group = open.length ? 0 : 2;
+      ranked.push({ card, key: card.reviews > 0 ? [group, preds.get(card.id)!] : [group + 1, newRank.get(card.id) ?? 0] });
+    }
+    return ranked.sort((a, b) => a.key[0] - b.key[0] || a.key[1] - b.key[1]).map((r) => r.card);
+  }
+
+  /** Cards that could be drawn into the pile now (twin gap ignored): due ones, then new words; wide, every word once. */
   available(): number {
-    return this.dueCards().length + this.newCards().length;
+    return this.i.wide ? this.wideCards().length : this.dueCards().length + this.newCards().length;
   }
 
   /** Whether a sibling of this card was answered within the twin gap. */
@@ -214,19 +274,35 @@ export class PileView {
     const visibleFresh = visible.filter((id) => !this.waiting.has(id)).length;
     if (this.freshSlots - visibleFresh > 0) {
       const notes = new Set(visible.map((id) => this.i.col.cards.get(id)?.note_id));
-      const free = (c: Card) => !vis.has(c.id) && !notes.has(c.note_id) && fits(c);
-      const due = this.dueCards().filter((d) => free(d.card));
-      const cool = due.find((d) => !this.twinHot(d.card));
-      if (cool) return { card: cool.card.id, kind: "due", p: cool.p };
-      const fresh = this.newCards().filter(free);
-      const coolNew = fresh.find((c) => !this.twinHot(c));
-      if (coolNew) return { card: coolNew.id, kind: "new" };
-      // Only twins of just-answered cards left: better than nothing.
-      if (due[0]) return { card: due[0].card.id, kind: "due", p: due[0].p };
-      if (fresh[0]) return { card: fresh[0].id, kind: "new" };
+      const avoid = this.i.avoid;
+      // Words on top of other piles only when nothing else is left.
+      for (const spare of avoid?.size ? [true, false] : [false]) {
+        const free = (c: Card) => !vis.has(c.id) && !notes.has(c.note_id) && fits(c) && !(spare && avoid!.has(c.note_id));
+        const chosen = this.choose(free, fits);
+        if (chosen) return chosen;
+      }
     }
     const again = this.againToday.find(ok);
     return again === undefined ? null : this.draw(again, "again");
+  }
+
+  /** A card chosen now: due ones weakest first, then new words (wide: every word once); twins of just-answered cards last. */
+  private choose(free: (c: Card) => boolean, fits: (c: Card) => boolean): Draw | null {
+    if (this.i.wide) {
+      const cards = this.wideCards(fits).filter(free);
+      const c = cards.find((c) => !this.twinHot(c)) ?? cards[0];
+      return c ? this.draw(c.id, c.reviews > 0 ? "due" : "new") : null;
+    }
+    const due = this.dueCards().filter((d) => free(d.card));
+    const cool = due.find((d) => !this.twinHot(d.card));
+    if (cool) return { card: cool.card.id, kind: "due", p: cool.p };
+    const fresh = this.newCards().filter(free);
+    const coolNew = fresh.find((c) => !this.twinHot(c));
+    if (coolNew) return { card: coolNew.id, kind: "new" };
+    // Only twins of just-answered cards left: better than nothing.
+    if (due[0]) return { card: due[0].card.id, kind: "due", p: due[0].p };
+    if (fresh[0]) return { card: fresh[0].id, kind: "new" };
+    return null;
   }
 
   private draw(id: EntityId, kind: DrawKind): Draw {
@@ -234,8 +310,9 @@ export class PileView {
     return p === undefined ? { card: id, kind } : { card: id, kind, p };
   }
 
-  /** Whether a card is done for today (answered right, in any pile). */
+  /** Whether a card on screen can no longer lie there: done for today (wide: its word answered right from this pile since "All"). */
   isDone(id: EntityId): boolean {
-    return this.doneToday.has(id);
+    if (!this.i.wide) return this.doneToday.has(id);
+    return this.takenNotes().has(this.i.col.cards.get(id)?.note_id ?? 0);
   }
 }

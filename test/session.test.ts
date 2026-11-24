@@ -45,7 +45,7 @@ describe("piles", () => {
     expect(s.next()!.left).toBe(10);
     expect(await run(s)).toHaveLength(10);
     expect(s.next()).toBeNull();
-    expect(deals(d)).toEqual([{ deal: 10, more: 0 }]);
+    expect(deals(d)).toEqual([{ deal: 10, more: 0, all: 0 }]);
     // Opening it again the same day deals nothing new.
     expect((await sitting(d)).next()).toBeNull();
     expect(deals(d)).toHaveLength(1);
@@ -95,7 +95,7 @@ describe("piles", () => {
     expect(s.moreCount()).toBe(5);
     await s.more();
     expect(await run(s)).toHaveLength(5);
-    expect(deals(d)).toEqual([{ deal: 20, more: 5 }]);
+    expect(deals(d)).toEqual([{ deal: 20, more: 5, all: 0 }]);
     clock.advance(DAY);
     expect((await sitting(d)).view()["i"].size).toBe(25);
   });
@@ -247,7 +247,7 @@ describe("piles", () => {
     expect(edges).toHaveLength(9);
     expect(deals(d)).toEqual([]); // looking deals nothing
     const s = await sitting(d);
-    expect(deals(d)).toEqual([{ deal: 10, more: 0 }]);
+    expect(deals(d)).toEqual([{ deal: 10, more: 0, all: 0 }]);
     expect(s.next()!.pick.card).toBe(shown.pick.card);
     expect(s.faces(4)).toEqual(edges.slice(0, 4)); // the study screen shows fewer edges, same colours
     expect(new StudySession(d.store, ES).faces(9)).toEqual(edges); // and the table's deeper ones stay
@@ -295,7 +295,7 @@ describe("piles", () => {
     clock.advance(DAY);
     // Yesterday, as an older app recorded it: "more" on the pair's pile.
     await d.store.append([d.store.factory.make<PileDealt>("pile_dealt", { pile: "lang:es>en", day, n: 5, more: true })]);
-    expect(deals(d)).toEqual([{ deal: 10, more: 5 }]);
+    expect(deals(d)).toEqual([{ deal: 10, more: 5, all: 0 }]);
   });
 
   it("two devices dealing the same day offline count the deal once", async () => {
@@ -303,7 +303,7 @@ describe("piles", () => {
     await d.deck(3);
     const day = (await sitting(d)).view().today;
     await d.store.append([d.store.factory.make<PileDealt>("pile_dealt", { pile: "lang:es>en", day, n: 2, more: false })]);
-    expect(deals(d)).toEqual([{ deal: 3, more: 0 }]);
+    expect(deals(d)).toEqual([{ deal: 3, more: 0, all: 0 }]);
   });
 
 });

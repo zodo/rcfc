@@ -4,7 +4,8 @@
 // to reload.
 import Dexie, { type DexieOptions, type Table } from "dexie";
 import { Collection, EventFactory, eventOrder, type Card, type Preset } from "./domain/collection";
-import type { AppEvent, Review, ReviewPayload } from "./domain/events";
+import type { AppEvent, LabelCreated, LabelDeleted, LabelRenamed, NotesLabeled, Review, ReviewPayload } from "./domain/events";
+import { labelIdFor, labelName } from "./domain/labels";
 import type { EntityId } from "./domain/ids";
 import { knownCards, newQueue, unknownPlan, unseenCards, type DayClock, type Scope } from "./domain/newcards";
 import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin } from "./domain/rows";
@@ -285,6 +286,40 @@ export class Store {
     for (const c of again) await this.answer(c, 1, MARKED_DURATION_MS);
     if (next.length) await this.append([this.factory.make("notes_prioritized", { note_ids: next })]);
     return { forgotten: new Set(again.map((c) => c.note_id)).size, next: next.length };
+  }
+
+  /** A sticker with this name: the one there is, else a new one. Returns its id. */
+  async makeLabel(name: string): Promise<EntityId> {
+    const { id, exists } = labelIdFor(this.col, name);
+    if (!exists) await this.append([this.factory.make<LabelCreated>("label_created", { label_id: id, name: labelName(name) })]);
+    return id;
+  }
+
+  /**
+   * Rename a sticker; to the name of another one, merge into it (its words get
+   * that one, this one is deleted). Returns the sticker the words wear now.
+   */
+  async renameLabel(id: EntityId, name: string): Promise<EntityId> {
+    const other = this.col.labelByName(name);
+    if (other && other.id !== id) {
+      const notes = this.col.labelNotes(id).map((n) => n.id);
+      await this.append([
+        ...(notes.length ? [this.factory.make<NotesLabeled>("notes_labeled", { label_id: other.id, note_ids: notes, on: true })] : []),
+        this.factory.make<LabelDeleted>("label_deleted", { label_id: id }),
+      ]);
+      return other.id;
+    }
+    if (this.col.liveLabel(id)?.name !== labelName(name)) await this.append([this.factory.make<LabelRenamed>("label_renamed", { label_id: id, name: labelName(name) })]);
+    return id;
+  }
+
+  async deleteLabel(id: EntityId): Promise<void> {
+    await this.append([this.factory.make<LabelDeleted>("label_deleted", { label_id: id })]);
+  }
+
+  /** Stick a sticker on words, or peel it off. */
+  async stick(labelId: EntityId, noteIds: EntityId[], on: boolean): Promise<void> {
+    if (noteIds.length) await this.append([this.factory.make<NotesLabeled>("notes_labeled", { label_id: labelId, note_ids: noteIds, on })]);
   }
 
   async allEvents(): Promise<AppEvent[]> {

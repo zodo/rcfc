@@ -46,6 +46,9 @@ export function importScreen(): void {
               const deckId = await deckFor(langPair.from);
               const res = importDuocardsCsv(text, { deckId, langPair, deviceId: store.deviceId, existing: store.col.liveNotes().map((n) => n.fields) });
               await store.append(res.events as AppEvent[]);
+              // A sticker naming the source, so what came in can be found and studied together.
+              const imported = (res.events as AppEvent[]).flatMap((e) => (e.type === "note_created" ? [e.payload.note_id] : []));
+              if (imported.length) await store.stick(await store.makeLabel("Duocards"), imported, true);
               await requestPersistence();
               rememberLanguage(langPair.from);
               rememberTranslation(langPair.from, langPair.to);

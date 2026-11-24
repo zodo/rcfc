@@ -48,7 +48,7 @@ describe("sync end to end", () => {
     const sb = new StudySession(b.store, "es");
     await sb.start();
     // One deal (made on a), two of its six cards done there.
-    expect([...b.store.col.deals.values()].map((m) => [...m.values()])).toEqual([[{ deal: 6, more: 0 }]]);
+    expect([...b.store.col.deals.values()].map((m) => [...m.values()])).toEqual([[{ deal: 6, more: 0, all: 0 }]]);
     expect(sb.next()!.left).toBe(4);
   });
 

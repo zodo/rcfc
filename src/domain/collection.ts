@@ -2,6 +2,7 @@
 // is folded at startup (cheap: ~100k events is well under a second).
 import type { AppEvent, AssetAttachedPayload, CardTemplate, EventEnvelope, LangPair, NoteFields, NoteSource, PresetUpdatedPayload, Review } from "./events";
 import { newEntityId, uuidv7, type EntityId } from "./ids";
+import { nameKey } from "./labels";
 
 /**
  * A pile key as the app now names it. Language piles were once one per pair
@@ -56,12 +57,25 @@ export interface Card {
   last_rating?: number;
   /** Pile of the latest review, if it was answered from one. */
   last_pile?: string;
+  /** Pile of the first review (where a new word was introduced). */
+  first_pile?: string;
+}
+
+/** A sticker. Deleted ones stay, so their ids are never reused. */
+export interface Label {
+  id: EntityId;
+  name: string;
+  deleted: boolean;
 }
 
 /** A pile's deals on one study day: the deal (largest, if devices dealt it twice offline) and "more" added on top. */
 export interface DayDeal {
   deal: number;
   more: number;
+  /** The part of `more` dealt by "All N" (which doesn't grow the next deal, unlike "5 more"). */
+  all: number;
+  /** When the latest "All N" was dealt. */
+  allTs?: number;
 }
 
 export const DEFAULT_PRESET: Omit<Preset, "preset_id"> = {
@@ -86,6 +100,9 @@ export class Collection {
   readonly eventIds = new Set<string>();
   /** pile → study day → what was dealt. */
   readonly deals = new Map<string, Map<number, DayDeal>>();
+  readonly labels = new Map<EntityId, Label>();
+  /** sticker → the notes wearing it (deleted notes included). */
+  private stuck = new Map<EntityId, Set<EntityId>>();
   private order = 0;
   /** Last-write-wins stamps for mutable fields, key → [ts, device_id]. */
   private stamps = new Map<string, [number, string]>();
@@ -164,6 +181,7 @@ export class Collection {
           if (c.first_review_ts === undefined || e.ts < c.first_review_ts) {
             c.first_review_ts = e.ts;
             c.first_rating = e.payload.rating;
+            c.first_pile = e.payload.pile;
           }
           if (c.last_review_ts === undefined || e.ts >= c.last_review_ts) {
             c.last_review_ts = e.ts;
@@ -178,10 +196,44 @@ export class Collection {
         const pile = pileKey(e.payload.pile);
         const days = this.deals.get(pile) ?? new Map<number, DayDeal>();
         this.deals.set(pile, days);
-        const d = days.get(day) ?? { deal: 0, more: 0 };
-        if (more) d.more += n;
-        else d.deal = Math.max(d.deal, n);
+        const d = days.get(day) ?? { deal: 0, more: 0, all: 0 };
+        if (more) {
+          d.more += n;
+          if (e.payload.all) {
+            d.all += n;
+            d.allTs = Math.max(d.allTs ?? 0, e.ts);
+          }
+        } else d.deal = Math.max(d.deal, n);
         days.set(day, d);
+        break;
+      }
+      case "label_created": {
+        const { label_id: id, name } = e.payload;
+        if (!this.labels.has(id)) this.labels.set(id, { id, name, deleted: false });
+        const l = this.labels.get(id)!;
+        if (this.wins(`label:${id}:name`, e)) l.name = name;
+        break;
+      }
+      case "label_renamed": {
+        const l = this.labels.get(e.payload.label_id);
+        if (l && this.wins(`label:${l.id}:name`, e)) l.name = e.payload.name;
+        break;
+      }
+      case "label_deleted": {
+        const l = this.labels.get(e.payload.label_id);
+        if (l) l.deleted = true;
+        else this.labels.set(e.payload.label_id, { id: e.payload.label_id, name: "", deleted: true });
+        break;
+      }
+      case "notes_labeled": {
+        const { label_id, note_ids, on } = e.payload;
+        const set = this.stuck.get(label_id) ?? new Set<EntityId>();
+        this.stuck.set(label_id, set);
+        for (const id of note_ids) {
+          if (!this.wins(`stuck:${label_id}:${id}`, e)) continue;
+          if (on) set.add(id);
+          else set.delete(id);
+        }
         break;
       }
       default: {
@@ -239,6 +291,43 @@ export class Collection {
     const pick = (ps: Preset[]) => ps.sort((a, b) => a.preset_id - b.preset_id)[0];
     const all = [...this.presets.values()];
     return pick(all.filter((p) => used.has(p.preset_id))) ?? pick(all);
+  }
+
+  /** Stickers not deleted, by name. */
+  liveLabels(): Label[] {
+    return [...this.labels.values()].filter((l) => !l.deleted).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }) || a.id - b.id);
+  }
+
+  liveLabel(id: EntityId): Label | undefined {
+    const l = this.labels.get(id);
+    return l && !l.deleted ? l : undefined;
+  }
+
+  /** The live sticker with this name (case and spaces aside). */
+  labelByName(name: string): Label | undefined {
+    const k = nameKey(name);
+    return this.liveLabels().find((l) => nameKey(l.name) === k);
+  }
+
+  /** Whether a live word wears a live sticker. */
+  wears(noteId: EntityId, labelId: EntityId): boolean {
+    return !!this.liveLabel(labelId) && !!this.stuck.get(labelId)?.has(noteId) && !!this.liveNote(noteId);
+  }
+
+  /** Live words wearing a sticker, oldest first. */
+  labelNotes(labelId: EntityId): Note[] {
+    if (!this.liveLabel(labelId)) return [];
+    const out: Note[] = [];
+    for (const id of this.stuck.get(labelId) ?? []) {
+      const n = this.liveNote(id);
+      if (n) out.push(n);
+    }
+    return out.sort((a, b) => a.order - b.order);
+  }
+
+  /** The live stickers a word wears, by name. */
+  labelsOf(noteId: EntityId): Label[] {
+    return this.liveLabels().filter((l) => this.stuck.get(l.id)?.has(noteId));
   }
 
   liveNotes(deckId?: EntityId): Note[] {

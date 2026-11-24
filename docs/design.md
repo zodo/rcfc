@@ -59,7 +59,7 @@ Entity ids (`note_id`, `card_id`, `deck_id`, `preset_id`) are random 64-bit inte
 | `asset_attached` | `note_id, kind (image or audio), r2_key` | Media lives in R2, not in events |
 | `review` | see below | Append-only, never edited |
 
-Planned: `notes_labeled`, `pile_more` and a `pile` field on `review`; decks become a hidden group per studied language (see [Piles, labels and languages](#piles-labels-and-languages)).
+Since then: `pile_dealt`, the sticker events (`label_created`, `label_renamed`, `label_deleted`, `notes_labeled`) and a `pile` field on `review`; decks became a hidden group per studied language (see [Piles, labels and languages](#piles-labels-and-languages)).
 
 **Review payload (fields rwkv-srs needs)**
 
@@ -188,7 +188,7 @@ Workers AI bills $0.011 per 1,000 neurons with 10,000 free per day ([pricing](ht
 
 ## Piles, labels and languages
 
-Nov 24, 2026. Agreed, not built yet; built in the order of the plan at the end of this section.
+Nov 24, 2026. Agreed and built, in the order of the plan at the end of this section.
 
 **Guiding rule.** The app behaves like real cards: a box of words, a table with a spot per pile, a dealer who deals each pile in the morning, and a tray for cards done today. Each rule below should make sense in that picture.
 
@@ -201,17 +201,20 @@ Nov 24, 2026. Agreed, not built yet; built in the order of the plan at the end o
 
 **Labels**
 
-- A label is a name stuck on words (the UI metaphor is stickers). Many to many, across languages. Its identity is its name, compared ignoring case and surrounding spaces, so the same label made on two devices merges. Labels never reach the model.
-- A label exists while some word wears it. Renaming is peeling the old name off and sticking the new one on the same words.
+- A label is a name stuck on words (the UI calls it a sticker). Many to many, across languages. Labels never reach the model.
+- A sticker has an id and a name. A new name gets an id derived from it (compared ignoring case and extra spaces), so the same sticker made on two offline devices is one; a name whose derived id was used before (renamed or deleted since) gets a random id. Names are at most 30 characters.
+- A sticker stays until deleted, even with no words on it. Renaming changes only its name (last write wins), so its words and its pile stay. Renaming to another sticker's name merges into that one (its words get it, this one is deleted). Deleting takes it off every word and its pile off the table; the words stay.
+- Later: a colour per sticker from a small palette of paper colours, picked from its name at first and changeable in its pencil sheet (one more event). Everywhere a sticker shows (chips, the dot in Edit, under its pile) takes its colour. Until then every sticker is yellow.
 - Language is not a label: it cannot be peeled off. Words in the user's own language (a subject such as pharmacology) are Russian words with Russian explanations plus a label.
 
 **The table (Study tab)**
 
-- One pile per studied language, whatever its words' translations are in, plus one spot for every label that exists. Piles named per pair before (`lang:es>en`) read as the studied language's pile.
+- One pile per studied language, whatever its words' translations are in, then one per sticker (by name). Piles named per pair before (`lang:es>en`) read as the studied language's pile.
 - Spots are printed on the table, two per row. A pile is a stack on its spot whose thickness shows how many cards are left, with the count written under it. The top card lies face up, and the cards under it show their edges, white or cream.
-- After the last pile, one more spot printed empty with a plus: the place for a new pile, so it is clear more piles can be made. Once labels exist it opens where labels are made and stuck on words (a new label is a new pile). Until then it is not shown.
+- A sticker with no words has its spot printed empty ("no words yet"); a tap opens Words on it, in Edit.
+- After the last pile, always, one more spot printed empty with a plus: New pile. It asks for a name, makes the sticker, and opens Words on it in Edit to stick it on words.
 - Looking at the table deals nothing: it shows the pile the dealer would deal. The deal is recorded when the pile is first studied that day.
-- A finished pile leaves its spot empty with a pencil check (drawn in one stroke when the user comes back from clearing it, with a few bits of coloured paper jumping off it). Tapping the spot offers "Deal 5 more", "Go through these N again" (the cards finished from that pile today) and, when nothing is left to learn, "Add words". Either refill drops the cards onto the spot as one handful (bottom card first, the top one last, face up as it lies); studying them takes a tap on the pile, like any pile. Gathered cards lie there until studied, for the rest of that day.
+- A finished pile leaves its spot empty with a pencil check (drawn in one stroke when the user comes back from clearing it, with a few bits of coloured paper jumping off it). Tapping the spot offers "Deal 5 more", "Go through these N again" (the cards finished from that pile today) and, when nothing is left to learn, "Add words". A sticker's pile offers "Deal 5 more" (when it has more than 5 words), "Deal all N" (every word of the sticker once, one face each: going over a topic before a trip or a test) and "Go through these N again". Either refill drops the cards onto the spot as one handful (bottom card first, the top one last, face up as it lies); studying them takes a tap on the pile, like any pile. Gathered cards lie there until studied, for the rest of that day.
 
 **Piles**
 
@@ -224,20 +227,26 @@ What "needs the user most" means:
 
 | Pile | Cards it draws |
 | --- | --- |
-| Language | Words below target recall now, weakest first; then new words, only into space left after due words, at most 10 a day |
-| Label | Its words below target recall, including never-seen ones, weakest first; no daily new-word limit |
+| Language | Words below target recall now, weakest first; then new words, only into space left after due words, at most 10 a day per studied language |
+| Sticker | The same from its words, any language; its new words count toward their language's 10 (shared with that language's pile). After "5 more" or "All N" that day: every word once, due or not, weakest first, words done today last, never-seen ones freely, and those new words don't count toward any language's limit |
 
 - A face is not drawn within an hour of its twin being answered (it would be a free point and teach the model a false strength), unless nothing else is left. A new word's second face starts on a later day.
-- No two piles show the same word on top. If a pile's top card gets done in another pile, the next card comes up.
-- Size: starts at 20; +5 for the next deal when the user took "5 more"; -5 when a pile was left unfinished at the rollover; between 10 and 50.
+- No two piles show the same word on top, unless the word is all a pile has left. If a pile's top card gets done in another pile, the next card comes up.
+- A card answered Again lies under that pile only: other piles don't draw it while it is one of that pile's words (peeled off, or its sticker deleted, it is free again).
+- "5 more" raises the new-word limit of a language's pile by what it deals.
+- Size: starts at 20; +5 for the next deal when the user took "5 more" ("All N" is a one-off and doesn't count); -5 when a pile was left unfinished at the rollover; between 10 and 50.
 - When a pile is empty, study goes back to the table; its spot offers "Go through these N again" (exactly the same cards once more) and "5 more" (from the same words).
 - Words marked known in the list need no rule: they no longer need the user, so they are not drawn.
 
 **Words screen**
 
-- One list. Above it, a row of chips: languages (when there are two or more) and labels. One chip open at a time, never combined; the search narrows inside it. To combine, select words and stick a new label on them.
-- Selecting words offers "Stickers": a sheet with every label as a checkbox (on for all, some, none) and a field for a new one. The word page shows its labels with a remove button.
-- Adding a word while a label is open sticks that label on it; an import sticks a label naming its source. An open label or search can be studied from the list.
+- One list. Above it, two lines of chips: languages (when there are two or more), then stickers by name on one line that scrolls sideways (fading at the edge), with a dotted "+ Sticker" at its end; the open one is scrolled into view. One chip open at a time, never combined; the search narrows inside it. To combine, select words and stick a new sticker on them.
+- The open sticker's chip has a pencil: a sheet to rename it (or merge, when the name is another sticker's) or delete it.
+- With a sticker open, Edit sits next to Select. Only the line above the list changes ("Tap words to stick on or peel off · Done"): the list becomes every word, a yellow dot sticker on those wearing it, a dotted ring on the others, and each tap sticks or peels at once. "+ Sticker" (or New pile on the table) names a sticker, makes it, opens it and starts Edit.
+- A sticker with no words: the ruled sheet says "No words yet." and a pencil note, "add words", has an arrow drawn up to Edit. No other buttons; deleting is in the pencil sheet.
+- Selecting words offers "Stickers" (with I know, Don't know, Delete): a sheet with every sticker as a box (on for all, some, none; a tap sticks it on all or peels it off all, at once) and a field for a new one. The word page shows its stickers, × to peel one off, "+ Sticker" for the same sheet.
+- Adding a word while a sticker is open sticks it on ("Sticks: kitchen ×" above Add; × skips it for that word); an import sticks a sticker naming its source ("Duocards").
+- The back gesture closes a sheet, Select or Edit before it leaves the screen.
 
 **Adding a word**
 
@@ -250,9 +259,12 @@ Everything above is a fold over the log, so it syncs:
 
 | Addition | Payload | Rule |
 | --- | --- | --- |
-| `notes_labeled` | `note_ids, label, on` | Last write wins per word and label |
-| `review.pile` | the pile key: `lang:es` (older: `lang:es>en`, read as `lang:es`) or (later) a label; absent when not answered from a pile | Which pile the answer came from |
-| `pile_dealt` | `pile, day, n, more` | The day's deal (`more` false; two devices dealing offline count the largest once) and each "more" |
+| `label_created` | `label_id, name` | Made again with an existing id: only the name counts (last write wins) |
+| `label_renamed` | `label_id, name` | Last write wins |
+| `label_deleted` | `label_id` | For good; the id is never reused |
+| `notes_labeled` | `label_id, note_ids, on` | Last write wins per word and sticker |
+| `review.pile` | the pile key: `lang:es` (older: `lang:es>en`, read as `lang:es`) or `label:<id>`; absent when not answered from a pile | Which pile the answer came from |
+| `pile_dealt` | `pile, day, n, more, all?` | The day's deal (`more` false; two devices dealing offline count the largest once), each "more", and "All N" (`all`) |
 
 Done today, cards waiting under a pile, cards left in a pile and each pile's size are all derived from these. The deal is recorded (not just "more") so that a pile left unfinished can be told from one that ran out of cards. Only what is on screen right now (the top card and the one under it) stays on the device. Two devices studying the same pile offline both deal it; after sync the answers merge and the pile may show none left.
 
@@ -262,7 +274,7 @@ Done today, cards waiting under a pile, cards left in a pile and each pile's siz
 2. Fixed piles inside the current Study screen and its end screen. Hands-on review on a phone.
 3. The table on the Study tab (layout B: printed spots; finished spots tapped for choices). Built; hands-on review.
 4. No decks: languages on the word, one pile and model group per studied language, the translation's language per word, language chips in Words. Built; hands-on review. The Add screen got only a language picker ("Add a language…" last) and the translation's language as its field's label; its chips and the two-way fields wait for its rework.
-5. Labels: events, the Words chips, the Stickers sheet, label piles on the table, the empty "new pile" spot. Mockups first.
+5. Labels as stickers: events, the Words chips, Edit, the pencil and Stickers sheets, sticker piles on the table with "Deal all N", the New pile spot, the back gesture. Built; hands-on review. Sticker colours next.
 
 Later: the LLM fills the other field when adding; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; editing words.
 

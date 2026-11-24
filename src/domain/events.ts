@@ -115,6 +115,37 @@ export interface PileDealtPayload {
   day: number;
   n: number;
   more: boolean;
+  /** "All N" on a sticker pile: every word once more. Unlike "5 more" it doesn't grow tomorrow's deal. */
+  all?: boolean;
+}
+
+/**
+ * A sticker (a label stuck on words, docs/design.md "Piles, labels and
+ * languages"). Its id is derived from its name when the name is new, so two
+ * devices making the same sticker offline make one. Made again with an id
+ * that exists: only the name is taken (last write wins).
+ */
+export interface LabelCreatedPayload {
+  label_id: EntityId;
+  name: string;
+}
+
+/** A new name for a sticker; its words and pile stay. Last write wins. */
+export interface LabelRenamedPayload {
+  label_id: EntityId;
+  name: string;
+}
+
+/** A sticker gone for good: off every word, its pile off the table. */
+export interface LabelDeletedPayload {
+  label_id: EntityId;
+}
+
+/** A sticker stuck on (`on`) or peeled off words. Last write wins per word and sticker. */
+export interface NotesLabeledPayload {
+  label_id: EntityId;
+  note_ids: EntityId[];
+  on: boolean;
 }
 
 /**
@@ -145,6 +176,10 @@ export type CardCreated = EventEnvelope<"card_created", CardCreatedPayload>;
 export type Review = EventEnvelope<"review", ReviewPayload>;
 export type AssetAttached = EventEnvelope<"asset_attached", AssetAttachedPayload>;
 export type PileDealt = EventEnvelope<"pile_dealt", PileDealtPayload>;
+export type LabelCreated = EventEnvelope<"label_created", LabelCreatedPayload>;
+export type LabelRenamed = EventEnvelope<"label_renamed", LabelRenamedPayload>;
+export type LabelDeleted = EventEnvelope<"label_deleted", LabelDeletedPayload>;
+export type NotesLabeled = EventEnvelope<"notes_labeled", NotesLabeledPayload>;
 
 export type AppEvent =
   | PresetUpdated
@@ -157,6 +192,10 @@ export type AppEvent =
   | CardCreated
   | Review
   | AssetAttached
-  | PileDealt;
+  | PileDealt
+  | LabelCreated
+  | LabelRenamed
+  | LabelDeleted
+  | NotesLabeled;
 
 export type EventType = AppEvent["type"];

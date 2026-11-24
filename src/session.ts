@@ -5,7 +5,9 @@
 import type { Card } from "./domain/collection";
 import type { CardTemplate, PileDealt, ReviewPayload } from "./domain/events";
 import type { EntityId } from "./domain/ids";
+import { pileLabel } from "./domain/labels";
 import { languagePile, MORE, pileSize, PileView, type Draw } from "./domain/piles";
+import { studyDay } from "./domain/rows";
 import type { Store } from "./store";
 
 /** Answered cards whose predictions are refreshed after each answer. */
@@ -30,7 +32,12 @@ interface OnScreen {
 const shown = new Map<string, OnScreen>();
 
 export class StudySession {
+  /** The pile key: `lang:es` or `label:<id>`. */
   readonly pile: string;
+  /** The studied language, for a language's pile. */
+  readonly lang?: string;
+  /** The sticker, for a sticker's pile. */
+  readonly label?: EntityId;
   /** Answers this sitting. */
   answered = 0;
   /** Cards answered this sitting, in order of first answer: "Again, these N". */
@@ -41,24 +48,71 @@ export class StudySession {
 
   constructor(
     private store: Store,
-    /** The studied language (a code, "es"): its words, whatever their translations are in. */
-    readonly lang: string,
+    /** A pile key, or a studied language ("es": its words, whatever their translations are in). */
+    pile: string,
   ) {
-    this.pile = languagePile(lang);
+    this.pile = pile.includes(":") ? pile : languagePile(pile);
+    this.label = pileLabel(this.pile);
+    if (this.label === undefined) this.lang = this.pile.slice("lang:".length);
     const key = `${store.deviceId}|${this.pile}`;
     this.screen = shown.get(key) ?? { top: null, under: null, faces: [], again: null };
     shown.set(key, this.screen);
   }
 
-  /** The pile's words. */
+  /** The pile's words: a language's, or those wearing the sticker. */
   source(): Card[] {
-    return this.store.col.liveCards().filter((c) => this.store.col.notes.get(c.note_id)!.lang_pair.from === this.lang);
+    const { col } = this.store;
+    if (this.label !== undefined) return col.labelNotes(this.label).flatMap((n) => (col.cardsByNote.get(n.id) ?? []).map((id) => col.cards.get(id)!));
+    return col.liveCards().filter((c) => col.notes.get(c.note_id)!.lang_pair.from === this.lang);
   }
 
-  view(): PileView {
+  /** The pile as it lies today; `wide` as if "more" had been asked of a sticker pile. */
+  view(wide = false): PileView {
     const { store } = this;
+    const { col } = store;
     const source = this.source();
-    return new PileView({ col: store.col, pile: this.pile, source, preds: store.predsOf(source), clock: store.clock(), size: this.size || pileSize(store.col, this.pile, store.clock()), newPerDay: store.preset().new_per_day });
+    const clock = store.clock();
+    const today = studyDay(clock.now, clock.tzOffsetMin, clock.rolloverHour);
+    const more = (pile: string) => col.deals.get(pile)?.get(today)?.more ?? 0;
+    const perDay = store.preset().new_per_day;
+    // Sticker piles asked for more today draw new words freely, and those don't count toward any language's limit.
+    const notCounted = new Set<string>();
+    for (const [pile, days] of col.deals) if (pileLabel(pile) !== undefined && (days.get(today)?.more ?? 0) > 0) notCounted.add(pile);
+    wide = this.label !== undefined && (wide || notCounted.has(this.pile));
+    const newLimit = wide ? () => Infinity : this.lang !== undefined ? () => perDay + more(this.pile) : (l: string) => perDay + more(languagePile(l));
+    return new PileView({
+      col,
+      pile: this.pile,
+      source,
+      preds: store.predsOf(source),
+      clock,
+      size: this.size || pileSize(col, this.pile, clock),
+      newLimit,
+      notCounted,
+      wide,
+      avoid: this.onTopElsewhere(),
+      skip: (c) => c.last_rating === 1 && c.last_pile !== undefined && c.last_pile !== this.pile && this.holds(c.last_pile, c),
+    });
+  }
+
+  /** Words lying on top of this device's other piles. */
+  private onTopElsewhere(): Set<EntityId> {
+    const out = new Set<EntityId>();
+    const mine = `${this.store.deviceId}|`;
+    for (const [key, on] of shown) {
+      if (!key.startsWith(mine) || on === this.screen || !on.top) continue;
+      const note = this.store.col.cards.get(on.top.card)?.note_id;
+      if (note !== undefined) out.add(note);
+    }
+    return out;
+  }
+
+  /** Whether a card is still one of that pile's words (a card tucked under a pile stays there while it is). */
+  private holds(pile: string, c: Card): boolean {
+    const { col } = this.store;
+    const label = pileLabel(pile);
+    if (label !== undefined) return col.wears(c.note_id, label);
+    return pile === languagePile(col.notes.get(c.note_id)?.lang_pair.from ?? "");
   }
 
   /** Fresh predictions for the pile's words, and today's deal if it hasn't been dealt. */
@@ -82,8 +136,8 @@ export class StudySession {
     if (!this.screen.top && this.screen.under) [this.screen.top, this.screen.under] = [this.screen.under, null];
   }
 
-  private async deal(day: number, n: number, more: boolean): Promise<void> {
-    await this.store.append([this.store.factory.make<PileDealt>("pile_dealt", { pile: this.pile, day, n, more })]);
+  private async deal(day: number, n: number, more: boolean, all = false): Promise<void> {
+    await this.store.append([this.store.factory.make<PileDealt>("pile_dealt", all ? { pile: this.pile, day, n, more, all } : { pile: this.pile, day, n, more })]);
   }
 
   /** The top card and how many cards are left (it included); null when the pile is empty. */
@@ -162,17 +216,29 @@ export class StudySession {
     void store.predict([...hot, ...store.stalest(this.source(), REFRESH)]);
   }
 
-  /** Cards "more" would deal now (0 = nothing left to draw). */
+  /** Cards "more" would deal now (0 = nothing left to draw). A sticker pile deals its weakest words, due or not. */
   moreCount(): number {
-    return Math.min(MORE, this.view().available());
+    return Math.min(MORE, this.view(true).available());
   }
 
   /** Deal "more" onto the pile. */
   async more(): Promise<void> {
     this.screen.again = null;
-    const v = this.view();
+    const v = this.view(true);
     const n = Math.min(MORE, v.available());
     if (n > 0) await this.deal(v.today, n, true);
+  }
+
+  /** A sticker pile's words, all of them: what "All N" deals. */
+  allCount(): number {
+    return this.label === undefined ? 0 : this.store.col.labelNotes(this.label).length;
+  }
+
+  /** "All N": every word of the sticker once more, one face each. */
+  async all(): Promise<void> {
+    this.screen.again = null;
+    const n = this.allCount();
+    if (n > 0) await this.deal(this.view().today, n, true, true);
   }
 
   /** Go through these cards once more, exactly those: this sitting's, or the given ones. */

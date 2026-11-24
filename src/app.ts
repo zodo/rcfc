@@ -2,6 +2,7 @@
 // which screen is showing, page chrome, keyboard handling and navigation.
 import type { EntityId } from "./domain/ids";
 import type { Pictures } from "./pictures";
+import type { Hold } from "./router";
 import type { Store } from "./store";
 import type { Sync } from "./sync";
 import { append, clear, h } from "./ui/h";
@@ -12,8 +13,8 @@ export type ScreenName = Tab | "study";
 
 export interface Screens {
   home(): void | Promise<void>;
-  /** A studied language's pile ("es"; default: the last one studied). */
-  study(lang?: string): void | Promise<void>;
+  /** A pile: a studied language's ("es"; default: the last one studied) or a sticker's ("label:7"). */
+  study(pile?: string): void | Promise<void>;
   /** The Words tab: every word, or the language open there (languages.ts `openLanguage`). */
   words(): void;
   /** Add a word to the last language used (languages.ts `lastLanguage`). */
@@ -26,6 +27,29 @@ export interface Screens {
 
 /** Navigation. Filled in by main.ts, so screens never import each other. */
 export const go = {} as Screens;
+
+let holdBack: Hold = () => () => {};
+/** Holds of the screen showing, released when another one renders. */
+const held = new Set<() => void>();
+/**
+ * Hold the phone's back gesture while something is open on the screen (a
+ * sheet, Select, Edit): back runs `onBack` instead of leaving (src/router.ts).
+ * Returns release, for when it is closed by other means.
+ */
+export const hold: Hold = (onBack) => {
+  const release = holdBack(() => {
+    held.delete(release);
+    onBack();
+  });
+  held.add(release);
+  return () => {
+    held.delete(release);
+    release();
+  };
+};
+export function setHold(h: Hold): void {
+  holdBack = h;
+}
 
 export const app = {
   root: document.getElementById("app")!,
@@ -87,7 +111,13 @@ export function subPage(active: Tab, title: string, back: () => void, ...body: B
   show(active, h("header", { class: "top sub" }, b, h("h1", {}, title)), body);
 }
 
+function releaseHolds(): void {
+  for (const r of [...held].reverse()) r();
+  held.clear();
+}
+
 function show(active: Tab, header: Node, body: Body): void {
+  releaseHolds();
   app.current = active;
   setKeys(null);
   clear(app.root);
@@ -96,10 +126,36 @@ function show(active: Tab, header: Node, body: Body): void {
 
 /** A full-screen view without the tab bar (study and its summary). */
 export function fullScreen(...children: Node[]): void {
+  releaseHolds();
   app.current = "study";
   setKeys(null);
   clear(app.root);
   append(app.root, children);
+}
+
+/**
+ * A sheet of paper over the screen, with what can be done next. A tap
+ * outside, Escape or the back gesture closes it. Returns close.
+ */
+export function sheet(label: string, title: string | Node, ...body: Body): () => void {
+  const backdrop = h("div", { class: "sheet-backdrop" });
+  const el = h("div", { class: "pile-sheet", role: "dialog", "aria-label": label }, h("h2", {}, title), ...body);
+  const remove = () => {
+    backdrop.remove();
+    el.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const close = () => {
+    remove();
+    release();
+  };
+  const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+  backdrop.addEventListener("click", close);
+  document.addEventListener("keydown", onKey);
+  app.root.append(backdrop, el);
+  const release = hold(remove);
+  (el.querySelector("input, button") as HTMLElement | null)?.focus();
+  return close;
 }
 
 export function errorText(e: unknown): string {

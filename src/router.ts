@@ -10,6 +10,10 @@
 // Going deeper pushes an entry, sideways (tab to tab) replaces it, going up
 // goes back in history (so the gesture and the buttons stay in step), and a
 // history move made by the user renders whatever its entry names.
+//
+// A screen can also hold the back gesture for something open on it (a sheet,
+// Select, Edit): `hold` pushes an entry for the same screen, and back then
+// closes that thing instead of leaving the screen.
 import type { Screens } from "./app";
 
 export type RouteName = keyof Screens;
@@ -35,14 +39,22 @@ function isRoute(s: unknown): s is Route {
   return !!s && typeof s === "object" && typeof (s as Route).name === "string" && (s as Route).name in DEPTH && Array.isArray((s as Route).args);
 }
 
+/** Hold the back gesture: `onBack` runs on back instead of leaving the screen. Returns release, for closing it by other means. */
+export type Hold = (onBack: () => void) => () => void;
+
 /**
  * Wraps the screens into navigation that keeps history in step. Renders the
  * current entry's screen at start: home, or what a reload left in history.
  */
-export function router(screens: Screens, hist: HistoryLike = history, win: PopTarget = window): Screens {
+export function router(screens: Screens, hist: HistoryLike = history, win: PopTarget = window): { go: Screens; hold: Hold } {
   let current: Route = { name: "home", args: [] };
   /** Where to land once a history move we started arrives. */
   let pending: Route | null = null;
+  /** Open holds, innermost last; each has an entry on top of the screen's. */
+  let holds: (() => void)[] = [];
+  /** Our own steps back over held entries still to arrive, and where to go after them. */
+  let releasing = 0;
+  let queued: Route | null = null;
 
   const render = (r: Route) => {
     current = r;
@@ -50,6 +62,18 @@ export function router(screens: Screens, hist: HistoryLike = history, win: PopTa
   };
 
   win.addEventListener("popstate", (e) => {
+    if (releasing > 0) {
+      if (--releasing === 0 && queued) {
+        const to = queued;
+        queued = null;
+        navigate(to);
+      }
+      return;
+    }
+    if (holds.length) {
+      holds.pop()!(); // the user's back: close what was open
+      return;
+    }
     const landed = isRoute(e.state) ? e.state : { name: "home" as const, args: [] };
     const target = pending;
     pending = null;
@@ -60,6 +84,19 @@ export function router(screens: Screens, hist: HistoryLike = history, win: PopTa
   });
 
   const navigate = (to: Route) => {
+    if (releasing > 0) {
+      queued = to;
+      return;
+    }
+    if (holds.length) {
+      // Off the held entries first, then on as usual.
+      const n = holds.length;
+      holds = [];
+      releasing = 1;
+      queued = to;
+      hist.go(-n);
+      return;
+    }
     const from = DEPTH[current.name];
     const depth = DEPTH[to.name];
     if (depth > from) {
@@ -81,8 +118,21 @@ export function router(screens: Screens, hist: HistoryLike = history, win: PopTa
     (go as unknown as Record<string, (...a: unknown[]) => void>)[name] = (...args: unknown[]) => navigate({ name, args });
   }
 
+  const hold: Hold = (onBack) => {
+    hist.pushState({ ...current, held: holds.length + 1 }, "");
+    holds.push(onBack);
+    return () => {
+      const k = holds.indexOf(onBack);
+      if (k < 0) return; // already closed by back
+      const n = holds.length - k;
+      holds = holds.slice(0, k);
+      releasing++;
+      hist.go(-n);
+    };
+  };
+
   // Start: the current entry if a reload left one, else home at the bottom.
   if (!isRoute(hist.state)) hist.replaceState({ name: "home", args: [] }, "");
   render(isRoute(hist.state) ? (hist.state as Route) : { name: "home", args: [] });
-  return go;
+  return { go, hold };
 }

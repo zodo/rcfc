@@ -1,13 +1,15 @@
 // Add a word: a note with forward and reverse cards, in the last language used
 // (switchable here; "Add a language…" picks a new one, made with its first word).
-// The translation's language is picked per word, above its field.
+// The translation's language is picked per word, above its field. With a
+// sticker open in Words, the word gets it (× skips it for this word).
 import { app, go, subPage } from "../app";
 import type { NoteFields } from "../domain/events";
 import { noteKey } from "../import/duocards";
-import type { NoteCreatedPayload } from "../domain/events";
+import type { NoteCreatedPayload, NotesLabeled } from "../domain/events";
 import { clear, h, langName, langSelect, toast } from "../ui/h";
 import { pictureEditor } from "../ui/picture";
-import { deckFor, languages, lastLanguage, rememberLanguage, rememberTranslation, translationFor } from "./languages";
+import { deckFor, languages, lastLanguage, openLabel, rememberLanguage, rememberTranslation, translationFor } from "./languages";
+import { stickerTag } from "./stickers";
 
 const NEW = "new";
 
@@ -38,6 +40,10 @@ export function add(): void {
   const back = h("input", { name: "back", required: true, autocomplete: "off", "aria-label": "Translation" });
   const example = h("textarea", { name: "example", rows: 2 });
   const hint = h("p", { class: "muted small" });
+  const label = store.col.liveLabel(openLabel() ?? 0);
+  const sticks = label
+    ? h("p", { class: "sticks small" }, "Sticks: ", stickerTag(label.name, h("button", { class: "x", type: "button", "aria-label": `Don't stick ${label.name} on this word`, onclick: () => (sticks!.hidden = true) }, "×")))
+    : null;
   // The word just added, with its picture arriving; adjustable right here.
   const last = h("div", { class: "last-added" });
   subPage(
@@ -61,8 +67,10 @@ export function add(): void {
           const ex = example.value.trim();
           if (ex) fields.example = ex;
           const evs = store.factory.note(await deckFor(lang), fields, { from: lang, to: to.value });
-          await store.append(evs);
           const noteId = (evs[0].payload as NoteCreatedPayload).note_id;
+          if (label && sticks && !sticks.hidden) evs.push(store.factory.make<NotesLabeled>("notes_labeled", { label_id: label.id, note_ids: [noteId], on: true }));
+          await store.append(evs);
+          if (sticks) sticks.hidden = false;
           void app.pictures.ensure(noteId);
           clear(last);
           last.append(h("div", { class: "card-box" }, h("h2", {}, f, h("span", { class: "muted" }, ` · ${b}`)), pictureEditor(noteId)));
@@ -77,6 +85,7 @@ export function add(): void {
       h("div", { class: "field" }, h("span", { class: "field-lang" }, toName, h("span", { class: "chev", "aria-hidden": "true" }, "▾"), to), back),
       h("label", {}, "Example (optional)", example),
       hint,
+      sticks,
       h("button", { class: "primary", type: "submit" }, "Add"),
     ),
     last,

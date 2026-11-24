@@ -1,22 +1,28 @@
-// Study tab: the table. Every language has a spot printed on it with its pile
-// for today: thickness = cards left, the top card face up, the colours of the
-// cards under it (fixed once shown, the same in study: src/session.ts). Tap a
-// pile to study it. A finished pile leaves its spot with a check; tap the spot
-// for more cards or the same ones again: they land on the spot, and a tap on
-// the pile studies them. First launch asks which language to learn.
-import { app, go, page } from "../app";
+// Study tab: the table. Every language and every sticker has a spot printed on
+// it with its pile for today: thickness = cards left, the top card face up, the
+// colours of the cards under it (fixed once shown, the same in study:
+// src/session.ts). Tap a pile to study it. A finished pile leaves its spot with
+// a check; tap the spot for more cards or the same ones again: they land on the
+// spot, and a tap on the pile studies them. A sticker with no words has its spot
+// printed empty, and the last spot is always a new pile (a new sticker). First
+// launch asks which language to learn.
+import { app, go, page, sheet as openSheet } from "../app";
 import { derivedEntityId } from "../domain/ids";
+import { labelPile } from "../domain/labels";
+import { languagePile, MORE } from "../domain/piles";
 import { StudySession } from "../session";
 import { h, langName } from "../ui/h";
 import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
-import { languageForm, languages, rememberLanguage, setOpenLanguage } from "./languages";
+import { editSticker, languageForm, languages, rememberLanguage, setOpenLanguage } from "./languages";
+import { newStickerSheet, stickerTag } from "./stickers";
 
 /** Edges drawn under the top card; deeper cards only make the pile no thicker. */
 const EDGES = 30;
 /** Thickness of one card, px. */
 const CARD_PX = 1.5;
 
+const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path pathLength="1" d="M5 12.5l4.5 4.5L19 7"/></svg>';
 
 export async function home(): Promise<void> {
@@ -36,7 +42,9 @@ export async function home(): Promise<void> {
   const moved = { cleared: app.cleared, refilled: app.refilled };
   app.cleared = app.refilled = null;
   const spots = [];
-  for (const l of langs) spots.push(await spot(l, moved));
+  for (const l of langs) spots.push(await spot(languagePile(l), langName(l), moved));
+  for (const l of app.store.col.liveLabels()) spots.push(await spot(labelPile(l.id), l.name, moved));
+  spots.push(newPile());
   if (app.current !== "home") return; // left while loading
   page("home", "Study", h("div", { class: "table" }, ...spots));
 }
@@ -52,11 +60,14 @@ const CHECK_DRAWN = 780;
 /** How long the cards of a refilled pile take to land, all of them (style.css .spot.dealt). */
 const LANDING_MS = 420;
 
-/** One language's spot: its pile, or the outline a finished pile leaves. */
-async function spot(lang: string, moved: Moved): Promise<HTMLElement> {
-  const label = langName(lang);
-  const name = h("div", { class: "pile-name" }, label);
-  const s = new StudySession(app.store, lang);
+/** One pile's spot (a language's or a sticker's): its pile, or the outline a finished pile leaves. */
+async function spot(key: string, label: string, moved: Moved): Promise<HTMLElement> {
+  const s = new StudySession(app.store, key);
+  const name = h("div", { class: "pile-name" }, s.label === undefined ? label : stickerTag(label));
+  if (s.label !== undefined && s.allCount() === 0) {
+    const id = s.label;
+    return h("div", { class: "pile-cell" }, h("button", { class: "spot empty", "aria-label": `${label}: add words`, onclick: () => editSticker(id) }), name, h("div", { class: "pile-count" }, "no words yet"));
+  }
   const seed = derivedEntityId(s.pile) % 233280; // the pile's own poses, the same every time
   await s.prepare();
   const n = s.next();
@@ -88,7 +99,12 @@ async function spot(lang: string, moved: Moved): Promise<HTMLElement> {
     cards.forEach((c, i) => c.style.setProperty("--d", `${Math.round(i * step)}ms`));
     setTimeout(() => haptic("thud"), Math.round(cards.length * step) + 180);
   }
-  const b = h("button", { class: `spot${dealt ? " dealt" : ""}`, "aria-label": `Study ${label}`, onclick: () => (rememberLanguage(lang), go.study(lang)) }, pile);
+  const study = () => {
+    if (s.lang === undefined) return go.study(s.pile);
+    rememberLanguage(s.lang);
+    go.study(s.lang);
+  };
+  const b = h("button", { class: `spot${dealt ? " dealt" : ""}`, "aria-label": `Study ${label}`, onclick: study }, pile);
   b.style.marginBottom = `${Math.round(faces.length * CARD_PX)}px`;
   return h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, `${n.left} ${n.left === 1 ? "card" : "cards"}`));
 }
@@ -119,47 +135,47 @@ function topCard(cardId: number): HTMLElement {
   return h("span", { class: "pile-top known", lang: note.lang_pair.to }, note.picture ? cutout(note.picture.key) : null, h("span", { class: "pile-word" }, note.fields.back));
 }
 
-/** A finished spot, tapped: more cards or the same ones again (put on the spot, not studied yet), or words to add. */
+/** The spot for a new pile, always last: makes a sticker, then Words opens on it to stick it on words. */
+function newPile(): HTMLElement {
+  const b = h("button", { class: "spot new-pile", "aria-label": "New pile", onclick: () => newStickerSheet(editSticker) });
+  b.innerHTML = ICON_PLUS;
+  return h("div", { class: "pile-cell" }, b, h("div", { class: "pile-name" }, "New pile"), h("div", { class: "pile-count" }, "\u00a0"));
+}
+
+/**
+ * A finished spot, tapped: more cards or the same ones again (put on the spot,
+ * not studied yet), or words to add. A sticker's pile also deals all its words.
+ */
 function sheet(label: string, s: StudySession): void {
   const done = s.doneToday();
   const more = s.moreCount();
-  const close = () => {
-    backdrop.remove();
-    el.remove();
-    document.removeEventListener("keydown", onKey);
-  };
-  const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+  const all = s.allCount();
+  const showMore = more > 0 && (s.label === undefined || all > MORE);
   /** The pile is on its spot again: back to the table to watch it land. */
   const refill = () => {
     close();
-    rememberLanguage(s.lang);
+    if (s.lang !== undefined) rememberLanguage(s.lang);
     app.refilled = s.pile;
     void home();
   };
-  const backdrop = h("div", { class: "sheet-backdrop", onclick: close });
-  const el = h(
-    "div",
-    { class: "pile-sheet", role: "dialog", "aria-label": label },
-    h("h2", {}, label),
-    more
-      ? h(
-          "button",
-          {
-            class: "primary wide",
-            onclick: async () => {
-              await s.more();
-              refill();
-            },
-          },
-          `Deal ${more} more`,
-        )
-      : null,
-    done.length
-      ? h("button", { class: more ? "secondary wide" : "primary wide", onclick: () => (s.againThese(done), refill()) }, done.length === 1 ? "Go through it again" : `Go through these ${done.length} again`)
-      : null,
-    !more && !s.unseenLeft() ? h("button", { class: "secondary wide", onclick: () => (close(), setOpenLanguage(s.lang), go.add()) }, "Add words") : null,
-  );
-  document.addEventListener("keydown", onKey);
-  app.root.append(backdrop, el);
-  (el.querySelector("button") as HTMLElement | null)?.focus();
+  const buttons: HTMLElement[] = [];
+  const button = (text: string, f: () => void) => buttons.push(h("button", { class: `${buttons.length ? "secondary" : "primary"} wide`, onclick: f }, text));
+  if (showMore)
+    button(`Deal ${more} more`, async () => {
+      await s.more();
+      refill();
+    });
+  if (all > 0)
+    button(`Deal all ${all}`, async () => {
+      await s.all();
+      refill();
+    });
+  if (done.length) button(done.length === 1 ? "Go through it again" : `Go through these ${done.length} again`, () => (s.againThese(done), refill()));
+  if (s.lang !== undefined && !more && !s.unseenLeft())
+    button("Add words", () => {
+      close();
+      setOpenLanguage(s.lang!);
+      go.add();
+    });
+  const close = openSheet(label, s.label === undefined ? label : stickerTag(label), ...buttons);
 }
