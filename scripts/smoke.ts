@@ -286,6 +286,16 @@ async function run(s: Browser, url: string) {
   await s.click("button", "Save");
   await s.until("back to list", `document.querySelectorAll(".list button.word").length === 2`);
 
+  log("the back gesture walks back: word → list → Study");
+  await s.click("button.word", "adiós");
+  await s.until("edit screen", `document.querySelector("header.sub h1")`);
+  await s.js(`history.back();`);
+  await s.until("list after back", `document.querySelectorAll(".list button.word").length === 2 && !document.querySelector("header.sub")`);
+  await s.js(`history.back();`);
+  await s.until("Study after back", `document.querySelector(".deck-name")`);
+  await s.click("nav .nav-item", "Words");
+  await s.until("words again", `document.querySelectorAll(".list button.word").length === 2`);
+
   log("settings show the sync code and sync with the local Worker");
   await s.click("nav .nav-item", "Settings");
   await s.until("sync code", `/^[A-Z2-7]{4}(-[A-Z2-7]{4}){3}$/.test(document.querySelector(".sync-code")?.textContent ?? "")`);

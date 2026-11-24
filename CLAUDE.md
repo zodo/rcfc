@@ -11,6 +11,7 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
   - `store.ts` ties log + engine. No UI side effects: writes return `{ replay }` / set `stale`, the app decides when to reload
   - `session.ts` one sitting at a pile (UI-free; the cards on screen); `sync.ts` sync loop; `pictures.ts` picture queue + offline picture store
   - `app.ts` shell shared by screens: `app` (store, sync, current screen), `go.*` navigation, `page()` / `fullScreen()`, `setKeys()`
+  - `router.ts` `go.*` as browser history, so the phone's back gesture matches the back buttons: Study at the bottom, tabs and study one level up (tabs replace each other), add/import/edit/addLanguage on top of Words; going up = `history.go(-n)`; a reload shows the screen history was on
   - `screens/` one module per screen; they navigate through `go`, never import each other (except helpers in `decks.ts`). Three tabs: Study (`home.ts`), Words (`words.ts`: the whole list, rendered in chunks on scroll, with new/learning/known; select → know / don't know / delete; add/import/edit are sub-pages with a back button), Settings (sync + backup only)
   - `main.ts` boot only; `dev/` dev-only URL hooks (`?reset`, `?seed=N`), excluded from production builds
 - `rwkv/engine/` Rust RWKV-SRS V1 inference (→ Wasm), checked against upstream goldens in `rwkv/golden/`; `rwkv/models/` weights

@@ -1,0 +1,88 @@
+// Screens as browser history, so the phone's back gesture (Android back,
+// iPhone swipe from the edge) walks back through the app the way the on-screen
+// back buttons do. History mirrors a fixed tree instead of growing with every
+// tap:
+//
+//   home (Study tab)                      depth 0: back leaves the app
+//   ├─ words, settings, study             depth 1: back goes to Study
+//   │  └─ add, import, edit, addLanguage  depth 2: back goes to Words
+//
+// Going deeper pushes an entry, sideways (tab to tab) replaces it, going up
+// goes back in history (so the gesture and the buttons stay in step), and a
+// history move made by the user renders whatever its entry names.
+import type { Screens } from "./app";
+
+export type RouteName = keyof Screens;
+export interface Route {
+  name: RouteName;
+  args: unknown[];
+}
+
+const DEPTH: Record<RouteName, number> = { home: 0, words: 1, settings: 1, study: 1, add: 2, import: 2, edit: 2, addLanguage: 2 };
+
+/** The slice of `window.history` and `window` the router uses (tests pass a fake). */
+export interface HistoryLike {
+  readonly state: unknown;
+  pushState(state: unknown, unused: string): void;
+  replaceState(state: unknown, unused: string): void;
+  go(delta: number): void;
+}
+export interface PopTarget {
+  addEventListener(type: "popstate", f: (e: { state: unknown }) => void): void;
+}
+
+function isRoute(s: unknown): s is Route {
+  return !!s && typeof s === "object" && typeof (s as Route).name === "string" && (s as Route).name in DEPTH && Array.isArray((s as Route).args);
+}
+
+/**
+ * Wraps the screens into navigation that keeps history in step. Renders the
+ * current entry's screen at start: home, or what a reload left in history.
+ */
+export function router(screens: Screens, hist: HistoryLike = history, win: PopTarget = window): Screens {
+  let current: Route = { name: "home", args: [] };
+  /** Where to land once a history move we started arrives. */
+  let pending: Route | null = null;
+
+  const render = (r: Route) => {
+    current = r;
+    void (screens[r.name] as (...a: unknown[]) => unknown)(...r.args);
+  };
+
+  win.addEventListener("popstate", (e) => {
+    const landed = isRoute(e.state) ? e.state : { name: "home" as const, args: [] };
+    const target = pending;
+    pending = null;
+    if (target && (target.name !== landed.name || JSON.stringify(target.args) !== JSON.stringify(landed.args))) {
+      hist.replaceState(target, "");
+      render(target);
+    } else render(landed);
+  });
+
+  const navigate = (to: Route) => {
+    const from = DEPTH[current.name];
+    const depth = DEPTH[to.name];
+    if (depth > from) {
+      // A screen two levels up (e.g. add) sits on its parent (words).
+      if (depth - from > 1) hist.pushState({ name: "words", args: [] }, "");
+      hist.pushState(to, "");
+      render(to);
+    } else if (depth === from) {
+      hist.replaceState(to, "");
+      render(to);
+    } else {
+      pending = to;
+      hist.go(depth - from);
+    }
+  };
+
+  const go = {} as Screens;
+  for (const name of Object.keys(DEPTH) as RouteName[]) {
+    (go as unknown as Record<string, (...a: unknown[]) => void>)[name] = (...args: unknown[]) => navigate({ name, args });
+  }
+
+  // Start: the current entry if a reload left one, else home at the bottom.
+  if (!isRoute(hist.state)) hist.replaceState({ name: "home", args: [] }, "");
+  render(isRoute(hist.state) ? (hist.state as Route) : { name: "home", args: [] });
+  return go;
+}

@@ -1,9 +1,10 @@
-// Entry point: open the store, start sync, wire navigation, show home.
+// Entry point: open the store, start sync, wire navigation (src/router.ts), show a screen.
 // Screens live in src/screens/, shared shell state in src/app.ts.
 import "@fontsource/balsamiq-sans/400.css";
 import "@fontsource/balsamiq-sans/700.css";
 import "./style.css";
 import { app, go, reloadWhenSafe, requestPersistence, type Screens } from "./app";
+import { router } from "./router";
 import { add } from "./screens/add";
 import { home } from "./screens/home";
 import { importScreen } from "./screens/import";
@@ -20,7 +21,6 @@ import { setupInstallPrompt } from "./ui/install";
 import { setupUpdates } from "./ui/update";
 
 const screens: Screens = { home, study, words, add, import: importScreen, edit, addLanguage, settings };
-Object.assign(go, screens);
 
 async function boot() {
   const { root } = app;
@@ -49,7 +49,8 @@ async function boot() {
       if (app.current === "home") void home();
     };
     app.sync.onReplay = reloadWhenSafe;
-    await home();
+    // Navigation through browser history; shows home, or the screen a reload left.
+    Object.assign(go, router(screens));
     app.sync.start();
     app.pictures.start();
   } catch (e) {
