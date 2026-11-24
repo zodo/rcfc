@@ -140,10 +140,16 @@ export class PileView {
     return n;
   }
 
-  /** Slots today's deal still has for cards chosen when drawn. */
+  /**
+   * Slots today's deal still has for cards chosen when drawn. Before the deal
+   * is recorded (the table shows the pile before anyone studies it), the deal
+   * it would get.
+   */
   private get freshSlots(): number {
-    return Math.max(0, this.dealt - this.completed.size - this.waitingOpen);
+    this.preview ??= this.dealt || this.dealSize();
+    return Math.max(0, this.preview - this.completed.size - this.waitingOpen);
   }
+  private preview?: number;
 
   /** Cards left in the pile (the visible top card included). Before today's deal: what a deal would give. */
   left(): number {

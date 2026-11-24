@@ -236,6 +236,33 @@ describe("piles", () => {
     expect(order.indexOf("palabra 0'")).toBeGreaterThan(1); // its other face waits
   });
 
+  it("the table shows the pile before it is dealt, and study starts with the card it showed", async () => {
+    const d = await Device.open();
+    await d.deck(15);
+    const table = new StudySession(d.store, ES);
+    await table.prepare();
+    const shown = table.next()!;
+    expect(shown.left).toBe(10);
+    const edges = table.faces(9);
+    expect(edges).toHaveLength(9);
+    expect(deals(d)).toEqual([]); // looking deals nothing
+    const s = await sitting(d);
+    expect(deals(d)).toEqual([{ deal: 10, more: 0 }]);
+    expect(s.next()!.pick.card).toBe(shown.pick.card);
+    expect(s.faces(4)).toEqual(edges.slice(0, 4)); // the study screen shows fewer edges, same colours
+    expect(new StudySession(d.store, ES).faces(9)).toEqual(edges); // and the table's deeper ones stay
+  });
+
+  it("again from the table: today's cards from this pile, in the order they were answered", async () => {
+    const d = await Device.open();
+    await d.deck(3);
+    const first = await run(await sitting(d));
+    const later = await sitting(d);
+    expect(later.next()).toBeNull();
+    later.againThese(later.doneToday());
+    expect(await run(later)).toEqual(first);
+  });
+
   it("two devices dealing the same day offline count the deal once", async () => {
     const d = await Device.open();
     await d.deck(3);

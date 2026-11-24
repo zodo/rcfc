@@ -66,11 +66,17 @@ export class StudySession {
 
   /** Fresh predictions for the pile's words, and today's deal if it hasn't been dealt. */
   async start(): Promise<void> {
+    await this.prepare();
+    const v = this.view();
+    if (!v.dealt && v.dealSize() > 0) await this.deal(v.today, v.dealSize(), false);
+  }
+
+  /** Fresh predictions and the cards on screen checked, without dealing: the pile as the table shows it. */
+  async prepare(): Promise<void> {
     const { store } = this;
     await store.predict(this.source());
     this.size = pileSize(store.col, this.pile, store.clock());
     const v = this.view();
-    if (!v.dealt && v.dealSize() > 0) await this.deal(v.today, v.dealSize(), false);
     // Cards on screen last time: still valid unless deleted or answered right since (e.g. on another device).
     for (const k of ["top", "under"] as const) {
       const d = this.screen[k];
@@ -123,8 +129,8 @@ export class StudySession {
     if (under === null || count < 1) return [];
     const top = this.screen.top!.card;
     const faces = this.screen.faces;
-    faces.length = Math.min(faces.length, count - 1); // spots no longer showing are free again
     const v = this.view();
+    faces.length = Math.min(faces.length, Math.max(0, v.left() - 2)); // spots below the pile's bottom are gone
     const visible = [top, under];
     for (let spot = 0; spot < count - 1; spot++) {
       const d = v.next(visible, faces[spot]);
@@ -132,7 +138,7 @@ export class StudySession {
       visible.push(d.card);
       if (spot >= faces.length) faces.push(face(d.card)!);
     }
-    return [face(under)!, ...faces];
+    return [face(under)!, ...faces].slice(0, count);
   }
 
   /** Record an answer. If this throws, nothing was saved and the card can be rated again. */
@@ -171,9 +177,14 @@ export class StudySession {
     if (n > 0) await this.deal(v.today, n, true);
   }
 
-  /** Go through this sitting's cards once more, exactly those. */
-  againThese(): void {
-    this.replay = [...this.sitting];
+  /** Go through these cards once more, exactly those: this sitting's, or the given ones. */
+  againThese(cards: EntityId[] = this.sitting): void {
+    this.replay = [...cards];
+  }
+
+  /** Cards answered right from this pile today, in the order they were answered. */
+  doneToday(): EntityId[] {
+    return [...this.view().completed].reverse();
   }
 
   /** Words in this pile never studied (none left: offer adding words). */
