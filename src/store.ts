@@ -6,11 +6,14 @@ import Dexie, { type DexieOptions, type Table } from "dexie";
 import { Collection, EventFactory, eventOrder, type Card, type Preset } from "./domain/collection";
 import type { AppEvent, Review, ReviewPayload } from "./domain/events";
 import type { EntityId } from "./domain/ids";
-import { newQueue, unseenCards, type DayClock } from "./domain/newcards";
+import { knownCards, newQueue, unseenCards, type DayClock } from "./domain/newcards";
 import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin } from "./domain/rows";
 import { needsReplay } from "./domain/sync";
 import { Engine, type EngineApi } from "./engine/client";
 import type { InitResult } from "./engine/protocol";
+
+/** Answer time recorded for words marked known without being shown: a quick, sure answer. */
+const KNOWN_DURATION_MS = 2000;
 
 /** `remote`: came from the sync server, so it is never pushed back. */
 type StoredEvent = AppEvent & { seq?: number; remote?: 1 };
@@ -251,9 +254,19 @@ export class Store {
     return unseenCards(this.col, this.clock(), deckId).fresh;
   }
 
-  /** New cards that may be shown now (src/domain/newcards.ts). */
-  newQueue(deckId?: EntityId): Card[] {
-    return newQueue(this.col, this.clock(), this.preset().new_per_day, deckId);
+  /** New cards that may be shown now (src/domain/newcards.ts); `extra` raises today's limit. */
+  newQueue(deckId?: EntityId, extra = 0): Card[] {
+    return newQueue(this.col, this.clock(), this.preset().new_per_day + extra, deckId);
+  }
+
+  /**
+   * The user already knows these words: answer them Easy (src/domain/newcards.ts
+   * `knownCards`), so the model schedules them far out. Returns the words marked.
+   */
+  async markKnown(noteIds: EntityId[]): Promise<number> {
+    const cards = knownCards(this.col, noteIds);
+    for (const c of cards) await this.answer(c, 4, KNOWN_DURATION_MS);
+    return new Set(cards.map((c) => c.note_id)).size;
   }
 
   async allEvents(): Promise<AppEvent[]> {

@@ -3,12 +3,12 @@
 import "./style.css";
 import { app, go, reloadWhenSafe, requestPersistence, type Screens } from "./app";
 import { add } from "./screens/add";
-import { browse, edit } from "./screens/browse";
 import { home } from "./screens/home";
 import { importScreen } from "./screens/import";
 import { settings } from "./screens/settings";
 import { sortWords } from "./screens/sort";
 import { study } from "./screens/study";
+import { addLanguage, edit, words } from "./screens/words";
 import { joinFromLink } from "./screens/sync";
 import { Pictures } from "./pictures";
 import { Store } from "./store";
@@ -17,7 +17,7 @@ import { clear, h } from "./ui/h";
 import { setupInstallPrompt } from "./ui/install";
 import { setupUpdates } from "./ui/update";
 
-const screens: Screens = { home, study, sortWords, add, import: importScreen, browse, edit, settings };
+const screens: Screens = { home, study, sortWords, words, add, import: importScreen, edit, addLanguage, settings };
 Object.assign(go, screens);
 
 async function boot() {

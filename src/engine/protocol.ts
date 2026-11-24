@@ -9,12 +9,6 @@ export interface InitResult {
   loadMs: number;
 }
 
-export interface SpeedResult {
-  reviewsPerSec: number;
-  predictMsPerCard: number;
-  memoryMb: number;
-}
-
 export type Request =
   | { op: "init"; configKey: string }
   | { op: "reset" }
@@ -26,8 +20,7 @@ export type Request =
   | { op: "process"; rows: Float64Array; lastReviewId: string }
   | { op: "predict"; rows: Float64Array }
   | { op: "flush" }
-  | { op: "stats" }
-  | { op: "speedTest"; reviews: number; cards: number };
+  | { op: "stats" };
 
 export type Response =
   | { id: number; ok: true; value: unknown }

@@ -17,8 +17,8 @@ function syncStatusText(st: SyncStatus): string {
   return `Synced ${sameDay ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}.`;
 }
 
-/** The Sync card in Settings. */
-export function syncBox(): HTMLElement {
+/** Sync status, pairing (QR, link) and joining: the top of "Your data" in Settings. */
+export function syncParts(): { status: HTMLElement; pairing: Node[]; code: HTMLElement } {
   const { sync } = app;
   const link = pairingLink(location.origin, sync.code);
   const status = h("p", { class: "muted small" }, syncStatusText(sync.status));
@@ -33,6 +33,7 @@ export function syncBox(): HTMLElement {
   const join = h(
     "form",
     {
+      class: "stack",
       onsubmit: async (e: Event) => {
         e.preventDefault();
         const code = parseSyncCode(input.value);
@@ -49,38 +50,41 @@ export function syncBox(): HTMLElement {
     h("button", { class: "secondary", type: "submit" }, "Join"),
   );
 
-  return h(
-    "div",
-    { class: "card-box" },
-    h("h2", {}, "Sync"),
+  return {
     status,
-    h("p", { class: "muted small" }, "Every device with this code shares the same words, and the server keeps a copy. Anyone with the code can read and change them, so keep it private."),
-    h("code", { class: "sync-code" }, formatSyncCode(sync.code)),
-    qr,
-    h("p", { class: "muted small" }, "To add a device, scan this with its camera or open the link on it."),
-    h(
-      "div",
-      { class: "row2" },
+    pairing: [
+      qr,
       h(
-        "button",
-        {
-          class: "secondary",
-          type: "button",
-          onclick: async () => {
-            try {
-              await navigator.clipboard.writeText(link);
-              toast("Link copied");
-            } catch {
-              prompt("Copy this link", link);
-            }
+        "div",
+        { class: "row2" },
+        h(
+          "button",
+          {
+            class: "secondary",
+            type: "button",
+            onclick: async () => {
+              try {
+                await navigator.clipboard.writeText(link);
+                toast("Link copied");
+              } catch {
+                prompt("Copy this link", link);
+              }
+            },
           },
-        },
-        "Copy link",
+          "Copy link",
+        ),
+        h("button", { class: "secondary", type: "button", onclick: () => void sync.now() }, "Sync now"),
       ),
-      h("button", { class: "secondary", type: "button", onclick: () => void sync.now() }, "Sync now"),
+    ],
+    code: h(
+      "details",
+      { class: "stack" },
+      h("summary", {}, "Sync code"),
+      h("code", { class: "sync-code" }, formatSyncCode(sync.code)),
+      h("p", { class: "muted small" }, "Whoever has this code can read and change your words, so keep it private."),
+      join,
     ),
-    h("details", {}, h("summary", {}, "Use a code from another device"), join),
-  );
+  };
 }
 
 /** A pairing link (#k=CODE) opened on this device: join that account. True if the page is reloading. */

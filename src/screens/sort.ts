@@ -49,8 +49,8 @@ export function sortWords(deckId: EntityId): void {
         h("div", { class: "big-emoji", "aria-hidden": "true" }, "✓"),
         h("h2", {}, queue.length ? "Paused" : "All sorted"),
         h("p", { class: "muted" }, `${known} you know. The model will check them now and then. ${later} to learn, ${store.preset().new_per_day} a day.`),
-        queue.length ? h("p", { class: "muted small" }, `${queue.length} left to sort; continue any time from the Study tab.`) : null,
-        h("button", { class: "primary wide", onclick: () => go.home() }, "Done"),
+        queue.length ? h("p", { class: "muted small" }, `${queue.length} left to sort; continue any time from Words.`) : null,
+        h("button", { class: "primary wide", onclick: () => go.words() }, "Done"),
       ),
     );
   };

@@ -25,6 +25,33 @@ describe("StudySession", () => {
     expect(new StudySession(d.store).next()).toBeNull();
   });
 
+  it("learns more words today on request, then stops again", async () => {
+    const d = await Device.open();
+    await d.deck(15);
+    const s = new StudySession(d.store);
+    expect(await run(s)).toHaveLength(10);
+    expect(s.unseenLeft()).toBe(5);
+    s.extraNew += 3;
+    expect(await run(s)).toEqual(["new", "new", "new"]);
+    expect(s.next()).toBeNull();
+    // A new session the same day starts from the daily limit again: nothing new.
+    expect(new StudySession(d.store).next()).toBeNull();
+  });
+
+  it("words marked known are answered Easy and don't count against the daily limit", async () => {
+    const d = await Device.open();
+    const deckId = await d.deck(12);
+    const notes = d.store.col.liveNotes(deckId);
+    expect(await d.store.markKnown(notes.slice(0, 4).map((n) => n.id))).toBe(4);
+    const easy = d.store.col.reviews.map((r) => r.payload.rating);
+    expect(easy).toEqual([4, 4, 4, 4]);
+    // 8 unseen words left, 10 a day: all of them can still be introduced today.
+    expect(d.store.newQueue(deckId)).toHaveLength(8);
+    // Marking a started word again answers each card studied so far.
+    expect(await d.store.markKnown([notes[0].id])).toBe(1);
+    expect(d.store.col.reviews).toHaveLength(5);
+  });
+
   it("brings words back once they are due, with reverse cards the next day", async () => {
     const clock = new Clock();
     const d = await Device.open(clock);

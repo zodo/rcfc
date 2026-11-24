@@ -8,10 +8,15 @@ import { h, langName, toast } from "../ui/h";
 import { canSpeak, speak } from "../ui/speech";
 import { cutout } from "../ui/picture";
 import { swipeable } from "../ui/swipe";
+import { rememberDeck } from "./decks";
+
+/** New words one "Learn more" adds beyond today's limit. */
+const MORE_WORDS = 5;
 
 type Rating = ReviewPayload["rating"];
 
 export async function study(deckId?: EntityId): Promise<void> {
+  if (deckId !== undefined) rememberDeck(deckId);
   fullScreen(h("p", { class: "muted center" }, "Preparing…"));
   const s = new StudySession(app.store, deckId);
   await s.start();
@@ -25,27 +30,28 @@ function next(s: StudySession) {
 }
 
 function done(s: StudySession) {
+  // Today's words are done: offer more of them, extra practice, or adding words.
+  const more = Math.min(MORE_WORDS, s.unseenLeft());
+  const learnMore = () => {
+    s.extraNew += more;
+    next(s);
+  };
+  const practice = () => {
+    s.ahead = true;
+    next(s);
+  };
+  const canPractice = s.preds().size > 0;
   fullScreen(
     h(
       "section",
       { class: "done" },
       h("div", { class: "big-emoji", "aria-hidden": "true" }, "✓"),
       h("h2", {}, s.answered ? "All caught up" : "Nothing due right now"),
-      h("p", { class: "muted" }, s.answered ? `${s.answered} ${s.answered === 1 ? "answer" : "answers"} this session. Come back later.` : "No words are below your target recall, and today's new words are done."),
-      s.preds().size > 0
-        ? h(
-            "button",
-            {
-              class: "secondary wide",
-              onclick: () => {
-                s.ahead = true;
-                next(s);
-              },
-            },
-            "Keep practicing",
-          )
-        : null,
-      h("button", { class: "primary wide", onclick: () => go.home() }, "Done"),
+      h("p", { class: "muted" }, s.answered ? `${s.answered} ${s.answered === 1 ? "answer" : "answers"} this session.` : "Today's words are done.", more ? "" : " No new words left to learn."),
+      more ? h("button", { class: "primary wide", onclick: learnMore }, `Learn ${more} more ${more === 1 ? "word" : "words"}`) : null,
+      canPractice ? h("button", { class: "secondary wide", onclick: practice }, "Keep practicing") : null,
+      more ? null : h("button", { class: more || canPractice ? "secondary wide" : "primary wide", onclick: () => go.words() }, "Add words"),
+      h("button", { class: "secondary wide", onclick: () => go.home() }, "Done"),
     ),
   );
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AppEvent, Review } from "../src/domain/events";
-import { introducedToday, newQueue, unseenCards, type DayClock } from "../src/domain/newcards";
+import { introducedToday, knownCards, newQueue, unseenCards, type DayClock } from "../src/domain/newcards";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -72,5 +72,23 @@ describe("new cards", () => {
     const victim = col.liveNotes()[0];
     add([f.make("note_deleted", { note_id: victim.id })]);
     expect(newQueue(col, clock(T0), 10).map((c) => col.notes.get(c.note_id)!.fields.front)).toEqual(["w1", "Haus"]);
+  });
+});
+
+describe("knownCards", () => {
+  it("picks the forward card of an unseen word, every studied card of a started one, nothing of a deleted one", () => {
+    const { col, f, answer, add } = setup(3);
+    const [n0, n1, n2] = col.liveNotes();
+    const cardsOf = (id: number) => col.cardsByNote.get(id)!.map((c) => col.cards.get(c)!);
+    const [fwd1, rev1] = cardsOf(n1.id);
+    answer(fwd1.id, T0);
+    answer(rev1.id, T0 + DAY);
+    add([f.make("note_deleted", { note_id: n2.id })]);
+    const picked = knownCards(col, [n0.id, n1.id, n2.id]);
+    expect(picked.map((c) => [c.note_id, c.template])).toEqual([
+      [n0.id, "forward"],
+      [n1.id, "forward"],
+      [n1.id, "reverse"],
+    ]);
   });
 });

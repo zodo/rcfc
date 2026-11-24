@@ -661,3 +661,113 @@ button.link {
 .last-added h2 .muted {
   font-weight: 400;
 }
+
+/* sub pages: back button + title */
+header.top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 56px;
+}
+header.top.sub .back {
+  font-size: 30px;
+  padding: 4px 12px 8px 0;
+  color: var(--accent);
+}
+/* the language picker is the Words title */
+h1.picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+h1.picker > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+h1.picker .chev {
+  color: var(--muted);
+  font-size: 16px;
+}
+.lang-picker {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.card-box > p {
+  margin: 0;
+}
+.card-box p:empty {
+  display: none;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+details.stack > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+/* Words tab */
+.word-tools {
+  display: flex;
+  gap: 8px;
+}
+.word-tools input {
+  flex: 1;
+  min-width: 0;
+}
+.word-tools button {
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+.word-tools .add-btn {
+  font-size: 24px;
+  line-height: 1;
+  padding: 8px 16px 10px;
+}
+.select-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 0;
+}
+.select-info:empty {
+  display: none;
+}
+.list.selecting .word {
+  grid-template-columns: 22px 1fr 1fr auto;
+  align-items: center;
+}
+.check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+.word.selected {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+.word.selected .check {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+/* while selecting, the tab bar turns into the actions */
+.nav.select-actions {
+  gap: 10px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+}
+.nav.select-actions button {
+  flex: 1;
+  max-width: 260px;
+}

@@ -6,7 +6,7 @@ import type { Store } from "./store";
 import type { Sync } from "./sync";
 import { append, clear, h } from "./ui/h";
 
-export type Tab = "home" | "add" | "import" | "browse" | "settings";
+export type Tab = "home" | "words" | "settings";
 /** "study" covers every full-screen flow without the tab bar (study, sorting). */
 export type ScreenName = Tab | "study";
 
@@ -14,10 +14,12 @@ export interface Screens {
   home(): void | Promise<void>;
   study(deckId?: EntityId): void | Promise<void>;
   sortWords(deckId: EntityId): void;
+  /** The Words tab, for the current language (decks.ts `currentDeck`). */
+  words(): void;
   add(): void;
   import(): void;
-  browse(): void;
   edit(noteId: EntityId): void;
+  addLanguage(): void;
   settings(): void;
 }
 
@@ -53,15 +55,26 @@ export function setKeys(f: ((e: KeyboardEvent) => void) | null): void {
 function nav(active: Tab) {
   const item = (s: Tab, label: string, icon: string) =>
     h("button", { class: `nav-item${active === s ? " active" : ""}`, onclick: () => go[s](), "aria-label": label }, h("span", { class: "nav-icon", "aria-hidden": "true" }, icon), h("span", {}, label));
-  return h("nav", { class: "nav" }, item("home", "Study", "◎"), item("add", "Add", "+"), item("browse", "Words", "≡"), item("import", "Import", "⇩"), item("settings", "Settings", "⚙"));
+  return h("nav", { class: "nav" }, item("home", "Study", "◎"), item("words", "Words", "≡"), item("settings", "Settings", "⚙"));
 }
 
-/** A tab screen: title, content and the tab bar. */
-export function page(active: Tab, title: string, ...body: (Node | string | null | false)[]): void {
+type Body = (Node | string | null | false)[];
+
+/** A tab screen: title (text, or a node such as the language picker), content and the tab bar. */
+export function page(active: Tab, title: string | Node, ...body: Body): void {
+  show(active, h("header", { class: "top" }, typeof title === "string" ? h("h1", {}, title) : title), body);
+}
+
+/** A screen reached from a tab (add, edit, import): a back button instead of a title row of its own. */
+export function subPage(active: Tab, title: string, back: () => void, ...body: Body): void {
+  show(active, h("header", { class: "top sub" }, h("button", { class: "icon back", onclick: back, "aria-label": "Back" }, "‹"), h("h1", {}, title)), body);
+}
+
+function show(active: Tab, header: Node, body: Body): void {
   app.current = active;
   setKeys(null);
   clear(app.root);
-  append(app.root, [h("header", { class: "top" }, h("h1", {}, title)), h("section", { class: "content" }, ...body), nav(active)]);
+  append(app.root, [header, h("section", { class: "content" }, ...body), nav(active)]);
 }
 
 /** A full-screen view without the tab bar (study, sorting, their summaries). */

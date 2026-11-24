@@ -9,7 +9,7 @@ import Dexie, { type Table } from "dexie";
 import init, { Rwkv } from "../rwkv/pkg/rcfc_rwkv.js";
 import wasmUrl from "../rwkv/pkg/rcfc_rwkv_bg.wasm?url";
 import modelUrl from "../../rwkv/models/RWKV_trained_on_101_4999.safetensors?url";
-import type { InitResult, Request, Response, SpeedResult } from "./protocol";
+import type { InitResult, Request, Response } from "./protocol";
 
 interface Meta {
   key: "checkpoint";
@@ -121,29 +121,6 @@ function need(): Rwkv {
   return rt;
 }
 
-async function speedTest(reviews: number, cards: number): Promise<SpeedResult> {
-  const r = new Rwkv(await loadModel());
-  try {
-    const W = Rwkv.rowWidth();
-    const rows = new Float64Array(reviews * W);
-    for (let i = 0; i < reviews; i++) {
-      const c = (i % cards) + 1;
-      const first = i < cards;
-      rows.set([c, 1e6 + (c >> 1), 1, 1, Math.floor(i / 150), first ? -1 : 2, first ? -1 : 172800, 3, 4000, first ? 0 : 2], i * W);
-    }
-    let t = performance.now();
-    r.apply(rows);
-    const reviewsPerSec = reviews / ((performance.now() - t) / 1000);
-    const q = new Float64Array(cards * W);
-    for (let c = 1; c <= cards; c++) q.set([c, 1e6 + (c >> 1), 1, 1, 30, 3, 260000, NaN, NaN, NaN], (c - 1) * W);
-    t = performance.now();
-    r.predict(q);
-    return { reviewsPerSec, predictMsPerCard: (performance.now() - t) / cards, memoryMb: r.memoryBytes / 1e6 };
-  } finally {
-    r.free();
-  }
-}
-
 async function handle(m: Request): Promise<unknown> {
   switch (m.op) {
     case "init":
@@ -176,8 +153,6 @@ async function handle(m: Request): Promise<unknown> {
       return flush();
     case "stats":
       return { memoryBytes: rt?.memoryBytes ?? 0, reviewsProcessed: rt?.reviewsProcessed ?? 0 };
-    case "speedTest":
-      return speedTest(m.reviews, m.cards);
   }
 }
 

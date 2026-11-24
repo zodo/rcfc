@@ -3,7 +3,7 @@
 import type { Card } from "./domain/collection";
 import type { ReviewPayload } from "./domain/events";
 import type { EntityId } from "./domain/ids";
-import { dueCount, pickNext, type Pick } from "./domain/scheduler";
+import { dueCount, pickNext, TARGET_RECALL, type Pick } from "./domain/scheduler";
 import type { Store } from "./store";
 
 /** Answered cards remembered for re-entry blocking and fresh predictions. */
@@ -19,6 +19,8 @@ export class StudySession {
   answered = 0;
   /** Keep practicing past the due threshold. */
   ahead = false;
+  /** New words allowed today beyond the daily limit ("Learn more"). */
+  extraNew = 0;
 
   constructor(
     private store: Store,
@@ -37,9 +39,9 @@ export class StudySession {
 
   /** The next card, with the due count to show; null when the session is done. */
   next(): { pick: Pick; due: number } | null {
-    const newQueue = this.store.newQueue(this.deckId);
+    const newQueue = this.store.newQueue(this.deckId, this.extraNew);
     const preds = this.preds();
-    const desired = this.store.preset().desired_retention;
+    const desired = TARGET_RECALL;
     const pick = pickNext({
       preds,
       recent: this.recent,
@@ -50,6 +52,11 @@ export class StudySession {
       ahead: this.ahead,
     });
     return pick && { pick, due: dueCount(preds, desired) };
+  }
+
+  /** Words never studied in scope, beyond today's queue: what "Learn more" can introduce. */
+  unseenLeft(): number {
+    return this.store.unseenWords(this.deckId).length;
   }
 
   /** Record an answer. If this throws, nothing was saved and the card can be rated again. */

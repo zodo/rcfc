@@ -60,7 +60,28 @@ export function unseenCards(col: Collection, clock: DayClock, deckId?: EntityId)
  * so a big batch of known words doesn't crowd out new ones.
  */
 export function newQueue(col: Collection, clock: DayClock, limit: number, deckId?: EntityId): Card[] {
+  // `limit` may include today's extra words ("Learn more" when the day's are done).
   const { fresh, second } = unseenCards(col, clock, deckId);
   const today = introducedToday(col, clock);
   return [...second.slice(0, Math.max(0, limit - today.second)), ...fresh.slice(0, Math.max(0, limit - today.words))];
+}
+
+/**
+ * Cards to answer "Easy" when the user says they already know these words: the
+ * first card of a never-studied word (like sorting known words; the other
+ * direction then starts on a later day), else every card of it studied so far.
+ */
+export function knownCards(col: Collection, noteIds: Iterable<EntityId>): Card[] {
+  const out: Card[] = [];
+  for (const id of noteIds) {
+    if (!col.liveNote(id)) continue;
+    const cards = (col.cardsByNote.get(id) ?? []).map((c) => col.cards.get(c)!);
+    const studied = cards.filter((c) => c.reviews > 0);
+    if (studied.length) out.push(...studied);
+    else {
+      const first = cards.find((c) => c.template === "forward") ?? cards[0];
+      if (first) out.push(first);
+    }
+  }
+  return out;
 }

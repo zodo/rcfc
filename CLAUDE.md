@@ -10,7 +10,7 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
   - `store.ts` ties log + engine. No UI side effects: writes return `{ replay }` / set `stale`, the app decides when to reload
   - `session.ts` study-session logic (UI-free); `sync.ts` sync loop; `pictures.ts` picture queue + offline picture store
   - `app.ts` shell shared by screens: `app` (store, sync, current screen), `go.*` navigation, `page()` / `fullScreen()`, `setKeys()`
-  - `screens/` one module per screen; they navigate through `go`, never import each other (except helpers in `decks.ts`, `sort.ts`)
+  - `screens/` one module per screen; they navigate through `go`, never import each other (except helpers in `decks.ts`, `sort.ts`). Three tabs: Study (`home.ts`), Words (`words.ts`: list, select → know/delete, sort entry; add/import/edit are sub-pages with a back button), Settings (sync + backup only)
   - `main.ts` boot only; `dev/` dev-only URL hooks (`?reset`, `?seed=N`), excluded from production builds
 - `rwkv/engine/` Rust RWKV-SRS V1 inference (→ Wasm), checked against upstream goldens in `rwkv/golden/`; `rwkv/models/` weights
 - `worker/` Cloudflare Worker: API under `/api/*`; everything else is static assets. `sync.ts` is the sync API, written against a small `SqlDb` slice of D1 so tests run it on bun:sqlite; `pictures.ts` draws and serves card pictures
@@ -39,7 +39,7 @@ Bun is the package manager, script runner and test runner (`bun.lock`; never use
 - `bun run build` typecheck + build
 - `scripts/build-icons.sh` re-rasterize `public/icon.svg` into the committed PNG icons (manifest + iOS) after changing it
 - `bun test` all tests (`bun:test`): pure domain, Store/StudySession on fake-indexeddb + fake engine, multi-device sync through the real Worker handler. `RCFC_DUOCARDS_EXPORT=/path/to/export.csv bun test` also runs the importer over a real export (never commit real exports: personal data)
-- `bun run smoke [url]` UI smoke test in headless Chromium (Chromium.app, else Chrome; `RCFC_CHROMIUM` overrides) over the DevTools Protocol, no deps: starts a dev server on :5199 unless given one, walks deck → add → study → words → settings/sync → seeded replay with the real model → sorting, fails on page errors; screenshot on failure in `.wrangler/smoke/`. `RCFC_HEADFUL=1` to watch, `RCFC_TRACE=1` to log clicks, `RCFC_SHOTS=1` to save screenshots of the add/study screens. Against preview/production it draws real pictures (~60 neurons each). ~4 s after the dev server is up
+- `bun run smoke [url]` UI smoke test in headless Chromium (Chromium.app, else Chrome; `RCFC_CHROMIUM` overrides) over the DevTools Protocol, no deps: starts a dev server on :5199 unless given one, walks language → add → study → words → settings/sync → seeded replay with the real model → sorting → select/know/delete, fails on page errors; screenshot on failure in `.wrangler/smoke/`. `RCFC_HEADFUL=1` to watch, `RCFC_TRACE=1` to log clicks, `RCFC_SHOTS=1` to save screenshots of the add/study screens. Against preview/production it draws real pictures (~60 neurons each). ~4 s after the dev server is up
 - Dev URL hooks (dev server only): `/?reset` wipes this origin's data, `/?seed=60` adds a demo deck with a month of reviews
 - `bun run deploy:preview` build → remote D1 migrations → deploy → smoke test; prints the URL
 - `bun run deploy:prod` same for production; refuses a dirty tree. **Only on explicit user request.**
@@ -61,6 +61,12 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 
 - Entity ids are random positive integers < 2^53 (`src/domain/ids.ts`), not full 64-bit: fit rwkv-srs `i64`, exact in JS, JSON-safe.
 - Importers are pure (text in, events out) and dedup on normalized front+back so re-imports are safe. Imported notes must not auto-queue enrichment at import time (pictures are queued the first time a word is shown in study).
+
+## UX notes
+
+- Fewer buttons, no study settings. A deck is one language pair ("Spanish" = es→en); the UI says "language", names it after the studied language (`deckFor` reuses an existing pair) and the Words title switches it. The current language is per device (localStorage).
+- Target recall is fixed (`TARGET_RECALL` 0.9 in `src/domain/scheduler.ts`; presets' `desired_retention` is ignored). Day rollover (4) and new words per day (10) stay in the preset but have no UI; when today's words are done the study screen offers "Learn 5 more" (session-only `extraNew`).
+- "I know these" (`Store.markKnown`) answers Easy: the forward card of an unseen word, else every studied card.
 
 ## Picture notes
 

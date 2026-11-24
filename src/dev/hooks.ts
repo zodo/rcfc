@@ -26,7 +26,6 @@ const noEngine = {
   predict: async (rows: Float64Array) => new Float64Array(rows.length / 10),
   flush: async () => {},
   stats: async () => ({ memoryBytes: 0, reviewsProcessed: 0 }),
-  speedTest: async () => ({ reviewsPerSec: 0, predictMsPerCard: 0, memoryMb: 0 }),
 } satisfies EngineApi;
 
 function without(params: URLSearchParams, key: string): string {

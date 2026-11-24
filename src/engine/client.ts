@@ -1,5 +1,5 @@
 // Promise API over the RWKV worker.
-import type { InitResult, Request, Response, SpeedResult } from "./protocol";
+import type { InitResult, Request, Response } from "./protocol";
 
 /** What the app uses of the engine; tests substitute a stub (test/support/fake-engine.ts). */
 export type EngineApi = Pick<Engine, keyof Engine>;
@@ -56,8 +56,5 @@ export class Engine {
   }
   stats() {
     return this.call<{ memoryBytes: number; reviewsProcessed: number }>({ op: "stats" });
-  }
-  speedTest(reviews: number, cards: number) {
-    return this.call<SpeedResult>({ op: "speedTest", reviews, cards });
   }
 }

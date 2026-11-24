@@ -4,7 +4,7 @@
 // good answers, so scheduling behaves plausibly. The real model is covered by
 // the Rust goldens (rwkv/engine/tests).
 import type { EngineApi } from "../../src/engine/client";
-import type { InitResult, SpeedResult } from "../../src/engine/protocol";
+import type { InitResult } from "../../src/engine/protocol";
 import { ROW_WIDTH } from "../../src/domain/rows";
 
 interface State {
@@ -99,9 +99,5 @@ export class FakeEngine implements EngineApi {
 
   async stats() {
     return { memoryBytes: 0, reviewsProcessed: this.state.reviews };
-  }
-
-  async speedTest(): Promise<SpeedResult> {
-    return { reviewsPerSec: 0, predictMsPerCard: 0, memoryMb: 0 };
   }
 }

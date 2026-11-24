@@ -224,18 +224,19 @@ async function answerUntilDone(s: Browser, max: number): Promise<number> {
   return n;
 }
 
+const words = (s: Browser) => s.js<number>(`return document.querySelectorAll(".list button.word").length;`);
+
 async function run(s: Browser, url: string) {
   log("fresh start shows the welcome screen");
   await s.go(`${url}/?reset`);
   await s.until("welcome", `document.querySelector("header.top h1")?.textContent === "Welcome"`, 60_000);
 
-  log("create a deck");
-  await s.type("input[name=name]", "Smoke");
-  await s.click("button", "Create deck");
-  await s.until("home", `document.querySelector(".deck-name")?.textContent === "Smoke"`);
+  log("pick a language: lands on its empty word list");
+  await s.click("button", "Start");
+  await s.until("Words: Spanish", `document.querySelector(".lang-picker")?.selectedOptions[0]?.textContent === "Spanish"`);
 
   log("add two words");
-  await s.click("nav .nav-item", "Add");
+  await s.click("button", "Add a word");
   for (const [front, back] of [["hola", "hello"], ["adiós", "goodbye"]]) {
     await s.type("input[name=front]", front);
     await s.type("input[name=back]", back);
@@ -250,8 +251,10 @@ async function run(s: Browser, url: string) {
   await s.type("input[name=back]", "hello");
   await s.click("button[type=submit]", "Add");
   await s.until("duplicate hint", `document.body.textContent.includes('"hola" is already in your words.')`);
+  await s.click("button[aria-label=Back]");
+  await s.until("2 words listed", `document.querySelectorAll(".list button.word").length === 2`);
 
-  log("home counts the new words");
+  log("Study tab counts the new words");
   await s.click("nav .nav-item", "Study");
   await s.until("2 new", `document.querySelector(".counts .new")?.textContent === "2 new"`);
 
@@ -266,16 +269,18 @@ async function run(s: Browser, url: string) {
   await s.until("next screen", `!document.querySelector(".answer:not(.hidden)")`);
   const answered = 1 + (await answerUntilDone(s, 10));
   if (answered < 2) throw new Error(`only ${answered} cards shown`);
+  log("done screen: no words left to learn, so it offers adding some");
+  await s.until("Add words", `[...document.querySelectorAll(".done button")].some((b) => b.textContent === "Add words")`);
   await s.click("button", "Done");
-  await s.until("0 new", `document.querySelector(".counts .new")?.textContent === "0 new"`);
+  await s.until("no new left", `document.querySelector(".deck") && !document.querySelector(".counts .new")`);
 
   log("words list and edit");
   await s.click("nav .nav-item", "Words");
-  await s.until("Words · 2", `document.querySelector("header.top h1")?.textContent === "Words · 2"`);
+  await s.until("2 words", `document.querySelectorAll(".list button.word").length === 2`);
   await s.click("button.word", "adiós");
   await s.type("textarea", "¡Adiós, amigo!");
   await s.click("button", "Save");
-  await s.until("back to list", `document.querySelector("header.top h1")?.textContent === "Words · 2"`);
+  await s.until("back to list", `document.querySelectorAll(".list button.word").length === 2`);
 
   log("settings show the sync code and sync with the local Worker");
   await s.click("nav .nav-item", "Settings");
@@ -283,7 +288,7 @@ async function run(s: Browser, url: string) {
   await s.click("button", "Sync now");
   await s.until("synced", `document.body.textContent.includes("Synced ")`, 20_000);
 
-  log("seeded collection: replay, due cards, sorting");
+  log("seeded collection: replay, due cards");
   await s.go(`${url}/?reset&seed=60`);
   await s.until("seeded home", `document.querySelector(".deck-name")?.textContent === "Demo Spanish"`, 90_000);
   const due = Number((await s.text(".counts .due")).split(" ")[0]);
@@ -292,6 +297,9 @@ async function run(s: Browser, url: string) {
   await answerUntilDone(s, 6);
   await s.click("button[aria-label=Close]");
   await s.until("home", `document.querySelector(".deck-name")`);
+
+  log("sort known words from the Words tab");
+  await s.click("nav .nav-item", "Words");
   await s.click(".sort-entry");
   for (let i = 0; i < 3; i++) {
     await s.until(`sort card ${i + 1}`, `document.querySelector(".study-top span")?.textContent.startsWith("${i + 1} /")`);
@@ -300,7 +308,23 @@ async function run(s: Browser, url: string) {
   await s.click("button[aria-label=Stop]");
   await s.until("paused", `document.querySelector(".done h2")?.textContent === "Paused"`);
   await s.click("button", "Done");
-  await s.until("home", `document.querySelector(".deck-name")`);
+  await s.until("words", `document.querySelectorAll(".list button.word").length > 0`);
+
+  log("select words: mark known, delete");
+  const before = await words(s);
+  await s.click("button", "Select");
+  await s.until("selecting", `document.querySelector(".list.selecting")`);
+  await s.click(".list button.word:nth-of-type(1)");
+  await s.click(".list button.word:nth-of-type(2)");
+  await s.until("2 selected", `document.querySelector(".select-info")?.textContent.startsWith("2 selected")`);
+  await s.click(".select-actions button", "I know these");
+  await s.until("marked known", `document.getElementById("toast")?.textContent === "2 words marked as known"`);
+  await s.until("tab bar back", `!document.querySelector(".list.selecting") && document.querySelector(".select-actions.hidden")`);
+  await s.js(`window.confirm = () => true;`);
+  await s.click("button", "Select");
+  await s.click(".list button.word:nth-of-type(1)");
+  await s.click(".select-actions button", "Delete");
+  await s.until("one fewer", `document.querySelectorAll(".list button.word").length === ${before - 1}`);
 
   log("no uncaught errors");
   const errors = [...s.errors, ...(await s.js<string[]>("return window.__rcfcErrors ?? [];"))];

@@ -1,9 +1,12 @@
-// Deck helpers shared by several screens.
-import { app } from "../app";
+// Languages, shared by several screens. A deck is one language pair (e.g.
+// Spanish → English, English → Russian); the UI calls it a language and names
+// it after the language studied. Words, adding and importing work on the
+// current language, which the Words header switches.
+import { app, go } from "../app";
 import type { Deck } from "../domain/collection";
 import type { DeckCreatedPayload, LangPair } from "../domain/events";
 import type { EntityId } from "../domain/ids";
-import { h, langName, langSelect } from "../ui/h";
+import { h, LANGS, langName, langSelect } from "../ui/h";
 
 const LAST_DECK_KEY = "rcfc:lastDeck";
 
@@ -11,21 +14,22 @@ export function decks(): Deck[] {
   return [...app.store.col.decks.values()];
 }
 
-export function deckSelect(name: string, selected?: EntityId): HTMLSelectElement {
-  const s = h("select", { name });
-  for (const d of decks()) s.appendChild(h("option", { value: String(d.id), selected: d.id === selected }, d.name));
-  return s;
+/** "Spanish"; "Spanish → English" when another deck studies the same language. */
+export function deckLabel(d: Deck): string {
+  const twin = decks().some((o) => o.id !== d.id && (o.name === d.name || o.lang_pair.from === d.lang_pair.from));
+  return twin ? `${d.name} → ${langName(d.lang_pair.to)}` : d.name;
 }
 
-/** The deck words were last added or imported to. */
-export function lastDeck(): EntityId | undefined {
+/** The language last studied, added to or picked in Words. */
+export function currentDeck(): Deck | undefined {
+  const { decks: all } = app.store.col;
   try {
-    const v = Number(localStorage.getItem(LAST_DECK_KEY));
-    if (app.store.col.decks.has(v)) return v;
+    const d = all.get(Number(localStorage.getItem(LAST_DECK_KEY)));
+    if (d) return d;
   } catch {
     /* storage unavailable */
   }
-  return decks()[0]?.id;
+  return decks()[0];
 }
 
 export function rememberDeck(id: EntityId): void {
@@ -36,30 +40,51 @@ export function rememberDeck(id: EntityId): void {
   }
 }
 
-export async function createDeck(name: string, lang_pair: LangPair): Promise<EntityId> {
+/** The deck for a language pair: the existing one, else a new one named after the language. */
+export async function deckFor(lang_pair: LangPair): Promise<EntityId> {
   const { store } = app;
-  const ev = store.factory.deck(name.trim() || langName(lang_pair.from), store.preset().preset_id, lang_pair);
+  const same = decks().find((d) => d.lang_pair.from === lang_pair.from && d.lang_pair.to === lang_pair.to);
+  if (same) return same.id;
+  const ev = store.factory.deck(langName(lang_pair.from), store.preset().preset_id, lang_pair);
   await store.append([ev]);
   return (ev.payload as DeckCreatedPayload).deck_id;
 }
 
-export function newDeckForm(onDone: (id: EntityId) => void, from = "es"): HTMLFormElement {
-  const name = h("input", { name: "name", placeholder: `e.g. ${langName(from)}`, autocomplete: "off" });
-  const fromSel = langSelect("from", from);
-  const toSel = langSelect("to", "en");
+/** "I'm learning … / I speak …": picks or creates that language and makes it current. */
+export function languageForm(onDone: (id: EntityId) => void, submitLabel: string): HTMLFormElement {
+  // Suggest a language not studied yet, translated into the language used so far.
+  const to = currentDeck()?.lang_pair.to ?? "en";
+  const used = new Set(decks().map((d) => d.lang_pair.from));
+  const learning = langSelect("from", LANGS.find((c) => !used.has(c) && c !== to) ?? "es");
+  const speak = langSelect("to", to);
   return h(
     "form",
     {
       class: "card-box",
       onsubmit: async (e: Event) => {
         e.preventDefault();
-        const id = await createDeck(name.value || langName(fromSel.value), { from: fromSel.value, to: toSel.value });
+        const id = await deckFor({ from: learning.value, to: speak.value });
+        rememberDeck(id);
         onDone(id);
       },
     },
-    h("h2", {}, "New deck"),
-    h("label", {}, "Name", name),
-    h("div", { class: "row2" }, h("label", {}, "I'm learning", fromSel), h("label", {}, "I speak", toSel)),
-    h("button", { class: "primary", type: "submit" }, "Create deck"),
+    h("div", { class: "row2" }, h("label", {}, "I'm learning", learning), h("label", {}, "I speak", speak)),
+    h("button", { class: "primary", type: "submit" }, submitLabel),
   );
+}
+
+const ADD = "add";
+
+/** The Words title: the current language, switchable, with "Add a language" at the end. */
+export function languagePicker(current: Deck, onChange: () => void): HTMLElement {
+  const s = h("select", { class: "lang-picker", "aria-label": "Language" });
+  for (const d of decks()) s.appendChild(h("option", { value: String(d.id), selected: d.id === current.id }, deckLabel(d)));
+  s.appendChild(h("option", { value: ADD }, "+ Add a language"));
+  s.addEventListener("change", () => {
+    if (s.value === ADD) return go.addLanguage();
+    rememberDeck(Number(s.value));
+    onChange();
+  });
+  // The visible title is plain text; the native select sits invisibly on top, so it opens the system picker.
+  return h("h1", { class: "picker" }, h("span", {}, deckLabel(current)), h("span", { class: "chev", "aria-hidden": "true" }, "▾"), s);
 }

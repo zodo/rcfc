@@ -33,11 +33,11 @@ export interface NoteSource {
 
 export interface PresetUpdatedPayload {
   preset_id: EntityId;
-  /** Target P(recall); a card is due when its prediction drops below this. */
+  /** No longer read: the target is fixed (src/domain/scheduler.ts TARGET_RECALL). Kept for old logs. */
   desired_retention: number;
-  /** Local hour when a new study day starts (drives RWKV day_offset). */
+  /** Local hour when a new study day starts (drives RWKV day_offset). Not user-settable; default 4. */
   day_rollover_hour: number;
-  /** New cards introduced per study day, across decks using this preset. */
+  /** New cards introduced per study day, across decks using this preset. Not user-settable; default 10. */
   new_per_day: number;
 }
 

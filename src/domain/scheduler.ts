@@ -4,6 +4,13 @@
 // back, and new cards are interleaved under a daily limit.
 import type { EntityId } from "./ids";
 
+/**
+ * Target P(recall): a card is due once its prediction falls below this. Fixed,
+ * not a setting: 90% is the usual sweet spot between workload and forgetting.
+ * (Presets still carry `desired_retention` from older versions; it is ignored.)
+ */
+export const TARGET_RECALL = 0.9;
+
 export interface PickInput {
   /** Current P(recall) of reviewed cards. */
   preds: ReadonlyMap<EntityId, number>;
