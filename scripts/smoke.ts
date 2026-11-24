@@ -456,6 +456,7 @@ async function run(s: Browser, url: string) {
   await s.click(".select-info button.link", "Done");
   await s.until("empty sticker", `document.querySelector(".list.none .pencil-note") && document.querySelector(".select-info")?.textContent.startsWith("0 words")`);
   await shot(s, "words-empty-sticker");
+  await s.until("the open sticker is as tall as the others", `(() => { const h = (el) => el.offsetHeight; const on = document.querySelector(".chip.sticker.on"); const off = document.querySelector("button.chip.sticker"); return on && off && h(on) === h(off) && h(on) === h(document.querySelector(".chip.new-sticker")); })()`, 3000);
   await s.click(".chip.sticker.on .pen");
   await shot(s, "words-pencil");
   await s.type(".pile-sheet input[name=sticker]", "trips");

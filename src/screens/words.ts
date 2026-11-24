@@ -115,6 +115,10 @@ export function words(): void {
     await refresh();
   };
 
+  /** Edit's saves, one after another (taps in order); leaving Edit waits for them. */
+  let saving: Promise<unknown> = Promise.resolve();
+  const toList = () => void saving.then(() => setMode("list"));
+
   /** Select and Edit hold the back gesture: back goes back to the list. */
   const setMode = (m: Mode) => {
     releaseMode?.();
@@ -128,7 +132,7 @@ export function words(): void {
     if (m !== "list")
       releaseMode = hold(() => {
         releaseMode = null;
-        setMode("list");
+        toList();
       });
     rebuild();
   };
@@ -139,7 +143,7 @@ export function words(): void {
   function renderInfo() {
     clear(info);
     if (mode === "edit") {
-      append(info, [h("span", { class: "small" }, "Tap words to stick on or peel off"), link("Done", () => setMode("list"))]);
+      append(info, [h("span", { class: "small" }, "Tap words to stick on or peel off"), link("Done", toList)]);
     } else if (mode === "list") {
       const count = q.value ? plural(found.length, "match", "matches") : plural(found.length, "word");
       append(info, [
@@ -164,8 +168,9 @@ export function words(): void {
     el.classList.toggle("stuck", on);
     el.setAttribute("aria-pressed", String(on));
     try {
-      await store.stick(labelId!, [n.id], on);
+      await (saving = saving.then(() => store.stick(labelId!, [n.id], on)));
     } catch (e) {
+      saving = Promise.resolve();
       el.classList.toggle("stuck", !on);
       el.setAttribute("aria-pressed", String(!on));
       toast(`Could not save: ${errorText(e)}`);

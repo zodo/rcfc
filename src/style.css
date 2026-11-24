@@ -424,6 +424,7 @@ button.link {
   display: inline-flex;
   align-items: center;
   max-width: 190px;
+  line-height: 20px; /* bold (open) and regular fonts have different normal line heights */
   padding: 0;
   --c: var(--sticker);
   --tex: var(--fibre, none);
@@ -431,6 +432,11 @@ button.link {
 .chip.sticker > button,
 button.chip.sticker {
   padding: 6px 12px;
+}
+/* the open chip's name and pencil are buttons inside it: the chip's size, not a button's */
+.chip.sticker > button {
+  font-size: inherit;
+  line-height: inherit;
 }
 .chip.sticker > .t {
   padding-right: 4px;
@@ -454,6 +460,7 @@ button.chip.sticker {
 /* + Sticker: a sticker not stuck yet, its outline dotted, tilted like the others */
 .chip.new-sticker {
   filter: none;
+  line-height: 20px;
   color: var(--on-table-muted);
   outline: 2px dotted var(--printed);
   outline-offset: -2px;
