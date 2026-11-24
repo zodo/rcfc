@@ -43,7 +43,7 @@ async function speak(url: URL, env: TtsEnv): Promise<Response> {
   if (!env.AZURE_SPEECH_KEY) return json({ error: "no voice service" }, 404);
   const now = (env.now ?? Date.now)();
   if (!(await reserve(env.DB, budgetMonth(now), text.length, env.budget ?? DEFAULT_TTS_CHARS_PER_MONTH))) return json({ error: "monthly voice limit reached" }, 429);
-  const res = await (env.fetch ?? fetch)(`https://${env.AZURE_SPEECH_REGION ?? "westeurope"}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+  const res = await (env.fetch ?? fetch)(`https://${env.AZURE_SPEECH_REGION ?? "francecentral"}.tts.speech.microsoft.com/cognitiveservices/v1`, {
     method: "POST",
     headers: { "Ocp-Apim-Subscription-Key": env.AZURE_SPEECH_KEY, "content-type": "application/ssml+xml", "x-microsoft-outputformat": AUDIO_FORMAT, "user-agent": "rcfc" },
     body: ssml(text, voice),
