@@ -12,7 +12,7 @@
 // Everything here is derived from the log, so it syncs. Pure: a function of
 // the folded collection, predictions and a clock.
 import type { Card, Collection } from "./collection";
-import type { LangPair } from "./events";
+import type { CardTemplate, LangPair } from "./events";
 import type { EntityId } from "./ids";
 import { newQueue, type DayClock } from "./newcards";
 import { studyDay } from "./rows";
@@ -192,15 +192,23 @@ export class PileView {
    * The next card under the `visible` ones (the top card, the one peeked under
    * it). Order: cards carried over from an earlier day, then cards chosen now
    * (due ones weakest first, then new words), then cards tucked under today.
+   * With `face`, the card must lie that side up (its spot already showed that
+   * colour), unless no card of that colour is left.
    */
-  next(visible: readonly EntityId[] = []): Draw | null {
+  next(visible: readonly EntityId[] = [], face?: CardTemplate): Draw | null {
+    if (face) return this.pick(visible, (c) => c.template === face) ?? this.pick(visible, () => true);
+    return this.pick(visible, () => true);
+  }
+
+  private pick(visible: readonly EntityId[], fits: (c: Card) => boolean): Draw | null {
     const vis = new Set(visible);
-    const carried = this.carried.find((id) => !vis.has(id));
+    const ok = (id: EntityId) => !vis.has(id) && fits(this.i.col.cards.get(id)!);
+    const carried = this.carried.find(ok);
     if (carried !== undefined) return this.draw(carried, "again");
     const visibleFresh = visible.filter((id) => !this.waiting.has(id)).length;
     if (this.freshSlots - visibleFresh > 0) {
       const notes = new Set(visible.map((id) => this.i.col.cards.get(id)?.note_id));
-      const free = (c: Card) => !vis.has(c.id) && !notes.has(c.note_id);
+      const free = (c: Card) => !vis.has(c.id) && !notes.has(c.note_id) && fits(c);
       const due = this.dueCards().filter((d) => free(d.card));
       const cool = due.find((d) => !this.twinHot(d.card));
       if (cool) return { card: cool.card.id, kind: "due", p: cool.p };
@@ -211,7 +219,7 @@ export class PileView {
       if (due[0]) return { card: due[0].card.id, kind: "due", p: due[0].p };
       if (fresh[0]) return { card: fresh[0].id, kind: "new" };
     }
-    const again = this.againToday.find((id) => !vis.has(id));
+    const again = this.againToday.find(ok);
     return again === undefined ? null : this.draw(again, "again");
   }
 

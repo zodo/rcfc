@@ -594,6 +594,9 @@ h1.picker .chev {
   inset: 0;
   overflow: hidden;
 }
+.under > .sheet.known {
+  background-color: var(--card-known);
+}
 .flashcard {
   touch-action: none;
   cursor: grab;

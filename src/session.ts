@@ -3,7 +3,7 @@
 // only this device knows: the cards on screen. UI-free (src/screens/study.ts
 // renders it), so tests drive it with a stub engine.
 import type { Card } from "./domain/collection";
-import type { LangPair, PileDealt, ReviewPayload } from "./domain/events";
+import type { CardTemplate, LangPair, PileDealt, ReviewPayload } from "./domain/events";
 import type { EntityId } from "./domain/ids";
 import { languagePile, MORE, pileSize, PileView, type Draw } from "./domain/piles";
 import type { Store } from "./store";
@@ -13,8 +13,19 @@ const HOT = 50;
 /** Stalest predictions refreshed in the background after each answer. */
 const REFRESH = 100;
 
-/** The cards on screen per device and pile, kept while the app runs: leaving and coming back finds the same top card. */
-const shown = new Map<string, { top: Draw | null; under: Draw | null }>();
+/**
+ * What is on screen per device and pile, kept while the app runs: the top
+ * card, the one under it, and the colour (which side lies up) of each card
+ * further down whose edge shows. Those colours are fixed once shown; which
+ * card fills each spot is still chosen when it is drawn.
+ */
+interface OnScreen {
+  top: Draw | null;
+  under: Draw | null;
+  /** Spots 2, 3, … under the top card. */
+  faces: CardTemplate[];
+}
+const shown = new Map<string, OnScreen>();
 
 export class StudySession {
   readonly pile: string;
@@ -26,7 +37,7 @@ export class StudySession {
   private replay: EntityId[] | null = null;
   private recent: EntityId[] = [];
   private size = 0;
-  private screen: { top: Draw | null; under: Draw | null };
+  private screen: OnScreen;
 
   constructor(
     private store: Store,
@@ -34,7 +45,7 @@ export class StudySession {
   ) {
     this.pile = languagePile(pair);
     const key = `${store.deviceId}|${this.pile}`;
-    this.screen = shown.get(key) ?? { top: null, under: null };
+    this.screen = shown.get(key) ?? { top: null, under: null, faces: [] };
     shown.set(key, this.screen);
   }
 
@@ -94,9 +105,34 @@ export class StudySession {
     if (!top) return null;
     if (!this.screen.under) {
       const v = this.view();
-      if (v.left() >= 2) this.screen.under = v.next([top.card]);
+      if (v.left() >= 2) this.screen.under = v.next([top.card], this.screen.faces.shift());
     }
     return this.screen.under?.card ?? null;
+  }
+
+  /**
+   * Which side lies up on the cards under the top one, for the `count` spots
+   * whose edges show (the peeked card first). A spot seen for the first time
+   * gets the colour of the card expected there; then it keeps it.
+   */
+  faces(count: number): CardTemplate[] {
+    const { col } = this.store;
+    const face = (id: EntityId | null | undefined) => (id == null ? undefined : col.cards.get(id)?.template);
+    if (this.replay) return this.replay.slice(1, count + 1).map((id) => face(id) ?? "forward");
+    const under = this.peek();
+    if (under === null || count < 1) return [];
+    const top = this.screen.top!.card;
+    const faces = this.screen.faces;
+    faces.length = Math.min(faces.length, count - 1); // spots no longer showing are free again
+    const v = this.view();
+    const visible = [top, under];
+    for (let spot = 0; spot < count - 1; spot++) {
+      const d = v.next(visible, faces[spot]);
+      if (!d) break;
+      visible.push(d.card);
+      if (spot >= faces.length) faces.push(face(d.card)!);
+    }
+    return [face(under)!, ...faces];
   }
 
   /** Record an answer. If this throws, nothing was saved and the card can be rated again. */

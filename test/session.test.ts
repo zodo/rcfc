@@ -154,6 +154,50 @@ describe("piles", () => {
     expect(new Set(order.slice(0, 3).map((w) => w.replace("'", ""))).size).toBe(3);
   });
 
+  it("cards under the top keep the colour their edge showed", async () => {
+    const clock = new Clock();
+    const d = await Device.open(clock);
+    await d.deck(8);
+    await run(await sitting(d)); // white sides learned today
+    clock.advance(DAY);
+    await run(await sitting(d)); // cream sides the next day
+    clock.advance(30 * DAY); // both sides of every word due: a mixed pile
+    const s = await sitting(d);
+    let n = s.next()!;
+    let faces = s.faces(5);
+    const seen = new Set(faces);
+    for (let i = 0; i < 10; i++) {
+      await s.answer(d.store.col.cards.get(n.pick.card)!, 3, 1000);
+      await s.refresh(d.store.col.cards.get(n.pick.card)!);
+      n = s.next()!;
+      expect(d.store.col.cards.get(n.pick.card)!.template).toBe(faces[0]); // the peeked card, now on top
+      const now = s.faces(5);
+      expect(now.slice(0, 4)).toEqual(faces.slice(1, 5)); // every spot moved up one, same colours
+      faces = now;
+      for (const f of now) seen.add(f);
+    }
+    expect(seen.size).toBe(2); // the pile went from white sides to cream ones
+  });
+
+  it("a spot that showed white gets a white card, even when a cream one became needier", async () => {
+    const clock = new Clock();
+    const d = await Device.open(clock);
+    await d.deck(8);
+    await run(await sitting(d));
+    clock.advance(DAY);
+    await run(await sitting(d));
+    clock.advance(30 * DAY);
+    const s = await sitting(d);
+    const top = s.next()!.pick.card;
+    const faces = s.faces(4);
+    expect(faces).toEqual(["forward", "forward", "forward", "forward"]);
+    const cream = s.source().find((c) => c.template === "reverse" && ![top, s.peek()].includes(c.id))!;
+    d.store.preds.set(cream.id, 0.01); // now the neediest card of all
+    await s.answer(d.store.col.cards.get(top)!, 3, 1000);
+    s.next();
+    expect(d.store.col.cards.get(s.peek()!)!.template).toBe("forward"); // spot 2 showed white
+  });
+
   it("Again, these N goes through exactly the same cards once more", async () => {
     const d = await Device.open();
     await d.deck(4);

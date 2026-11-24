@@ -214,7 +214,7 @@ Nov 24, 2026. Agreed, not built yet; built in the order of the plan at the end o
 
 1. Every day (at the rollover hour, 4:00) each pile is dealt its size.
 2. A pile fixes how many cards, not which. A card is chosen when it is drawn: the one in the pile's words that needs the user most right then.
-3. A card that has been seen stays fixed: the face-up top card, the card peeked under it while throwing, and cards answered Again. Again tucks the card under its pile, same face up, and it stays there past the rollover, on top of the next deal.
+3. A card that has been seen stays fixed: the face-up top card, the card peeked under it while throwing, and cards answered Again. Deeper cards show only an edge, so only their colour is fixed: the card drawn into that spot lies the same side up (the neediest card of that colour), unless no card of that colour is left. Again tucks the card under its pile, same face up, and it stays there past the rollover, on top of the next deal.
 4. Got it or Easy puts the card in the done tray for the day, in every pile.
 
 What "needs the user most" means:

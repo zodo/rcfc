@@ -177,9 +177,14 @@ class Table {
     return { x: (r() - 0.5) * 10, y: (r() - 0.5) * 8, r: (r() - 0.5) * 5 };
   }
 
-  /** The cards under the top one, keyed by their number; `instant` appears without fading in. */
+  /**
+   * The cards under the top one, keyed by their number; `instant` appears
+   * without fading in. Each lies with its own side up: white (studied
+   * language) or cream (known language), fixed once its edge shows.
+   */
   private syncPile(instant?: number): void {
     const want = Math.min(SHOWN, this.left - 1);
+    const faces = this.s.faces(want);
     const have = new Map([...this.pile.querySelectorAll<HTMLElement>(".under")].map((el) => [Number(el.dataset.i), el]));
     for (const [i, el] of have) if (i <= this.n || i > this.n + want) el.remove();
     for (let d = 1; d <= want; d++) {
@@ -193,6 +198,7 @@ class Table {
         this.pile.prepend(el);
         if (i !== instant) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300 }); // a card further down comes into view
       }
+      el.firstElementChild!.classList.toggle("known", faces[d - 1] === "reverse");
       el.style.zIndex = String(10 - d);
       el.dataset.light = (d * 0.25).toFixed(2);
     }
