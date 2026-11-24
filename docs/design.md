@@ -59,6 +59,8 @@ Entity ids (`note_id`, `card_id`, `deck_id`, `preset_id`) are random 64-bit inte
 | `asset_attached` | `note_id, kind (image or audio), r2_key` | Media lives in R2, not in events |
 | `review` | see below | Append-only, never edited |
 
+Planned: `notes_labeled`, `pile_more` and a `pile` field on `review`; decks become a hidden per-pair group (see [Piles, labels and languages](#piles-labels-and-languages)).
+
 **Review payload (fields rwkv-srs needs)**
 
 Taken from the add-on's `RWKV_SRS_PROCESS_FIELDS`: `review_id, card_id, note_id, deck_id, preset_id, day_offset, elapsed_days, elapsed_seconds, rating, duration, state`. Store raw facts (`card_id`, `rating` 1 to 4, `duration_ms`, `state` new, learning, review or relearn, `ts`) and derive `day_offset` and the elapsed values at replay time, so a change of rollover hour needs no migration.
@@ -154,6 +156,8 @@ Run it in a dedicated Web Worker so the UI never blocks.
 
 Mirror the add-on's engine (`live_review_engine.py`): after each answer, process that review, re-predict a hot set of candidate cards (add-on defaults: 50 hot, refresh limit 247), and show the card with the lowest predicted recall below desired retention. New cards are interleaved by a simple daily limit.
 
+Superseded by [Piles, labels and languages](#piles-labels-and-languages): the model's predictions are unreliable at the minute scale (a simulation with the real weights gave P(recall) of 0.5 to 0.8 seconds after a correct answer, and 8% of Got it cards came back in the same sitting), so the model now decides which cards and on which days, and a dealt pile decides the order within a sitting.
+
 ## Card enrichment
 
 Adding a word creates the card immediately; enrichment fills it in afterwards as ordinary `note_edited` and `asset_attached` events, so it syncs and works offline like typed content.
@@ -181,6 +185,83 @@ Use the browser's Web Speech API (`speechSynthesis`) with the note's language ta
 **Cost at this scale**
 
 Workers AI bills $0.011 per 1,000 neurons with 10,000 free per day ([pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)). FLUX.2 klein is listed at $0.015 per 1024 px image, so 100 illustrated words cost about $1.50; text calls cost cents per thousand words.
+
+## Piles, labels and languages
+
+Nov 24, 2026. Agreed, not built yet; built in the order of the plan at the end of this section.
+
+**Guiding rule.** The app behaves like real cards: a box of words, a table with a spot per pile, a dealer who deals each pile in the morning, and a tray for cards done today. Each rule below should make sense in that picture.
+
+**Words, faces and languages**
+
+- A word (note) is one physical card with two faces: the studied language on the white side, the known language on the cream side. Each face is a separate card in the data (forward, reverse) with its own memory in the model.
+- The word carries its language pair, set when it is added and never changed: a word added under the wrong pair is deleted and added again.
+- There are no decks in the UI. The model still gets a group per language pair as `deck_id`, derived from the pair (old words keep their deck ids), so two devices that add a pair offline get the same group. Nothing else reads it.
+- Word ids stay random on every add. The same word added on two offline devices becomes two words after sync, and re-adding a deleted word starts fresh. Both are accepted.
+
+**Labels**
+
+- A label is a name stuck on words (the UI metaphor is stickers). Many to many, across languages. Its identity is its name, compared ignoring case and surrounding spaces, so the same label made on two devices merges. Labels never reach the model.
+- A label exists while some word wears it. Renaming is peeling the old name off and sticking the new one on the same words.
+- Language is not a label: it cannot be peeled off. Words in the user's own language (a subject such as pharmacology) are a pair like ru→ru plus a label.
+
+**The table (Study tab)**
+
+- One pile per language pair (a single pile, named after the language, while there is only one pair), plus one spot for every label that exists.
+- A pile is a stack whose thickness shows how many cards are left, with the count written under it. The top card lies face up. A finished pile leaves its outline printed on the table.
+
+**Piles**
+
+1. Every day (at the rollover hour, 4:00) each pile is dealt its size.
+2. A pile fixes how many cards, not which. A card is chosen when it is drawn: the one in the pile's words that needs the user most right then.
+3. A card that has been seen stays fixed: the face-up top card, the card peeked under it while throwing, and cards answered Again. Again tucks the card under its pile, same face up, and it stays there past the rollover, on top of the next deal.
+4. Got it or Easy puts the card in the done tray for the day, in every pile.
+
+What "needs the user most" means:
+
+| Pile | Cards it draws |
+| --- | --- |
+| Language | Words below target recall now, weakest first; then new words, only into space left after due words, at most 10 a day |
+| Label | Its words below target recall, including never-seen ones, weakest first; no daily new-word limit |
+
+- A face is not drawn within an hour of its twin being answered (it would be a free point and teach the model a false strength), unless nothing else is left. A new word's second face starts on a later day.
+- No two piles show the same word on top. If a pile's top card gets done in another pile, the next card comes up.
+- Size: starts at 20; +5 for the next deal when the user took "5 more"; -5 when a pile was left unfinished at the rollover; between 10 and 50.
+- When a pile is empty: "Again, these N" (exactly the same cards once more), "5 more" (from the same words), Done.
+- Words marked known in the list need no rule: they no longer need the user, so they are not drawn.
+
+**Words screen**
+
+- One list. Above it, a row of chips: languages (when there are two or more) and labels. One chip open at a time, never combined; the search narrows inside it. To combine, select words and stick a new label on them.
+- Selecting words offers "Stickers": a sheet with every label as a checkbox (on for all, some, none) and a field for a new one. The word page shows its labels with a remove button.
+- Adding a word while a label is open sticks that label on it; an import sticks a label naming its source. An open label or search can be studied from the list.
+
+**Adding a word**
+
+- The pair comes from context (the open language or label, a label's most common pair), else the last one used. Recent pairs are chips on the Add screen; a new pair is one tap away.
+- Two fields, one per language. The user types in either, and the other can be filled by the LLM: the field typed into is the side, so nothing needs detecting.
+
+**Events and sync**
+
+Everything above is a fold over the log, so it syncs:
+
+| Addition | Payload | Rule |
+| --- | --- | --- |
+| `notes_labeled` | `note_ids, label, on` | Last write wins per word and label |
+| `review.pile` | the label, or none for a language pile | Which pile the answer came from |
+| `pile_more` | `pile, day, n` | The "5 more" taps |
+
+Done today, cards waiting under a pile, cards left in a pile and each pile's size are all derived from these. Only what is on screen right now (the top card and the one under it) stays on the device. Two devices studying the same pile offline both deal it; after sync the answers merge and the pile may show none left.
+
+**Plan**
+
+1. This section.
+2. Fixed piles inside the current Study screen and its end screen. Hands-on review on a phone.
+3. The table on the Study tab. Mockups first, then hands-on review.
+4. No decks: the pair on the word, the Add screen, the model group from the pair, language piles. Mockups first.
+5. Labels: events, the Words chips, the Stickers sheet, label piles on the table. Mockups first.
+
+Later: the LLM fills the other field when adding; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; editing words.
 
 ## Identity and pairing
 
@@ -218,7 +299,6 @@ RWKV goes first because it is the reason for the project and the biggest unknown
 
 **Open questions**
 
-- Desired retention default and whether to add a daily new-card limit per deck.
 - Card templates beyond forward and reverse (typing answers, cloze).
 
 ## References
