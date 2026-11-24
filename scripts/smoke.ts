@@ -439,6 +439,7 @@ async function run(s: Browser, url: string) {
   log("the selection bar sticks stickers on: a new one from its sheet");
   await s.click(".select-info button.link", "Select");
   await s.click(".list.selecting button.word", "el gato");
+  await s.until("Stickers on yellow paper", `getComputedStyle(document.querySelector(".select-actions .sticker-btn"), "::before").backgroundColor !== "rgba(0, 0, 0, 0)"`);
   await s.click(".select-actions button", "Stickers");
   await s.until("stickers sheet", `document.querySelector(".pile-sheet .sticker-opt")`);
   await s.type(".pile-sheet input[name=sticker]", "animals");

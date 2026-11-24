@@ -69,7 +69,7 @@ export function words(): void {
     });
     return b;
   };
-  const stickBtn = btn("Stickers", "sticker-btn", async () => stickersSheet([...selected], () => (labelId !== undefined ? rebuild() : undefined)));
+  const stickBtn = btn("Stickers", "secondary sticker-btn", async () => stickersSheet([...selected], () => (labelId !== undefined ? rebuild() : undefined)));
   const knowBtn = btn("I know", "primary", async () => {
     const n = await store.markKnown([...selected]);
     toast(`${plural(n, "word")} marked as known`);
