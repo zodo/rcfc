@@ -731,8 +731,6 @@ h1.picker .chev {
   transform: rotate(10deg);
 }
 .stamp.easy {
-  top: auto;
-  bottom: 46px;
   left: 0;
   right: 0;
   margin: auto;
