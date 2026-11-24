@@ -257,10 +257,27 @@ describe("piles", () => {
     const d = await Device.open();
     await d.deck(3);
     const first = await run(await sitting(d));
-    const later = await sitting(d);
-    expect(later.next()).toBeNull();
-    later.againThese(later.doneToday());
+    const table = new StudySession(d.store, ES);
+    await table.prepare();
+    expect(table.next()).toBeNull();
+    table.againThese(table.doneToday()); // gathered on the table
+    expect(table.next()!.left).toBe(3);
+    const later = await sitting(d); // then studied
     expect(await run(later)).toEqual(first);
+    expect(later.next()).toBeNull();
+  });
+
+  it("cards gathered to go through again lie there until studied, but not past the day", async () => {
+    const clock = new Clock();
+    const d = await Device.open(clock);
+    await d.deck(3);
+    await run(await sitting(d));
+    const table = new StudySession(d.store, ES);
+    await table.prepare();
+    table.againThese(table.doneToday());
+    expect((await sitting(d)).next()!.pick.kind).toBe("again");
+    clock.advance(DAY);
+    expect((await sitting(d)).next()!.pick.kind).not.toBe("again");
   });
 
   it("two devices dealing the same day offline count the deal once", async () => {

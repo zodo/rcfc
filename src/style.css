@@ -537,13 +537,89 @@ h1.picker .chev {
   height: 64px;
   color: var(--on-table);
 }
+/* just finished: the check is drawn in one pencil stroke (down, a beat at the
+   corner, a flick up), pops, and bits of coloured paper jump off it. Times match
+   CHECK_DRAWN in src/screens/home.ts. */
+.spot.fresh svg {
+  animation: check-pop 0.36s 0.74s cubic-bezier(0.3, 1.6, 0.5, 1) backwards;
+}
 .spot.fresh svg path {
   stroke-dasharray: 1;
-  animation: draw-check 0.5s 0.25s ease-out backwards;
+  animation: draw-check 0.56s 0.2s linear backwards;
 }
 @keyframes draw-check {
-  from {
+  0% {
     stroke-dashoffset: 1;
+    animation-timing-function: ease-in;
+  }
+  30% {
+    stroke-dashoffset: 0.69;
+  }
+  42% {
+    stroke-dashoffset: 0.68;
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes check-pop {
+  0% {
+    scale: 1;
+  }
+  45% {
+    scale: 1.18;
+    rotate: -4deg;
+  }
+  100% {
+    scale: 1;
+  }
+}
+.fleck {
+  position: absolute;
+  left: calc(50% - 4px);
+  top: calc(50% - 5px);
+  width: 8px;
+  height: 10px;
+  background: var(--c);
+  clip-path: var(--cut);
+  opacity: 0;
+  pointer-events: none;
+  animation: fleck 0.9s 0.76s cubic-bezier(0.15, 0.7, 0.4, 1) backwards;
+}
+@keyframes fleck {
+  0% {
+    opacity: 1;
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 0.4;
+  }
+  55% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: var(--x) calc(var(--y) + 30px);
+    rotate: var(--r);
+    scale: 0.9;
+  }
+}
+/* more cards, or the same ones gathered again: the handful drops onto the
+   spot, the bottom card first, the top one last (--d per card; LANDING_MS in
+   src/screens/home.ts) */
+.spot.dealt .pile-edge,
+.spot.dealt .pile-top {
+  animation: land 0.3s var(--d, 0ms) cubic-bezier(0.25, 0.8, 0.35, 1) backwards;
+}
+@keyframes land {
+  from {
+    opacity: 0;
+    translate: 0 -46px;
+    scale: 1.1;
+  }
+  70% {
+    opacity: 1;
   }
 }
 .pile-name {
@@ -590,8 +666,14 @@ h1.picker .chev {
 }
 @media (prefers-reduced-motion: reduce) {
   .pile-sheet,
-  .spot.fresh svg path {
+  .spot.fresh svg,
+  .spot.fresh svg path,
+  .spot.dealt .pile-edge,
+  .spot.dealt .pile-top {
     animation: none;
+  }
+  .fleck {
+    display: none;
   }
 }
 

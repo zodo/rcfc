@@ -210,7 +210,7 @@ Nov 24, 2026. Agreed, not built yet; built in the order of the plan at the end o
 - One pile per language pair (a single pile, named after the language, while there is only one pair), plus one spot for every label that exists.
 - Spots are printed on the table, two per row. A pile is a stack on its spot whose thickness shows how many cards are left, with the count written under it. The top card lies face up, and the cards under it show their edges, white or cream.
 - Looking at the table deals nothing: it shows the pile the dealer would deal. The deal is recorded when the pile is first studied that day.
-- A finished pile leaves its spot empty with a pencil check (drawn in when the user comes back from clearing it). Tapping the spot offers "Deal 5 more", "Go through these N again" (the cards finished from that pile today) and, when nothing is left to learn, "Add words".
+- A finished pile leaves its spot empty with a pencil check (drawn in one stroke when the user comes back from clearing it, with a few bits of coloured paper jumping off it). Tapping the spot offers "Deal 5 more", "Go through these N again" (the cards finished from that pile today) and, when nothing is left to learn, "Add words". Either refill drops the cards onto the spot as one handful (bottom card first, the top one last, face up as it lies); studying them takes a tap on the pile, like any pile. Gathered cards lie there until studied, for the rest of that day.
 
 **Piles**
 

@@ -278,15 +278,21 @@ async function run(s: Browser, url: string) {
   await s.until("next screen", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
   const answered = 1 + (await answerUntilDone(s, 10));
   if (answered < 2) throw new Error(`only ${answered} cards shown`);
-  log("a finished pile goes back to the table: its spot has a check; tapped, it offers adding words");
+  log("a finished pile goes back to the table: its spot has a check; tapped, it offers adding words or the same cards again");
   await s.until("pile done", `document.querySelector(".pile-count")?.textContent === "done for today" && document.querySelector(".spot.finished.fresh svg")`);
   await s.js(`await new Promise((r) => setTimeout(r, 900));`); // the check draws itself in
   await shot(s, "table-done");
   await s.click("button.spot.finished");
   await s.until("Add words", `[...document.querySelectorAll(".pile-sheet button")].some((b) => b.textContent === "Add words")`);
-  if (!(await s.js<boolean>(`return [...document.querySelectorAll(".pile-sheet button")].some((b) => b.textContent === "Go through these 2 again");`))) throw new Error("the sheet does not offer the same 2 cards again");
-  await s.js(`document.querySelector(".sheet-backdrop").click();`); // fixed: the click helper skips elements without an offsetParent
-  await s.until("sheet closed", `!document.querySelector(".pile-sheet")`);
+  await s.click(".pile-sheet button", "Go through these 2 again");
+  log("the same cards land on the spot; a tap on the pile studies them");
+  await s.until("pile refilled", `!document.querySelector(".pile-sheet") && document.querySelector(".spot.dealt") && document.querySelector(".pile-count")?.textContent === "2 cards"`);
+  await s.js(`await new Promise((r) => setTimeout(r, 700));`); // the cards land
+  await shot(s, "table-refilled");
+  await s.click("button.spot");
+  await s.until("studying them", `document.querySelector(".flashcard") && !document.querySelector(".table")`);
+  if ((await answerUntilDone(s, 4)) !== 2) throw new Error("going through them again did not show the same 2 cards");
+  await s.until("pile done again", `document.querySelector(".spot.finished.fresh svg")`);
 
   log("words list and edit");
   await s.click("nav .nav-item", "Words");
@@ -363,6 +369,9 @@ async function run(s: Browser, url: string) {
       const more = await s.js<string | null>(`return [...document.querySelectorAll(".pile-sheet button")].map((b) => b.textContent).find((t) => / more$/.test(t)) ?? null;`);
       if (!more) throw new Error("pile done without the new word, and nothing more to deal");
       await s.click(".pile-sheet button", more);
+      await s.until("more on the spot", `document.querySelector(".spot.dealt")`);
+      await s.click("button.spot");
+      await s.until("studying them", `!document.querySelector(".table")`);
       continue;
     }
     if ((await s.text(".study-top")).includes("New word")) {

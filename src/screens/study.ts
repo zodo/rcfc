@@ -65,14 +65,13 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const ICON_CLOSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
 const ICON_SPEAK = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5c1.3 1 2 2.2 2 3.5s-.7 2.5-2 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
-export async function study(deckId?: EntityId, again = false): Promise<void> {
+export async function study(deckId?: EntityId): Promise<void> {
   const deck = deckId === undefined ? currentDeck() : app.store.col.decks.get(deckId);
   if (!deck) return go.home();
   rememberDeck(deck.id);
   fullScreen(h("p", { class: "muted center" }, "Preparing…"));
   const s = new StudySession(app.store, deck.lang_pair);
   await s.start();
-  if (again) s.againThese(s.doneToday());
   new Table(s).next();
 }
 

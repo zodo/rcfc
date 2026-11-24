@@ -2,8 +2,8 @@
 // for today: thickness = cards left, the top card face up, the colours of the
 // cards under it (fixed once shown, the same in study: src/session.ts). Tap a
 // pile to study it. A finished pile leaves its spot with a check; tap the spot
-// for more cards or the same ones again. First launch asks which language to
-// learn.
+// for more cards or the same ones again: they land on the spot, and a tap on
+// the pile studies them. First launch asks which language to learn.
 import { app, go, page } from "../app";
 import type { Deck } from "../domain/collection";
 import { StudySession } from "../session";
@@ -30,18 +30,29 @@ export async function home(): Promise<void> {
     );
     return;
   }
-  page("home", "Study", h("p", { class: "muted" }, "Loading…"));
-  const cleared = app.cleared;
-  app.cleared = null;
+  // Re-drawn in place (a pile refilled): the table stays while the new one is made.
+  if (!(app.current === "home" && app.root.querySelector(".table"))) page("home", "Study", h("p", { class: "muted" }, "Loading…"));
+  const moved = { cleared: app.cleared, refilled: app.refilled };
+  app.cleared = app.refilled = null;
   const spots = [];
-  for (const d of decks()) spots.push(await spot(d, cleared));
+  for (const d of decks()) spots.push(await spot(d, moved));
   if (app.current !== "home") return; // left while loading
   page("home", "Study", h("div", { class: "table" }, ...spots));
-  if (cleared) haptic("double");
 }
 
+/** What just happened to a pile, for its spot to show it. */
+interface Moved {
+  cleared: string | null;
+  refilled: string | null;
+}
+
+/** When the check is drawn (ms after the spot appears; style.css .spot.fresh). */
+const CHECK_DRAWN = 780;
+/** How long the cards of a refilled pile take to land, all of them (style.css .spot.dealt). */
+const LANDING_MS = 420;
+
 /** One language's spot: its pile, or the outline a finished pile leaves. */
-async function spot(d: Deck, cleared: string | null): Promise<HTMLElement> {
+async function spot(d: Deck, moved: Moved): Promise<HTMLElement> {
   const { store } = app;
   const name = h("div", { class: "pile-name" }, deckLabel(d));
   if (!store.col.liveCards(d.id).length) {
@@ -53,8 +64,13 @@ async function spot(d: Deck, cleared: string | null): Promise<HTMLElement> {
   const n = s.next();
   if (!n) {
     const done = s.doneToday().length;
-    const b = h("button", { class: `spot finished${cleared === s.pile ? " fresh" : ""}`, "aria-label": `${deckLabel(d)}: more cards`, onclick: () => sheet(d, s) });
+    const fresh = moved.cleared === s.pile && done > 0;
+    const b = h("button", { class: `spot finished${fresh ? " fresh" : ""}`, "aria-label": `${deckLabel(d)}: more cards`, onclick: () => sheet(d, s) });
     if (done) b.innerHTML = ICON_CHECK;
+    if (fresh) {
+      b.append(...flecks(d.id));
+      setTimeout(() => haptic("double"), CHECK_DRAWN);
+    }
     return h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due"));
   }
   const pile = h("span", { class: "pile-stack" });
@@ -66,9 +82,34 @@ async function spot(d: Deck, cleared: string | null): Promise<HTMLElement> {
     pile.appendChild(edge);
   }
   pile.appendChild(topCard(n.pick.card));
-  const b = h("button", { class: "spot", "aria-label": `Study ${deckLabel(d)}`, onclick: () => (rememberDeck(d.id), go.study(d.id)) }, pile);
+  const dealt = moved.refilled === s.pile;
+  if (dealt) {
+    // Dropped on the spot as one handful: the bottom card first, the top one last, nothing turned up on the way.
+    const cards = [...pile.children] as HTMLElement[];
+    const step = Math.min(60, LANDING_MS / cards.length);
+    cards.forEach((c, i) => c.style.setProperty("--d", `${Math.round(i * step)}ms`));
+    setTimeout(() => haptic("thud"), Math.round(cards.length * step) + 180);
+  }
+  const b = h("button", { class: `spot${dealt ? " dealt" : ""}`, "aria-label": `Study ${deckLabel(d)}`, onclick: () => (rememberDeck(d.id), go.study(d.id)) }, pile);
   b.style.marginBottom = `${Math.round(faces.length * CARD_PX)}px`;
   return h("div", { class: "pile-cell" }, b, name, h("div", { class: "pile-count" }, `${n.left} ${n.left === 1 ? "card" : "cards"}`));
+}
+
+/** Bits of coloured paper that jump off a check as it is drawn. */
+function flecks(seed: number): HTMLElement[] {
+  const r = seeded((seed % 233280) + 7);
+  const colours = ["--again", "--good", "--easy", "--new", "--highlight"];
+  return Array.from({ length: 9 }, (_, i) => {
+    const a = -Math.PI / 2 + (i - 4) * 0.36 + (r() - 0.5) * 0.3; // a fan, upwards
+    const dist = 46 + r() * 34;
+    const f = h("span", { class: "fleck", "aria-hidden": "true" });
+    f.style.setProperty("--x", `${(Math.cos(a) * dist).toFixed(0)}px`);
+    f.style.setProperty("--y", `${(Math.sin(a) * dist).toFixed(0)}px`);
+    f.style.setProperty("--r", `${((r() - 0.5) * 540).toFixed(0)}deg`);
+    f.style.setProperty("--c", `var(${colours[i % colours.length]})`);
+    f.style.setProperty("--cut", `var(--cut-${1 + (i % 4)})`);
+    return f;
+  });
 }
 
 /** The top card as it lies: a forward card white side up (the word), a reverse one cream side up (picture and translation). */
@@ -80,7 +121,7 @@ function topCard(cardId: number): HTMLElement {
   return h("span", { class: "pile-top known", lang: note.lang_pair.to }, note.picture ? cutout(note.picture.key) : null, h("span", { class: "pile-word" }, note.fields.back));
 }
 
-/** A finished (or empty) spot, tapped: more cards, the same ones again, or words to add. */
+/** A finished spot, tapped: more cards or the same ones again (put on the spot, not studied yet), or words to add. */
 function sheet(d: Deck, s: StudySession): void {
   const done = s.doneToday();
   const more = s.moreCount();
@@ -90,6 +131,13 @@ function sheet(d: Deck, s: StudySession): void {
     document.removeEventListener("keydown", onKey);
   };
   const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+  /** The pile is on its spot again: back to the table to watch it land. */
+  const refill = () => {
+    close();
+    rememberDeck(d.id);
+    app.refilled = s.pile;
+    void home();
+  };
   const backdrop = h("div", { class: "sheet-backdrop", onclick: close });
   const el = h(
     "div",
@@ -102,16 +150,14 @@ function sheet(d: Deck, s: StudySession): void {
             class: "primary wide",
             onclick: async () => {
               await s.more();
-              close();
-              rememberDeck(d.id);
-              go.study(d.id);
+              refill();
             },
           },
           `Deal ${more} more`,
         )
       : null,
     done.length
-      ? h("button", { class: more ? "secondary wide" : "primary wide", onclick: () => (close(), rememberDeck(d.id), go.study(d.id, true)) }, done.length === 1 ? "Go through it again" : `Go through these ${done.length} again`)
+      ? h("button", { class: more ? "secondary wide" : "primary wide", onclick: () => (s.againThese(done), refill()) }, done.length === 1 ? "Go through it again" : `Go through these ${done.length} again`)
       : null,
     !more && !s.unseenLeft() ? h("button", { class: "secondary wide", onclick: () => (close(), rememberDeck(d.id), go.words()) }, "Add words") : null,
   );

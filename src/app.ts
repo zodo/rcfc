@@ -13,7 +13,7 @@ export type ScreenName = Tab | "study";
 export interface Screens {
   home(): void | Promise<void>;
   /** A language's pile; `again`: today's finished cards from it once more. */
-  study(deckId?: EntityId, again?: boolean): void | Promise<void>;
+  study(deckId?: EntityId): void | Promise<void>;
   /** The Words tab, for the current language (decks.ts `currentDeck`). */
   words(): void;
   add(): void;
@@ -38,6 +38,8 @@ export const app = {
   reloadPending: false,
   /** The pile just finished in study: its spot on the table draws its check. */
   cleared: null as string | null,
+  /** The pile just dealt more or gathered again from the table: its cards land on its spot. */
+  refilled: null as string | null,
 };
 
 /** Reload now if nothing is in progress on screen, else on the next visit home. */

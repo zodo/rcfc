@@ -24,6 +24,8 @@ interface OnScreen {
   under: Draw | null;
   /** Spots 2, 3, … under the top card. */
   faces: CardTemplate[];
+  /** A finished pile gathered to go through once more ("Go through these N again"): the cards left, top first, and the day it was gathered. */
+  again: { day: number; cards: EntityId[] } | null;
 }
 const shown = new Map<string, OnScreen>();
 
@@ -33,8 +35,6 @@ export class StudySession {
   answered = 0;
   /** Cards answered this sitting, in order of first answer: "Again, these N". */
   readonly sitting: EntityId[] = [];
-  /** Going through `sitting` once more: the cards left, top first. */
-  private replay: EntityId[] | null = null;
   private recent: EntityId[] = [];
   private size = 0;
   private screen: OnScreen;
@@ -45,7 +45,7 @@ export class StudySession {
   ) {
     this.pile = languagePile(pair);
     const key = `${store.deviceId}|${this.pile}`;
-    this.screen = shown.get(key) ?? { top: null, under: null, faces: [] };
+    this.screen = shown.get(key) ?? { top: null, under: null, faces: [], again: null };
     shown.set(key, this.screen);
   }
 
@@ -91,11 +91,9 @@ export class StudySession {
 
   /** The top card and how many cards are left (it included); null when the pile is empty. */
   next(): { pick: Draw; left: number } | null {
-    if (this.replay) {
-      const id = this.replay[0];
-      return id === undefined ? null : { pick: { card: id, kind: "again", p: this.store.preds.get(id) }, left: this.replay.length };
-    }
     const v = this.view();
+    const replay = this.replay(v);
+    if (replay) return { pick: { card: replay[0]!, kind: "again", p: this.store.preds.get(replay[0]!) }, left: replay.length };
     if (!this.screen.top) {
       this.screen.top = this.screen.under ?? v.next();
       this.screen.under = null;
@@ -106,7 +104,8 @@ export class StudySession {
 
   /** The card under the top one (shown when the top is dragged away); fixed once shown. */
   peek(): EntityId | null {
-    if (this.replay) return this.replay[1] ?? null;
+    const replay = this.replay();
+    if (replay) return replay[1] ?? null;
     const top = this.screen.top;
     if (!top) return null;
     if (!this.screen.under) {
@@ -124,7 +123,8 @@ export class StudySession {
   faces(count: number): CardTemplate[] {
     const { col } = this.store;
     const face = (id: EntityId | null | undefined) => (id == null ? undefined : col.cards.get(id)?.template);
-    if (this.replay) return this.replay.slice(1, count + 1).map((id) => face(id) ?? "forward");
+    const replay = this.replay();
+    if (replay) return replay.slice(1, count + 1).map((id) => face(id) ?? "forward");
     const under = this.peek();
     if (under === null || count < 1) return [];
     const top = this.screen.top!.card;
@@ -148,9 +148,10 @@ export class StudySession {
     if (!this.sitting.includes(card.id)) this.sitting.push(card.id);
     this.recent.push(card.id);
     if (this.recent.length > HOT) this.recent.shift();
-    if (this.replay) {
-      this.replay.shift();
-      if (rating === 1) this.replay.push(card.id); // under the pile
+    const replay = this.replay();
+    if (replay) {
+      replay.shift();
+      if (rating === 1) replay.push(card.id); // under the pile
     } else if (this.screen.top?.card === card.id) this.screen.top = null;
   }
 
@@ -171,7 +172,7 @@ export class StudySession {
 
   /** Deal "more" onto the pile. */
   async more(): Promise<void> {
-    this.replay = null;
+    this.screen.again = null;
     const v = this.view();
     const n = Math.min(MORE, v.available());
     if (n > 0) await this.deal(v.today, n, true);
@@ -179,7 +180,15 @@ export class StudySession {
 
   /** Go through these cards once more, exactly those: this sitting's, or the given ones. */
   againThese(cards: EntityId[] = this.sitting): void {
-    this.replay = [...cards];
+    this.screen.again = cards.length ? { day: this.view().today, cards: [...cards] } : null;
+  }
+
+  /** The gathered cards still to go through, top first; null when there are none (gone through, or gathered on an earlier day). */
+  private replay(v?: PileView): EntityId[] | null {
+    const a = this.screen.again;
+    if (a && a.cards.length && a.day === (v ?? this.view()).today) return a.cards;
+    this.screen.again = null;
+    return null;
   }
 
   /** Cards answered right from this pile today, in the order they were answered. */
