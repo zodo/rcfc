@@ -25,7 +25,9 @@
   --rule: #c3d4e4;
   --margin-rule: #e7a49a;
   /* lines printed on the table (pile spots) */
-  --printed: rgb(38 54 42 / 0.3);
+  --printed: rgb(38 54 42 / 0.42);
+  /* cream card edges in a pile on the table: stronger than --card-known, a 1.5 px sliver must read as cream */
+  --edge-known: #f0dfb4;
   --font: "Balsamiq Sans", system-ui, sans-serif;
   color-scheme: light;
   font-family: var(--font);
@@ -44,7 +46,8 @@
     --muted: #636961;
     --highlight: rgb(240 200 50 / 0.5);
     --rule: #aebdcc;
-    --printed: rgb(238 240 234 / 0.22);
+    --printed: rgb(238 240 234 / 0.32);
+    --edge-known: #cdb98a;
     color-scheme: dark;
   }
 }
@@ -458,7 +461,7 @@ h1.picker .chev {
   content: "";
   position: absolute;
   inset: -7px;
-  border: 1.5px solid var(--printed);
+  border: 3px dotted var(--printed);
   border-radius: 6px;
   pointer-events: none;
 }
@@ -492,7 +495,9 @@ h1.picker .chev {
     0 2px 3px rgb(var(--shadow) / 0.22),
     0 5px 10px rgb(var(--shadow) / 0.16);
 }
-.pile-edge.known,
+.pile-edge.known {
+  background-color: var(--edge-known);
+}
 .pile-top.known {
   background-color: var(--card-known);
 }
@@ -528,8 +533,9 @@ h1.picker .chev {
   place-items: center;
 }
 .spot svg {
-  width: 40px;
-  height: 40px;
+  width: 64px;
+  height: 64px;
+  color: var(--on-table);
 }
 .spot.fresh svg path {
   stroke-dasharray: 1;

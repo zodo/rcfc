@@ -280,6 +280,8 @@ async function run(s: Browser, url: string) {
   if (answered < 2) throw new Error(`only ${answered} cards shown`);
   log("a finished pile goes back to the table: its spot has a check; tapped, it offers adding words");
   await s.until("pile done", `document.querySelector(".pile-count")?.textContent === "done for today" && document.querySelector(".spot.finished.fresh svg")`);
+  await s.js(`await new Promise((r) => setTimeout(r, 900));`); // the check draws itself in
+  await shot(s, "table-done");
   await s.click("button.spot.finished");
   await s.until("Add words", `[...document.querySelectorAll(".pile-sheet button")].some((b) => b.textContent === "Add words")`);
   if (!(await s.js<boolean>(`return [...document.querySelectorAll(".pile-sheet button")].some((b) => b.textContent === "Go through these 2 again");`))) throw new Error("the sheet does not offer the same 2 cards again");
