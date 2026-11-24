@@ -272,7 +272,7 @@ describe("Pictures (client)", () => {
     await d.store.ingest([{ ...d.store.factory.make<AssetAttached>("asset_attached", { note_id: id, kind: "image", r2_key: res.key }), device_id: "other" }]);
     await pics.prefetch();
     expect(await d.store.getPicBlob(res.key)).toBeDefined();
-    expect(await pics.url(res.key)).toStartWith("blob:");
+    expect((await pics.view(res.key))!.url).toStartWith("blob:");
     pics.stop();
   });
 });

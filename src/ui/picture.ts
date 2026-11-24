@@ -6,13 +6,18 @@ import { meanings } from "../domain/pictures";
 import type { PicState } from "../pictures";
 import { clear, h } from "./h";
 
-/** A picture as a scissor-cut piece glued onto the card. Empty until the image is loaded. */
+/**
+ * A card picture. With a white paper background it blends into the card, so
+ * only the drawn paper cut-outs and their shadows show; otherwise (or in dark
+ * mode) it is a scissor-cut piece glued onto the card.
+ */
 export function cutout(key: string, tilt: "l" | "r" = "l"): HTMLElement {
   const img = h("img", { alt: "", decoding: "async" });
-  const el = h("div", { class: `cut cut-${tilt}` }, img);
-  void app.pictures.url(key).then((url) => {
-    if (url) img.src = url;
-    else el.remove(); // offline and never downloaded
+  const el = h("div", { class: `pic tilt-${tilt}` }, img);
+  void app.pictures.view(key).then((v) => {
+    if (!v) return el.remove(); // offline and never downloaded
+    el.classList.add(v.flat ? "flat" : "cut");
+    img.src = v.url;
   });
   return el;
 }

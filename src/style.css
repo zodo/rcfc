@@ -532,27 +532,51 @@ pre {
   font-size: 18px;
 }
 
-/* pictures: a scissor-cut piece of paper glued onto the card */
-.cut {
+/* pictures */
+.pic {
   width: 100%;
   max-width: 420px;
-  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.18)) drop-shadow(0 4px 6px rgb(0 0 0 / 0.16));
-  transform: rotate(-1.2deg);
 }
-.cut-r {
-  transform: rotate(1.4deg);
+.flashcard .pic {
+  max-width: min(100%, 46dvh * 1.5);
 }
-.cut img {
+.pic img {
   display: block;
   width: 100%;
   aspect-ratio: 3 / 2;
   object-fit: cover;
-  background: color-mix(in srgb, var(--line) 50%, transparent);
-  clip-path: polygon(0.6% 1.8%, 22% 0.4%, 47% 1.4%, 71% 0%, 99.2% 1.2%, 100% 34%, 99.1% 68%, 99.7% 98.6%, 74% 99.6%, 51% 98.4%, 26% 100%, 0.4% 98.9%, 1.2% 66%, 0% 33%);
   -webkit-user-drag: none;
 }
-.flashcard .cut {
-  max-width: min(100%, 46dvh * 1.5);
+/* White paper background (src/domain/paper.ts): melts into a light card, so
+   only the drawn paper pieces and their own shadows show. */
+.pic.flat img {
+  mix-blend-mode: multiply;
+}
+/* Otherwise a scissor-cut piece of paper glued onto the card. */
+.pic.cut {
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.18)) drop-shadow(0 4px 6px rgb(0 0 0 / 0.16));
+  transform: rotate(-1.2deg);
+}
+.pic.cut.tilt-r {
+  transform: rotate(1.4deg);
+}
+.pic.cut img {
+  clip-path: polygon(0.6% 1.8%, 22% 0.4%, 47% 1.4%, 71% 0%, 99.2% 1.2%, 100% 34%, 99.1% 68%, 99.7% 98.6%, 74% 99.6%, 51% 98.4%, 26% 100%, 0.4% 98.9%, 1.2% 66%, 0% 33%);
+}
+/* A dark card can't show white paper through multiply: paste it on as a light piece. */
+@media (prefers-color-scheme: dark) {
+  .pic.flat {
+    filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.4)) drop-shadow(0 4px 8px rgb(0 0 0 / 0.4));
+    transform: rotate(-1.2deg);
+  }
+  .pic.flat.tilt-r {
+    transform: rotate(1.4deg);
+  }
+  .pic.flat img {
+    mix-blend-mode: normal;
+    border-radius: 3px;
+    clip-path: polygon(0.6% 1.8%, 22% 0.4%, 47% 1.4%, 71% 0%, 99.2% 1.2%, 100% 34%, 99.1% 68%, 99.7% 98.6%, 74% 99.6%, 51% 98.4%, 26% 100%, 0.4% 98.9%, 1.2% 66%, 0% 33%);
+  }
 }
 .picture-editor {
   display: flex;
@@ -575,7 +599,7 @@ pre {
   font-size: 14px;
 }
 .pic-media.busy .pic-empty,
-.pic-media.busy .cut {
+.pic-media.busy .pic {
   animation: pic-pulse 1.4s ease-in-out infinite;
 }
 @keyframes pic-pulse {

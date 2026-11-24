@@ -67,7 +67,7 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 - Pipeline (`src/domain/pictures.ts`): Granite 4.0 micro writes one scene, FLUX.2 klein 4B draws it at 768×512 in the house cut-paper style (medium first in the prompt, or it drifts to photos). The meaning is chosen in code (user's choice, else the example decides, else the first listed meaning): LLMs ignore that rule.
 - Cost: must stay inside the free 10,000 neurons/day (UTC). The Worker reserves ~60 neurons per picture in D1 `ai_budget` and answers 429 past `PICTURE_NEURONS_PER_DAY`; the client queue waits for the reset. Error 3030 (false safety flag) is retried with new seeds.
 - When: typed words right after adding; any other word the first time it is shown in study (not in sorting); redraws on request with meaning + details. A removed picture (`asset_attached` with `r2_key: null`) is never redrawn automatically.
-- Client (`src/pictures.ts`): jobs in Dexie `pic_jobs` (per device, not synced; the result syncs as `asset_attached`), downloaded pictures re-encoded and kept in `pic_blobs` for offline study. Local dev has no AI binding: the Worker draws an SVG placeholder for free.
+- Client (`src/pictures.ts`): jobs in Dexie `pic_jobs` (per device, not synced; the result syncs as `asset_attached`), downloaded pictures get their photographed paper flattened to pure white (`src/domain/paper.ts`, so light cards show through with multiply blending; dark mode pastes them as a light cut-out), are re-encoded and kept in `pic_blobs` for offline study. Local dev has no AI binding: the Worker draws an SVG placeholder for free.
 
 ## Sync notes
 

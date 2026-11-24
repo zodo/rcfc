@@ -243,7 +243,7 @@ async function run(s: Browser, url: string) {
     await s.until(`toast for ${front}`, `document.getElementById("toast")?.textContent === 'Added "${front}"'`);
   }
   log("the last word's picture is drawn on the add screen");
-  await s.until("picture", `document.querySelector(".last-added .cut img")?.src.startsWith("blob:") && document.querySelector(".last-added .cut img").naturalWidth > 0`, 90_000);
+  await s.until("picture", `document.querySelector(".last-added .pic img")?.src.startsWith("blob:") && document.querySelector(".last-added .pic img").naturalWidth > 0`, 90_000);
   await s.until("picture sense", `document.querySelector(".last-added .pic-status")?.textContent.startsWith("Shows: ")`);
   await shot(s, "add-picture");
   await s.type("input[name=front]", "hola");
@@ -260,7 +260,7 @@ async function run(s: Browser, url: string) {
   const first = await s.until<string>("first card", `document.querySelector(".face.prompt")?.textContent`);
   if (first !== "hola") throw new Error(`first card is "${first}", expected "hola"`);
   await s.click("button", "Show answer");
-  await s.until("picture with the answer", `document.querySelector(".answer:not(.hidden) .cut img")?.naturalWidth > 0`, 30_000);
+  await s.until("picture with the answer", `document.querySelector(".answer:not(.hidden) .pic img")?.naturalWidth > 0`, 30_000);
   await shot(s, "study-picture");
   await s.click("button.rate", "Got it");
   await s.until("next screen", `!document.querySelector(".answer:not(.hidden)")`);

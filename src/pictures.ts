@@ -10,12 +10,27 @@
 // A word whose picture the user removed is never drawn automatically.
 import type { AssetAttached } from "./domain/events";
 import type { EntityId } from "./domain/ids";
-import type { PicJob, Store } from "./store";
+import { flattenPaper } from "./domain/paper";
+import type { PicBlob, PicJob, Store } from "./store";
 
 export type PicState = "queued" | "drawing" | "waiting" | "failed";
 
 const MAX_TRIES = 5;
-const JPEG_QUALITY = 0.8;
+const JPEG_QUALITY = 0.82;
+/** Bump when downloaded pictures should be processed again. */
+export const BLOB_VERSION = 2;
+
+export interface Prepared {
+  data: ArrayBuffer;
+  type: string;
+  flat: boolean;
+}
+
+export interface PictureView {
+  url: string;
+  /** White paper background: blend into the card instead of framing it. */
+  flat: boolean;
+}
 
 export interface DrawOptions {
   sense?: string;
@@ -25,14 +40,14 @@ export interface DrawOptions {
 export class Pictures {
   /** How requests reach the API; tests route them to the Worker handler. */
   fetch: (url: string, init?: RequestInit) => Promise<Response> = (url, init) => fetch(url, init);
-  /** Re-encode downloaded pictures before storing (browser: smaller JPEG). */
-  compress: (data: ArrayBuffer, type: string) => Promise<{ data: ArrayBuffer; type: string }> = browserCompress;
+  /** Process downloaded pictures before storing (browser: white paper, smaller JPEG). */
+  prepare: (data: ArrayBuffer, type: string) => Promise<Prepared> = browserPrepare;
   now: () => number = Date.now;
 
   private jobs = new Map<EntityId, PicJob>();
   private states = new Map<EntityId, PicState>();
   private listeners = new Set<(noteId: EntityId) => void>();
-  private urls = new Map<string, string>();
+  private urls = new Map<string, PictureView>();
   private haveBlobs: Set<string> | null = null;
   private running: Promise<void> | null = null;
   private again = false;
@@ -220,13 +235,17 @@ export class Pictures {
     this.kick();
   }
 
+  private current(b: PicBlob | undefined): b is PicBlob {
+    return !!b && b.v === BLOB_VERSION;
+  }
+
   private async download(key: string): Promise<void> {
-    if (this.haveBlobs?.has(key) || (await this.store.getPicBlob(key))) return;
+    if (this.haveBlobs?.has(key) || this.current(await this.store.getPicBlob(key))) return;
     const res = await this.fetch(`/api/media/${key}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const type = res.headers.get("content-type") ?? "image/jpeg";
-    const small = await this.compress(await res.arrayBuffer(), type);
-    await this.store.putPicBlob({ key, ...small });
+    const ready = await this.prepare(await res.arrayBuffer(), type);
+    await this.store.putPicBlob({ key, ...ready, v: BLOB_VERSION });
     this.haveBlobs?.add(key);
   }
 
@@ -234,7 +253,7 @@ export class Pictures {
   prefetch(): Promise<void> {
     if (this.prefetching) return this.prefetching;
     this.prefetching = (async () => {
-      this.haveBlobs ??= await this.store.picBlobKeys();
+      this.haveBlobs ??= await this.store.picBlobKeys(BLOB_VERSION);
       for (const n of this.store.col.liveNotes()) {
         const key = n.picture?.key;
         if (!key || this.haveBlobs.has(key)) continue;
@@ -249,12 +268,12 @@ export class Pictures {
     return this.prefetching;
   }
 
-  /** An object URL for a stored picture, downloading it first if needed; undefined if unavailable. */
-  async url(key: string): Promise<string | undefined> {
+  /** A stored picture as an object URL, downloading it first if needed; undefined if unavailable. */
+  async view(key: string): Promise<PictureView | undefined> {
     const cached = this.urls.get(key);
     if (cached) return cached;
     let b = await this.store.getPicBlob(key);
-    if (!b) {
+    if (!this.current(b)) {
       try {
         await this.download(key);
       } catch {
@@ -263,26 +282,30 @@ export class Pictures {
       b = await this.store.getPicBlob(key);
       if (!b) return undefined;
     }
-    const url = URL.createObjectURL(new Blob([b.data], { type: b.type }));
-    this.urls.set(key, url);
-    return url;
+    const view = { url: URL.createObjectURL(new Blob([b.data], { type: b.type })), flat: !!b.flat };
+    this.urls.set(key, view);
+    return view;
   }
 }
 
-/** Re-encode a JPEG at the same size and a lower quality (~4× smaller); anything else is kept. */
-async function browserCompress(data: ArrayBuffer, type: string): Promise<{ data: ArrayBuffer; type: string }> {
-  if (type !== "image/jpeg" || typeof createImageBitmap === "undefined" || typeof document === "undefined") return { data, type };
+/** Whiten the paper background (if the picture has one) and re-encode as a smaller JPEG. */
+async function browserPrepare(data: ArrayBuffer, type: string): Promise<Prepared> {
+  if (type !== "image/jpeg" || typeof createImageBitmap === "undefined" || typeof document === "undefined") return { data, type, flat: false };
   try {
     const bmp = await createImageBitmap(new Blob([data], { type }));
     const c = document.createElement("canvas");
     c.width = bmp.width;
     c.height = bmp.height;
-    c.getContext("2d")!.drawImage(bmp, 0, 0);
+    const ctx = c.getContext("2d", { willReadFrequently: true })!;
+    ctx.drawImage(bmp, 0, 0);
     bmp.close();
+    const img = ctx.getImageData(0, 0, c.width, c.height);
+    const flat = flattenPaper(img.data, c.width, c.height);
+    if (flat) ctx.putImageData(img, 0, 0);
     const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/jpeg", JPEG_QUALITY));
-    if (!blob || blob.size >= data.byteLength) return { data, type };
-    return { data: await blob.arrayBuffer(), type: "image/jpeg" };
+    if (!blob) return { data, type, flat: false };
+    return { data: await blob.arrayBuffer(), type: "image/jpeg", flat };
   } catch {
-    return { data, type };
+    return { data, type, flat: false };
   }
 }

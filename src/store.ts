@@ -39,6 +39,10 @@ export interface PicBlob {
   key: string;
   type: string;
   data: ArrayBuffer;
+  /** Paper background made pure white (src/domain/paper.ts): blend it into the card. */
+  flat?: boolean;
+  /** Processing version; older copies are downloaded and processed again. */
+  v?: number;
 }
 
 class AppDb extends Dexie {
@@ -285,8 +289,13 @@ export class Store {
     return this.db.pic_blobs.put(b);
   }
 
-  async picBlobKeys(): Promise<Set<string>> {
-    return new Set(await this.db.pic_blobs.toCollection().primaryKeys());
+  /** Keys of stored pictures processed at version `v`. */
+  async picBlobKeys(v: number): Promise<Set<string>> {
+    const keys = new Set<string>();
+    await this.db.pic_blobs.each((b) => {
+      if (b.v === v) keys.add(b.key);
+    });
+    return keys;
   }
 
   // ---------- sync ----------
