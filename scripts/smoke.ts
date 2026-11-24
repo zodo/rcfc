@@ -75,7 +75,7 @@ export class Browser {
     const profile = mkdtempSync(join(tmpdir(), "rcfc-smoke-"));
     cleanups.push(() => rmSync(profile, { recursive: true, force: true }));
     const proc = Bun.spawn(
-      [exe, ...(process.env.RCFC_HEADFUL ? [] : ["--headless=new"]), "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check", "--window-size=430,932", "about:blank"],
+      [exe, ...(process.env.RCFC_HEADFUL ? [] : ["--headless=new"]), "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check", "--mute-audio", "--window-size=430,932", "about:blank"],
       { stdout: "ignore", stderr: "pipe" },
     );
     children.push(proc);
@@ -109,6 +109,9 @@ export class Browser {
     const b = new Browser(ws);
     await b.send("Runtime.enable");
     await b.send("Page.enable");
+    // Speech goes through the OS text-to-speech, which --mute-audio does not
+    // silence: keep the API (the speak buttons still render) but only count calls.
+    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__rcfcSpoken = []; if (window.speechSynthesis) speechSynthesis.speak = (u) => void window.__rcfcSpoken.push(u.text);" });
     // iPhone 14-sized viewport.
     await b.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     return b;
@@ -262,6 +265,7 @@ async function run(s: Browser, url: string) {
   await s.click(".deck button", "Study");
   const first = await s.until<string>("first card", `document.querySelector(".face.prompt")?.textContent`);
   if (first !== "hola") throw new Error(`first card is "${first}", expected "hola"`);
+  await s.until("a new word is pronounced (silently)", `window.__rcfcSpoken.includes("hola")`);
   await s.click("button", "Show answer");
   await s.until("picture with the answer", `document.querySelector(".answer:not(.hidden) .pic img")?.naturalWidth > 0`, 30_000);
   await shot(s, "study-picture");
