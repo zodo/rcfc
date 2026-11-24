@@ -1,6 +1,7 @@
-// Study: one card at a time, on a pile of paper cards. Tap the card (or Show
-// answer) to flip it over, then drag it: right = Got it, left = Again (it goes
-// back under the pile), up = Easy. Buttons and arrow keys do the same.
+// Study: one card at a time, on a pile of paper cards. Tap the card, drag it
+// sideways (it turns under your finger) or press Show answer to turn it over,
+// then throw it: right = Got it, left = Again (it goes back under the pile),
+// up = Easy. Buttons and arrow keys do the same.
 //
 // The pile is real: every card has its own spot (a little off, a little
 // turned), so taking the top one moves nothing else. The card under the top
@@ -16,6 +17,7 @@ import { h, langName, toast } from "../ui/h";
 import { relight, startTilt, tiltNeedsTap } from "../ui/light";
 import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
+import { EDGE, Turn } from "../ui/turn";
 import { canSpeak, speak } from "../ui/speech";
 import { rememberDeck } from "./decks";
 
@@ -28,6 +30,34 @@ type Rating = ReviewPayload["rating"];
 /** Where a card goes: -1 Again (left), 1 Got it (right), 2 Easy (up). */
 type Dir = -1 | 1 | 2;
 const RATING: Record<Dir, Rating> = { [-1]: 1, 1: 3, 2: 4 };
+
+/**
+ * Pencil notes on the back of a card teach the throws: each one is gone for
+ * good on this device once a card was thrown that way LEARN times.
+ */
+const LEARN = 3;
+const THROWS_KEY = "rcfc:throws";
+const NOTE: Record<Dir, { name: string; text: string; side: string }> = {
+  [-1]: { name: "again", text: "again", side: "l" },
+  1: { name: "good", text: "got it", side: "r" },
+  2: { name: "easy", text: "easy", side: "u" },
+};
+function throws(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(THROWS_KEY) ?? "{}") as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+function threw(dir: Dir): void {
+  const t = throws();
+  t[NOTE[dir].name] = (t[NOTE[dir].name] ?? 0) + 1;
+  try {
+    localStorage.setItem(THROWS_KEY, JSON.stringify(t));
+  } catch {
+    /* storage unavailable: the notes just stay */
+  }
+}
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
@@ -195,14 +225,18 @@ class Table {
     this.peekId = null;
 
     const f = faces(card, note, this.n % 2 ? "r" : "l");
+    const t = throws();
+    for (const dir of [-1, 1, 2] as Dir[]) if ((t[NOTE[dir].name] ?? 0) < LEARN) f.back.append(h("div", { class: `note ${NOTE[dir].side}`, "aria-hidden": "true" }, NOTE[dir].text));
     const shRest = h("div", { class: "sh rest", "data-light": "0.6" });
     const shLift = h("div", { class: "sh lift", "data-light": "1.7" });
+    const shadow = h("div", { class: "shs" }, shRest, shLift);
     const flipper = h("div", { class: "flipper" }, f.front, f.back);
     const stamps = { good: h("div", { class: "stamp good" }, "got it"), again: h("div", { class: "stamp again" }, "again"), easy: h("div", { class: "stamp easy" }, "easy") };
-    const el = h("div", { class: "flashcard" }, shRest, shLift, flipper, stamps.good, stamps.again, stamps.easy);
+    const el = h("div", { class: "flashcard" }, shadow, flipper, stamps.good, stamps.again, stamps.easy);
     el.style.zIndex = "20";
     this.pile.append(el);
     const body = new Body(el, this.pile.offsetWidth, this.pile.offsetHeight, shRest, shLift);
+    const turn = new Turn(flipper, shadow, [...el.querySelectorAll<HTMLElement>(".shade")], body.w);
     body.home = this.pose(this.n);
     Object.assign(body, body.home);
     body.render();
@@ -215,26 +249,16 @@ class Table {
 
     const reveal = h("button", { class: "secondary wide big", onclick: () => doReveal() }, "Show answer");
     const ratings = h("div", { class: "ratings two" }, h("button", { class: "rate r1", onclick: () => answer(-1) }, "Again"), h("button", { class: "rate r3", onclick: () => answer(1) }, "Got it"));
-    const hint = h("p", { class: "swipe-hint small center" }, "or swipe: ↑ for easy");
     this.controls.replaceChildren(reveal);
 
-    const doReveal = () => {
+    /** Turn the card over (towards `side`: 1 = to the right), from wherever a drag left it. */
+    const doReveal = (side: 1 | -1 = 1) => {
       if (revealed || busy) return;
       revealed = true;
       haptic("tap");
       f.answer.classList.remove("hidden");
-      const dur = 560, ease = "cubic-bezier(.35,.1,.25,1)";
-      // Turned over like a real card: lifted a little at the middle, the shadow narrowing as it turns edge-on.
-      const flip = flipper.animate([{ transform: "rotateY(0)" }, { transform: "translateZ(70px) rotateY(90deg)", offset: 0.5 }, { transform: "rotateY(180deg)" }], { duration: dur, easing: ease, fill: "forwards" });
-      for (const sh of [shRest, shLift]) sh.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(.12) translateY(12px)", offset: 0.5 }, { transform: "scaleX(1)" }], { duration: dur, easing: ease });
-      // Each side darkens while it faces away from the light.
-      const shades = [
-        f.front.querySelector(".shade")!.animate([{ opacity: 0 }, { opacity: 0.45 }], { duration: dur / 2, easing: "ease-in", fill: "forwards" }),
-        f.back.querySelector(".shade")!.animate([{ opacity: 0.45 }, { opacity: 0.45, offset: 0.5 }, { opacity: 0 }], { duration: dur, easing: "ease-out", fill: "forwards" }),
-      ];
-      // Done: drop the held shades (WebKit could keep showing a stale one); the front is out of sight.
-      flip.finished.then(() => shades.forEach((a) => a.cancel()), () => {});
-      this.controls.replaceChildren(ratings, hint);
+      turn.to(side * 180, { done: () => el.classList.add("noted") });
+      this.controls.replaceChildren(ratings);
       if (!f.forward && canSpeak()) f.say();
     };
 
@@ -270,8 +294,9 @@ class Table {
       body.spring({ x, y, r, lift: 0, s: 1 }, { k: 380, c: 22, onFrame: () => ink(body.x - x, body.y - y) });
     };
 
-    const commit = async (dir: Dir, vx: number, vy: number) => {
+    const commit = async (dir: Dir, vx: number, vy: number, thrown = false) => {
       busy = true;
+      if (thrown) threw(dir);
       setKeys(null);
       el.classList.add("leaving"); // no longer the card being studied, while it moves away
       haptic(dir === -1 ? "double" : "thud");
@@ -322,7 +347,7 @@ class Table {
     };
 
     // Dragging: the card follows the finger, turning around the point held.
-    let down: { x: number; y: number; bx: number; by: number; br: number; moved: boolean; queued: boolean; zone: Dir | 0 } | null = null;
+    let down: { x: number; y: number; bx: number; by: number; br: number; moved: boolean; queued: boolean; zone: Dir | 0; turning: boolean } | null = null;
     let samples: { x: number; y: number; t: number }[] = [];
     const velocity = (e: PointerEvent) => {
       const s0 = samples[0], dt = s0 ? Math.max(1, performance.now() - s0.t) : 1;
@@ -331,7 +356,7 @@ class Table {
     el.addEventListener("pointerdown", (e) => {
       if (busy || (e.target as HTMLElement).closest("button")) return;
       body.grab(e.clientX, e.clientY);
-      down = { x: e.clientX, y: e.clientY, bx: body.x, by: body.y, br: body.r, moved: false, queued: false, zone: 0 };
+      down = { x: e.clientX, y: e.clientY, bx: body.x, by: body.y, br: body.r, moved: false, queued: false, zone: 0, turning: false };
       samples = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
       try {
         el.setPointerCapture(e.pointerId);
@@ -348,9 +373,17 @@ class Table {
       let dx = e.clientX - down.x, dy = e.clientY - down.y;
       if (Math.hypot(dx, dy) > 6) down.moved = true;
       if (!revealed) {
-        // Rubber band until the answer is shown.
-        dx = Math.sign(dx) * Math.pow(Math.abs(dx), 0.72) * 1.6;
-        dy = Math.sign(dy) * Math.pow(Math.abs(dy), 0.72) * 1.2;
+        // The front turns with a sideways drag, up to its edge: the answer stays hidden until let go.
+        turn.drag(dx);
+        const turning = Math.abs(turn.a) > 45;
+        if (turning !== down.turning) {
+          down.turning = turning;
+          if (turning) haptic("tick"); // letting go now turns it over
+        }
+        body.x = down.bx + dx * 0.18;
+        body.y = down.by + dy * 0.1;
+        if (!body.moving) body.render();
+        return;
       }
       const { vx } = velocity(e);
       const gy = clamp(body.py / (body.h / 2), -1, 1);
@@ -382,16 +415,20 @@ class Table {
         return;
       }
       const { vx, vy } = velocity(e);
+      if (!revealed) {
+        settle();
+        const side = Math.sign(turn.a || vx) as 1 | -1;
+        if (!cancelled && (Math.abs(turn.a) > 45 || (Math.abs(vx) > 0.6 && Math.sign(vx) === Math.sign(turn.a)))) doReveal(side);
+        else turn.to(0, { k: 320, c: 16 }); // back down, with a little wobble
+        return;
+      }
       const z = zone();
       const dx = body.x - body.home.x, dy = body.y - body.home.y;
       const fastUp = vy < -0.6 && -dy > 30 && -vy > Math.abs(vx);
       const fastSide = Math.abs(vx) > 0.55 && Math.sign(vx) === Math.sign(dx) && Math.abs(dx) > 24 && Math.abs(vx) > -vy;
-      if (revealed && !cancelled && (z === 2 || (!z && fastUp))) void commit(2, vx, vy);
-      else if (revealed && !cancelled && (z || fastSide)) void commit((z || Math.sign(dx || vx)) as Dir, vx, vy);
-      else {
-        settle();
-        if (!revealed && !cancelled) doReveal();
-      }
+      if (!cancelled && (z === 2 || (!z && fastUp))) void commit(2, vx, vy, true);
+      else if (!cancelled && (z || fastSide)) void commit((z || Math.sign(dx || vx)) as Dir, vx, vy, true);
+      else settle();
     };
     el.addEventListener("pointerup", (e) => end(e, false));
     el.addEventListener("pointercancel", (e) => end(e, true));

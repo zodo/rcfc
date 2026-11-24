@@ -5,7 +5,7 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
 ## Layout
 
 - `src/` PWA client (Vite + vite-plugin-pwa, Dexie, no UI framework)
-  - `ui/` DOM helpers and the paper look: `paper.ts` (textures, cut edges, haptics), `light.ts` (tilt light), `body.ts` (card physics), `picture.ts`
+  - `ui/` DOM helpers and the paper look: `paper.ts` (textures, cut edges, haptics), `light.ts` (tilt light), `body.ts` (card physics), `turn.ts` (turning a card over), `picture.ts`
   - `domain/` pure logic: event fold, RWKV row derivation, card picking, new-card daily limits (`newcards.ts`)
   - `engine/` RWKV Web Worker + checkpoints; `EngineApi` is what the app uses (tests stub it)
   - `store.ts` ties log + engine. No UI side effects: writes return `{ replay }` / set `stale`, the app decides when to reload
@@ -66,7 +66,7 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 ## UX notes
 
 - Look: everything is cut from paper (`src/style.css` header). Sage table, white card stock, coloured paper buttons/tabs with hand-cut edges (`--cut-1..4`), Balsamiq Sans (self-hosted via `@fontsource`, precached; has Cyrillic). Textures are canvas bitmaps made at boot (`src/ui/paper.ts`), never SVG filters. Anything that moves per frame changes only transform/translate/opacity; tilt light writes `translate` on `[data-light]` elements (`src/ui/light.ts`), never a custom property on a screen root.
-- Study (`src/screens/study.ts`): a real pile (each card has a fixed pose; the one under the top card shows `StudySession.peek()`), tap or Show answer flips the card, drag right = Got it (3), left = Again (1, tucked under the pile), up = Easy (4); arrow keys too. Android haptics (`navigator.vibrate`) incl. a detent tick when a release would answer; iPhone has none yet.
+- Study (`src/screens/study.ts`): a real pile (each card has a fixed pose; the one under the top card shows `StudySession.peek()`), tap, Show answer or a sideways drag turns the card over (the drag turns it up to its edge, never past, so the answer stays hidden until let go; `src/ui/turn.ts`, cream `--card-back` = answer side), then drag right = Got it (3), left = Again (1, tucked under the pile), up = Easy (4); arrow keys too. Pencil notes on the back teach the throws and retire per direction after 3 throws (localStorage `rcfc:throws`). Android haptics (`navigator.vibrate`) incl. a detent tick when a release would answer; iPhone has none yet.
 - Fewer buttons, no study settings. A deck is one language pair ("Spanish" = es→en); the UI says "language", names it after the studied language (`deckFor` reuses an existing pair) and the Words title switches it. The current language is per device (localStorage).
 - Target recall is fixed (`TARGET_RECALL` 0.9 in `src/domain/scheduler.ts`; presets' `desired_retention` is ignored). Day rollover (4) and new words per day (10) stay in the preset but have no UI; when today's words are done the study screen offers "Learn 5 more" (session-only `extraNew`).
 - Selected words: "I know" (`Store.markKnown`) answers Easy (the forward card of an unseen word, else every studied card); "Don't know" (`Store.markUnknown`) answers Again on studied cards and queues unseen words to be learned next (`notes_prioritized` event, latest request first).

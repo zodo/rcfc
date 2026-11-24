@@ -11,6 +11,8 @@
   --on-table-muted: #4d6150;
   --shadow: 32 48 34;
   --card: #ffffff;
+  /* the back of a study card: a whisper of cream, so a turned card reads as turned */
+  --card-back: #faf4e4;
   --slot: #ffffff;
   --ink: #26302a;
   --muted: #6d756e;
@@ -35,6 +37,7 @@
     --on-table-muted: #a9b0aa;
     --shadow: 0 0 0;
     --card: #dcd8cf;
+    --card-back: #d7cdb4;
     --slot: #e8e5dd;
     --muted: #636961;
     --highlight: rgb(240 200 50 / 0.5);
@@ -513,7 +516,7 @@ h1.picker .chev {
   min-height: calc(100dvh - env(safe-area-inset-top));
   margin: 0 -18px calc(-96px - env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  overflow: hidden;
+  overflow: clip; /* not hidden: that can still be scrolled (scrollIntoView), and a raised card spills over */
 }
 /* a soft pool of light on the table; moves against the shadows when the phone tilts */
 .glow {
@@ -530,7 +533,6 @@ h1.picker .chev {
 }
 .study-top {
   position: relative;
-  z-index: 3; /* cards thrown or tucked away pass under the close button */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -540,6 +542,8 @@ h1.picker .chev {
   font-variant-numeric: tabular-nums;
 }
 .study-top .icon {
+  position: relative;
+  z-index: 3; /* cards lifted, thrown or tucked away pass under the close button (and over the rest) */
   width: 38px;
   height: 38px;
   padding: 0;
@@ -598,7 +602,7 @@ h1.picker .chev {
   user-select: none;
   -webkit-user-select: none;
   cursor: grab;
-  perspective: 1400px;
+  perspective: 2400px; /* far away: a raised edge grows a little, not over the whole screen */
   will-change: transform;
 }
 .flashcard:active {
@@ -608,13 +612,19 @@ h1.picker .chev {
 .flashcard.leaving {
   pointer-events: none;
 }
+/* the card's shadows; src/ui/turn.ts slants and narrows them while it turns */
+.shs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
 .sh {
   position: absolute;
   inset: 0;
   border-radius: 4px;
   pointer-events: none;
-  transform-origin: 50% 0;
-  will-change: opacity, transform, translate;
+  will-change: opacity, translate;
 }
 .sh.rest {
   box-shadow:
@@ -652,6 +662,43 @@ h1.picker .chev {
 }
 .side.back {
   transform: rotateY(180deg);
+  background-color: var(--card-back);
+  padding-left: 32px;
+  padding-right: 32px;
+}
+/* pencil notes at the edges of the back, until the throws are learnt (study.ts LEARN) */
+.note {
+  position: absolute;
+  font-size: 13.5px;
+  color: #8f978f;
+  opacity: 0;
+  transition: opacity 0.5s;
+  pointer-events: none;
+}
+.note.l,
+.note.r {
+  top: 18%;
+  bottom: 18%;
+  width: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  writing-mode: vertical-rl;
+}
+.note.l {
+  left: 5px;
+  transform: rotate(180deg);
+}
+.note.r {
+  right: 5px;
+}
+.note.u {
+  top: 34px;
+  left: 0;
+  right: 0;
+}
+.flashcard.noted .note {
+  opacity: 1;
 }
 .shade {
   position: absolute;
@@ -743,7 +790,6 @@ h1.picker .chev {
 .controls {
   position: relative;
   padding: 0 18px 22px;
-  min-height: 104px;
 }
 .ratings {
   display: grid;
@@ -773,10 +819,6 @@ h1.picker .chev {
 }
 .controls .big {
   height: 56px;
-}
-.swipe-hint {
-  margin: 10px 0 0;
-  color: var(--on-table-muted);
 }
 .done {
   margin: 40px 0;
