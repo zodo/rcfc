@@ -1,7 +1,8 @@
 // Study: one card at a time, on a pile of paper cards. Tap the card, drag it
 // sideways (it turns under your finger) or press Show answer to turn it over,
 // then throw it: right = Got it, left = Again (it goes back under the pile),
-// up = Easy. Buttons and arrow keys do the same.
+// up = Easy. Buttons and arrow keys do the same. Once turned, a tap (or Space)
+// turns it over again, to look at the other side; the answer stays given.
 //
 // The pile is real: every card has its own spot (a little off, a little
 // turned), so taking the top one moves nothing else. Its height is the number
@@ -264,15 +265,27 @@ class Table {
     const ratings = h("div", { class: "ratings two" }, h("button", { class: "rate r1", onclick: () => answer(-1) }, "Again"), h("button", { class: "rate r3", onclick: () => answer(1) }, "Got it"));
     this.controls.replaceChildren(reveal);
 
+    /** Where the card is turning to, in degrees: every turn adds half a turn the same way. */
+    let angle = 0;
+
     /** Turn the card over (towards `side`: 1 = to the right), from wherever a drag left it. */
     const doReveal = (side: 1 | -1 = 1) => {
       if (revealed || busy) return;
       revealed = true;
       haptic("tap");
       f.answer.classList.remove("hidden");
-      turn.to(side * 180, { done: () => el.classList.add("noted") });
+      angle = side * 180;
+      turn.to(angle, { done: () => el.classList.add("noted") });
       this.controls.replaceChildren(ratings);
       if (!f.forward && canSpeak()) f.say();
+    };
+
+    /** After the answer was shown: turn the card over again, onwards the same way. */
+    const turnAgain = () => {
+      if (!revealed || busy) return;
+      haptic("tap");
+      angle += Math.sign(angle) * 180;
+      turn.to(angle);
     };
 
     // Stamps ink in while dragging; the matching button rises.
@@ -424,7 +437,8 @@ class Table {
       down = null;
       if (!d.moved && !cancelled) {
         settle();
-        doReveal();
+        if (revealed) turnAgain();
+        else doReveal();
         return;
       }
       const { vx, vy } = velocity(e);
@@ -448,9 +462,10 @@ class Table {
 
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
-      if (!revealed && (e.key === " " || e.key === "Enter")) {
+      if ((e.key === " " || e.key === "Enter") && !(e.target instanceof HTMLButtonElement)) {
         e.preventDefault();
-        doReveal();
+        if (revealed) turnAgain();
+        else doReveal();
       } else if (revealed && e.key === "ArrowRight") answer(1);
       else if (revealed && e.key === "ArrowLeft") answer(-1);
       else if (revealed && e.key === "ArrowUp") {

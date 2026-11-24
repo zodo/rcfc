@@ -269,6 +269,10 @@ async function run(s: Browser, url: string) {
   await s.click("button", "Show answer");
   await s.until("picture with the answer", `document.querySelector(".answer:not(.hidden) .pic img")?.naturalWidth > 0`, 30_000);
   await shot(s, "study-picture");
+  log("a tap on the turned card turns it over again; the answer stays given");
+  await s.click(".flashcard:not(.leaving) .side.back");
+  await s.until("front up again", `/rotateY\\(360/.test(document.querySelector(".flashcard:not(.leaving) .flipper")?.style.transform ?? "")`);
+  await s.until("ratings still there", `document.querySelector("button.rate")`);
   await s.click("button.rate", "Got it");
   await s.until("next screen", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
   const answered = 1 + (await answerUntilDone(s, 10));
