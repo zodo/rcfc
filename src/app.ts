@@ -51,10 +51,20 @@ export function setKeys(f: ((e: KeyboardEvent) => void) | null): void {
   if (f) document.addEventListener("keydown", f);
 }
 
+const ICONS = {
+  home: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="13" height="17" rx="1.5" transform="rotate(8 12 12)" opacity=".45"/><rect x="5" y="4" width="13" height="17" rx="1.5"/></svg>',
+  words: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10.3 2h3.4l.5 2.6 1.6.7 2.2-1.5 2.4 2.4-1.5 2.2.7 1.6 2.6.5v3.4l-2.6.5-.7 1.6 1.5 2.2-2.4 2.4-2.2-1.5-1.6.7-.5 2.6h-3.4l-.5-2.6-1.6-.7-2.2 1.5-2.4-2.4 1.5-2.2-.7-1.6L2 13.7v-3.4l2.6-.5.7-1.6-1.5-2.2 2.4-2.4 2.2 1.5 1.6-.7zM12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/></svg>',
+};
+
+/** The tab bar: paper tabs, the current one lifted. */
 function nav(active: Tab) {
-  const item = (s: Tab, label: string, icon: string) =>
-    h("button", { class: `nav-item${active === s ? " active" : ""}`, onclick: () => go[s](), "aria-label": label }, h("span", { class: "nav-icon", "aria-hidden": "true" }, icon), h("span", {}, label));
-  return h("nav", { class: "nav" }, item("home", "Study", "◎"), item("words", "Words", "≡"), item("settings", "Settings", "⚙"));
+  const item = (s: Tab, label: string) => {
+    const icon = h("span", { class: "nav-icon", "aria-hidden": "true" });
+    icon.innerHTML = ICONS[s];
+    return h("button", { class: `nav-item${active === s ? " active" : ""}`, onclick: () => go[s](), "aria-label": label }, icon, h("span", {}, label));
+  };
+  return h("nav", { class: "nav" }, item("home", "Study"), item("words", "Words"), item("settings", "Settings"));
 }
 
 type Body = (Node | string | null | false)[];
@@ -66,7 +76,9 @@ export function page(active: Tab, title: string | Node, ...body: Body): void {
 
 /** A screen reached from a tab (add, edit, import): a back button instead of a title row of its own. */
 export function subPage(active: Tab, title: string, back: () => void, ...body: Body): void {
-  show(active, h("header", { class: "top sub" }, h("button", { class: "icon back", onclick: back, "aria-label": "Back" }, "‹"), h("h1", {}, title)), body);
+  const b = h("button", { class: "icon back", onclick: back, "aria-label": "Back" });
+  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
+  show(active, h("header", { class: "top sub" }, b, h("h1", {}, title)), body);
 }
 
 function show(active: Tab, header: Node, body: Body): void {

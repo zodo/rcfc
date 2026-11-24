@@ -50,12 +50,12 @@ export function words(): void {
     });
     return b;
   };
-  const knowBtn = btn("I know", "secondary", async () => {
+  const knowBtn = btn("I know", "primary", async () => {
     const n = await store.markKnown([...selected]);
     toast(`${plural(n, "word")} marked as known`);
     await afterAnswers();
   });
-  const unknownBtn = btn("Don't know", "secondary", async () => {
+  const unknownBtn = btn("Don't know", "secondary dunno", async () => {
     const r = await store.markUnknown([...selected]);
     toast([r.forgotten ? `${plural(r.forgotten, "word")} to review soon` : "", r.next ? `${plural(r.next, "word")} to learn next` : ""].filter(Boolean).join(", "));
     await afterAnswers();

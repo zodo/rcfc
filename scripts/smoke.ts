@@ -217,12 +217,12 @@ async function shot(s: Browser, name: string) {
 async function answerUntilDone(s: Browser, max: number): Promise<number> {
   let n = 0;
   for (; n < max; n++) {
-    const state = await s.until<string>("a card or the end", `document.querySelector(".flashcard") ? "card" : document.querySelector(".done") ? "done" : ""`);
+    const state = await s.until<string>("a card or the end", `document.querySelector(".flashcard:not(.leaving)") ? "card" : document.querySelector(".done") ? "done" : ""`);
     if (state === "done") return n;
     await s.click("button", "Show answer");
     await s.click("button.rate", n % 4 === 3 ? "Again" : "Got it");
     // Wait for the next card to replace this one.
-    await s.until("next screen", `!document.querySelector(".answer:not(.hidden)")`);
+    await s.until("next screen", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
   }
   return n;
 }
@@ -263,14 +263,14 @@ async function run(s: Browser, url: string) {
 
   log("study both words");
   await s.click(".deck button", "Study");
-  const first = await s.until<string>("first card", `document.querySelector(".face.prompt")?.textContent`);
+  const first = await s.until<string>("first card", `document.querySelector(".flashcard:not(.leaving) .face.prompt")?.textContent`);
   if (first !== "hola") throw new Error(`first card is "${first}", expected "hola"`);
   await s.until("a new word is pronounced (silently)", `window.__rcfcSpoken.includes("hola")`);
   await s.click("button", "Show answer");
   await s.until("picture with the answer", `document.querySelector(".answer:not(.hidden) .pic img")?.naturalWidth > 0`, 30_000);
   await shot(s, "study-picture");
   await s.click("button.rate", "Got it");
-  await s.until("next screen", `!document.querySelector(".answer:not(.hidden)")`);
+  await s.until("next screen", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
   const answered = 1 + (await answerUntilDone(s, 10));
   if (answered < 2) throw new Error(`only ${answered} cards shown`);
   log("done screen: no words left to learn, so it offers adding some");
@@ -333,15 +333,15 @@ async function run(s: Browser, url: string) {
   // Due reviews interleave with new words, so look for the first new card.
   for (let i = 0; ; i++) {
     if (i > 30) throw new Error("no new card in 30 answers");
-    await s.until("card", `document.querySelector(".flashcard")`);
+    await s.until("card", `document.querySelector(".flashcard:not(.leaving)")`);
     if ((await s.text(".study-top")).includes("New word")) {
-      const w = await s.text(".face.prompt");
+      const w = await s.text(".flashcard:not(.leaving) .face.prompt");
       if (w !== fresh[2]) throw new Error(`first new word is "${w}", expected "${fresh[2]}"`);
       break;
     }
     await s.click("button", "Show answer");
     await s.click("button.rate", "Got it");
-    await s.until("next", `!document.querySelector(".answer:not(.hidden)")`);
+    await s.until("next", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
   }
 
   log("no uncaught errors");

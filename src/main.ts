@@ -1,5 +1,7 @@
 // Entry point: open the store, start sync, wire navigation, show home.
 // Screens live in src/screens/, shared shell state in src/app.ts.
+import "@fontsource/balsamiq-sans/400.css";
+import "@fontsource/balsamiq-sans/700.css";
 import "./style.css";
 import { app, go, reloadWhenSafe, requestPersistence, type Screens } from "./app";
 import { add } from "./screens/add";
@@ -11,6 +13,7 @@ import { addLanguage, edit, words } from "./screens/words";
 import { joinFromLink } from "./screens/sync";
 import { Pictures } from "./pictures";
 import { Store } from "./store";
+import { setupPaper } from "./ui/paper";
 import { Sync } from "./sync";
 import { clear, h } from "./ui/h";
 import { setupInstallPrompt } from "./ui/install";
@@ -56,6 +59,7 @@ async function boot() {
   }
 }
 
+setupPaper();
 setupUpdates();
 setupInstallPrompt();
 void boot();

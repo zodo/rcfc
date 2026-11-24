@@ -54,6 +54,33 @@ export class StudySession {
     return pick && { pick, due: dueCount(preds, desired) };
   }
 
+  /**
+   * The card next() would most likely pick once `current` is answered, shown
+   * under it in the pile. A guess: the answer and fresh predictions can change
+   * the order, and then the real next card simply takes its place.
+   */
+  peek(current: Pick): EntityId | null {
+    const newQueue = this.store
+      .newQueue(this.deckId, this.extraNew)
+      .map((c) => c.id)
+      .filter((id) => id !== current.card);
+    const pick = pickNext({
+      preds: this.preds(),
+      recent: [...this.recent, current.card],
+      newQueue,
+      newLeft: newQueue.length,
+      sinceNew: current.kind === "new" ? 0 : this.sinceNew + 1,
+      desired: TARGET_RECALL,
+      ahead: this.ahead,
+    });
+    return pick?.card ?? null;
+  }
+
+  /** Cards left in this session, the current one included (for the height of the pile). */
+  left(due: number): number {
+    return due + this.store.newQueue(this.deckId, this.extraNew).length;
+  }
+
   /** Words never studied in scope, beyond today's queue: what "Learn more" can introduce. */
   unseenLeft(): number {
     return this.store.unseenWords(this.deckId).length;

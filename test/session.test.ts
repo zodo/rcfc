@@ -25,6 +25,23 @@ describe("StudySession", () => {
     expect(new StudySession(d.store).next()).toBeNull();
   });
 
+  it("peeks the card that comes next (shown under the top card) and counts what is left", async () => {
+    const d = await Device.open();
+    await d.deck(15);
+    const s = new StudySession(d.store);
+    await s.start();
+    for (let i = 0; i < 10; i++) {
+      const n = s.next()!;
+      expect(s.left(n.due)).toBe(10 - i);
+      const peeked = s.peek(n.pick);
+      expect(peeked).not.toBe(n.pick.card);
+      const card = d.store.col.cards.get(n.pick.card)!;
+      await s.answer(card, n.pick, 3, 2000);
+      await s.refresh(card);
+      expect(s.next()?.pick.card ?? null).toBe(peeked);
+    }
+  });
+
   it("learns more words today on request, then stops again", async () => {
     const d = await Device.open();
     await d.deck(15);

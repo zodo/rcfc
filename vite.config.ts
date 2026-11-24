@@ -29,8 +29,8 @@ export default defineConfig({
         id: "/",
         start_url: "/",
         display: "standalone",
-        background_color: "#111114",
-        theme_color: "#111114",
+        background_color: "#a9bfa3",
+        theme_color: "#a9bfa3",
         icons: [
           // PNGs from scripts/build-icons.sh; Chrome's install check wants 192 + 512.
           { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
@@ -47,7 +47,7 @@ export default defineConfig({
         clientsClaim: true,
         // The RWKV model (~11 MB) and engine must be precached for offline use;
         // Workbox silently skips files over its 2 MiB default.
-        globPatterns: ["**/*.{js,css,html,svg,png,webmanifest,wasm,safetensors}"],
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2,webmanifest,wasm,safetensors}"],
         maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
       },
     }),

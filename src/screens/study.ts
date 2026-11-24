@@ -1,32 +1,45 @@
-// Study: one card at a time, reveal, answer Again / Got it (buttons, arrow keys or swipe).
+// Study: one card at a time, on a pile of paper cards. Tap the card (or Show
+// answer) to flip it over, then drag it: right = Got it, left = Again (it goes
+// back under the pile), up = Easy. Buttons and arrow keys do the same.
+//
+// The pile is real: every card has its own spot (a little off, a little
+// turned), so taking the top one moves nothing else. The card under the top
+// one shows the card most likely to come next (StudySession.peek).
 import { app, errorText, fullScreen, go, setKeys } from "../app";
+import type { Card, Note } from "../domain/collection";
 import type { ReviewPayload } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import type { Pick } from "../domain/scheduler";
 import { StudySession } from "../session";
+import { Body, type Pose } from "../ui/body";
 import { h, langName, toast } from "../ui/h";
-import { canSpeak, speak } from "../ui/speech";
+import { relight, startTilt, tiltNeedsTap } from "../ui/light";
+import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
-import { swipeable } from "../ui/swipe";
+import { canSpeak, speak } from "../ui/speech";
 import { rememberDeck } from "./decks";
 
 /** New words one "Learn more" adds beyond today's limit. */
 const MORE_WORDS = 5;
+/** Cards drawn under the top one; the pile's shadow stands in for the rest. */
+const SHOWN = 6;
 
 type Rating = ReviewPayload["rating"];
+/** Where a card goes: -1 Again (left), 1 Got it (right), 2 Easy (up). */
+type Dir = -1 | 1 | 2;
+const RATING: Record<Dir, Rating> = { [-1]: 1, 1: 3, 2: 4 };
+
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+const ICON_CLOSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+const ICON_SPEAK = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5c1.3 1 2 2.2 2 3.5s-.7 2.5-2 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
 export async function study(deckId?: EntityId): Promise<void> {
   if (deckId !== undefined) rememberDeck(deckId);
   fullScreen(h("p", { class: "muted center" }, "Preparing…"));
   const s = new StudySession(app.store, deckId);
   await s.start();
-  next(s);
-}
-
-function next(s: StudySession) {
-  const n = s.next();
-  if (!n) return done(s);
-  showCard(s, n.pick, n.due);
+  new Table(s).next();
 }
 
 function done(s: StudySession) {
@@ -34,11 +47,11 @@ function done(s: StudySession) {
   const more = Math.min(MORE_WORDS, s.unseenLeft());
   const learnMore = () => {
     s.extraNew += more;
-    next(s);
+    new Table(s).next();
   };
   const practice = () => {
     s.ahead = true;
-    next(s);
+    new Table(s).next();
   };
   const canPractice = s.preds().size > 0;
   fullScreen(
@@ -55,98 +68,347 @@ function done(s: StudySession) {
   );
 }
 
-function showCard(s: StudySession, pick: Pick, due: number) {
-  const { store } = app;
-  const card = store.col.cards.get(pick.card)!;
-  const note = store.col.notes.get(card.note_id)!;
+interface Faces {
+  front: HTMLElement;
+  back: HTMLElement;
+  answer: HTMLElement;
+  say: () => void;
+  forward: boolean;
+}
+
+/** Both sides of a card: the prompt on the front; the prompt small, the answer and the example on the back. */
+function faces(card: Card, note: Note, picTilt: "l" | "r"): Faces {
   const lang = note.lang_pair;
-  const studied = note.fields.front;
   const forward = card.template === "forward";
+  const label = forward ? `${langName(lang.from)} → ${langName(lang.to)}` : `${langName(lang.to)} → ${langName(lang.from)}`;
   const prompt = forward ? note.fields.front : note.fields.back;
-  const answer = forward ? note.fields.back : note.fields.front;
-  const shownAt = performance.now();
-  // Reverse cards (translation → word): the picture is part of the cue.
-  // Forward cards: it comes with the answer. No picture yet: draw one for next time.
-  const pic = note.picture ? cutout(note.picture.key, forward ? "r" : "l") : null;
-  if (!note.picture) void app.pictures.ensure(note.id);
-  let revealed = false;
+  const answerText = forward ? note.fields.back : note.fields.front;
+  const say = () => speak(note.fields.front, lang.from);
+  const speakBtn = () => {
+    if (!canSpeak()) return null;
+    const b = h("button", { class: "speak", "aria-label": "Pronounce", title: "Pronounce", onclick: say });
+    b.innerHTML = ICON_SPEAK;
+    return b;
+  };
+  // Reverse cards (translation → word): the picture is part of the cue. Forward cards: it comes with the answer.
+  const pic = () => (note.picture ? cutout(note.picture.key, picTilt) : null);
+  const front = h("div", { class: "side front" }, h("div", { class: "lang" }, label), forward ? null : pic(), h("div", { class: "face prompt" }, prompt), forward ? speakBtn() : null, h("div", { class: "shade" }));
+  const answer = h("div", { class: "answer hidden" }, forward ? pic() : null, h("div", { class: "face" }, answerText), speakBtn(), note.fields.example ? h("div", { class: "example" }, note.fields.example) : null);
+  const back = h("div", { class: "side back" }, h("div", { class: "lang" }, label), h("div", { class: "prompt-small" }, prompt), answer, h("div", { class: "shade" }));
+  return { front, back, answer, say, forward };
+}
 
-  const say = () => speak(studied, lang.from);
-  const speakBtn = canSpeak() ? h("button", { class: "icon", onclick: say, "aria-label": "Pronounce", title: "Pronounce" }, "🔊") : null;
-  const status = h(
-    "div",
-    { class: "study-top" },
-    h("button", { class: "icon", onclick: () => go.home(), "aria-label": "Close" }, "✕"),
-    h("span", { class: "muted small" }, pick.kind === "new" ? "New word" : pick.kind === "ahead" ? "Extra practice" : `${due} due`),
-    h("span", { class: "muted small" }, pick.p !== undefined ? `recall ${(pick.p * 100).toFixed(0)}%` : ""),
-  );
-  const back = h(
-    "div",
-    { class: "answer hidden" },
-    h("div", { class: "divider" }),
-    forward ? pic : null,
-    h("div", { class: "face" }, answer),
-    note.fields.example ? h("div", { class: "example" }, note.fields.example) : null,
-  );
-  const reveal = h("button", { class: "primary wide big", onclick: () => doReveal() }, "Show answer");
-  const ratings = h(
-    "div",
-    { class: "hidden" },
-    h("div", { class: "ratings two" }, h("button", { class: "rate r1", onclick: () => rate(1) }, "← Again"), h("button", { class: "rate r3", onclick: () => rate(3) }, "Got it →")),
-    h("p", { class: "muted small center swipe-hint" }, "or swipe the card"),
-  );
+/** The study screen: the pile, the top card and the buttons, kept while cards come and go. */
+class Table {
+  readonly el: HTMLElement;
+  private readonly pile: HTMLElement;
+  private readonly pileShadow = h("div", { class: "pile-shadow" });
+  private readonly status: HTMLElement;
+  private readonly recall: HTMLElement;
+  private readonly controls: HTMLElement;
+  /** Cards shown so far; card number i lies at pose(i). */
+  private n = -1;
+  private left = 1;
+  private readonly seed = Math.floor(Math.random() * 1e6);
+  private peekId: EntityId | null = null;
 
-  function doReveal() {
-    if (revealed) return;
-    revealed = true;
-    back.classList.remove("hidden");
-    ratings.classList.remove("hidden");
-    reveal.classList.add("hidden");
-    if (!forward && canSpeak()) say();
+  constructor(private s: StudySession) {
+    const close = h("button", { class: "icon", "aria-label": "Close", onclick: () => go.home() });
+    close.innerHTML = ICON_CLOSE;
+    this.status = h("span", { class: "small" });
+    this.recall = h("span", { class: "small recall" });
+    this.pile = h("div", { class: "pile" }, this.pileShadow);
+    this.controls = h("div", { class: "controls" });
+    this.el = h("section", { class: "study" }, h("div", { class: "glow", "data-light": "-3" }), h("div", { class: "study-top" }, close, this.status, this.recall), this.pile, this.controls);
+    fullScreen(this.el);
+    // iPhone asks for motion access, which needs a tap; elsewhere the light can start now.
+    if (tiltNeedsTap()) this.el.addEventListener("click", () => startTilt(), { once: true });
+    else startTilt();
   }
 
-  let busy = false;
-  async function rate(r: Rating) {
-    if (busy || !revealed) return;
-    busy = true;
-    setKeys(null);
-    const duration = Math.min(performance.now() - shownAt, 120_000);
-    try {
-      await s.answer(card, pick, r, duration);
-    } catch (e) {
-      busy = false;
-      setKeys(onKey);
-      flashcard.style.transform = "";
-      toast(`Could not save: ${errorText(e)}`);
-      return;
+  next(): void {
+    if (!this.el.isConnected) return; // closed while an answer was saving
+    const n = this.s.next();
+    if (!n) return done(this.s);
+    this.n++;
+    this.show(n.pick, n.due);
+  }
+
+  /** Each card's own spot in the pile. */
+  pose(i: number): Pose {
+    const r = seeded(this.seed + i * 7919);
+    return { x: (r() - 0.5) * 10, y: (r() - 0.5) * 8, r: (r() - 0.5) * 5 };
+  }
+
+  /** The cards under the top one, keyed by their number; `instant` appears without fading in. */
+  private syncPile(instant?: number): void {
+    const want = Math.min(SHOWN, this.left - 1);
+    const have = new Map([...this.pile.querySelectorAll<HTMLElement>(".under")].map((el) => [Number(el.dataset.i), el]));
+    for (const [i, el] of have) if (i <= this.n || i > this.n + want) el.remove();
+    for (let d = 1; d <= want; d++) {
+      const i = this.n + d;
+      let el = have.get(i);
+      if (!el?.isConnected) {
+        const p = this.pose(i);
+        el = h("div", { class: "under" }, h("div", { class: "sheet" }));
+        el.dataset.i = String(i);
+        el.style.transform = `translate(${p.x}px,${p.y}px) rotate(${p.r}deg)`;
+        this.pile.prepend(el);
+        if (i !== instant) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300 }); // a card further down comes into view
+      }
+      el.style.zIndex = String(10 - d);
+      el.dataset.light = (d * 0.25).toFixed(2);
     }
-    await s.refresh(card);
-    // Closed while the answer was saving: don't draw the next card over home.
-    if (flashcard.isConnected) next(s);
+    // The pile's own shadow: deeper while it's thick, lighter as it shrinks.
+    const t = Math.min(Math.max(0, this.left - 1), 40) * 0.12;
+    this.pileShadow.style.boxShadow = this.left > 1 ? `0 ${(1 + t).toFixed(1)}px ${(2 + t * 2.5).toFixed(1)}px rgb(var(--shadow) / ${(0.14 + t * 0.012).toFixed(3)})` : "none";
+    relight(this.el);
   }
 
-  function onKey(e: KeyboardEvent) {
-    if (e.target instanceof HTMLInputElement) return;
-    if (!revealed && (e.key === " " || e.key === "Enter")) {
-      e.preventDefault();
-      doReveal();
-    } else if (revealed && e.key === "ArrowRight") rate(3);
-    else if (revealed && e.key === "ArrowLeft") rate(1);
+  /** The card right under the top one shows the next card's front, so dragging the top away uncovers it. */
+  private showPeek(pick: Pick): void {
+    const id = this.s.peek(pick);
+    const sheet = this.pile.querySelector<HTMLElement>(`.under[data-i="${this.n + 1}"] > .sheet`);
+    if (!sheet || id === this.peekId) return;
+    this.peekId = id;
+    sheet.replaceChildren();
+    const card = id === null ? undefined : app.store.col.cards.get(id);
+    const note = card && app.store.col.notes.get(card.note_id);
+    if (!card || !note) return;
+    const f = faces(card, note, "l").front;
+    f.classList.add("peek");
+    f.querySelector(".face")?.classList.remove("prompt"); // only the top card's prompt is "the prompt"
+    sheet.append(f);
   }
 
-  const flashcard = h(
-    "div",
-    { class: "flashcard" },
-    h("div", { class: "muted small lang" }, forward ? `${langName(lang.from)} → ${langName(lang.to)}` : `${langName(lang.to)} → ${langName(lang.from)}`),
-    !forward ? pic : null,
-    h("div", { class: "face prompt" }, prompt),
-    forward ? speakBtn : null,
-    back,
-    !forward ? speakBtn && h("div", { class: "answer-speak" }, speakBtn) : null,
-  );
-  swipeable(flashcard, { onTap: doReveal, canSwipe: () => revealed && !busy, onRight: () => rate(3), onLeft: () => rate(1) });
+  private show(pick: Pick, due: number): void {
+    const { store } = app;
+    const s = this.s;
+    const card = store.col.cards.get(pick.card)!;
+    const note = store.col.notes.get(card.note_id)!;
+    if (!note.picture) void app.pictures.ensure(note.id); // no picture yet: draw one for next time
+    this.left = Math.max(1, s.left(due));
+    this.status.textContent = pick.kind === "new" ? "New word" : pick.kind === "ahead" ? "Extra practice" : `${due} due`;
+    this.recall.textContent = pick.p !== undefined ? `recall ${(pick.p * 100).toFixed(0)}%` : "";
+    // The top card was the peeked one in most cases; otherwise it takes that spot anyway.
+    this.pile.querySelector(`.under[data-i="${this.n}"]`)?.remove();
+    this.peekId = null;
 
-  fullScreen(h("section", { class: "study" }, status, flashcard, h("div", { class: "controls" }, reveal, ratings)));
-  setKeys(onKey);
-  if (forward && canSpeak() && pick.kind === "new") say();
+    const f = faces(card, note, this.n % 2 ? "r" : "l");
+    const shRest = h("div", { class: "sh rest", "data-light": "0.6" });
+    const shLift = h("div", { class: "sh lift", "data-light": "1.7" });
+    const flipper = h("div", { class: "flipper" }, f.front, f.back);
+    const stamps = { good: h("div", { class: "stamp good" }, "got it"), again: h("div", { class: "stamp again" }, "again"), easy: h("div", { class: "stamp easy" }, "easy") };
+    const el = h("div", { class: "flashcard" }, shRest, shLift, flipper, stamps.good, stamps.again, stamps.easy);
+    el.style.zIndex = "20";
+    this.pile.append(el);
+    const body = new Body(el, this.pile.offsetWidth, this.pile.offsetHeight, shRest, shLift);
+    body.home = this.pose(this.n);
+    Object.assign(body, body.home);
+    body.render();
+    this.syncPile();
+    this.showPeek(pick);
+
+    const shownAt = performance.now();
+    let revealed = false;
+    let busy = false;
+
+    const reveal = h("button", { class: "secondary wide big", onclick: () => doReveal() }, "Show answer");
+    const ratings = h("div", { class: "ratings two" }, h("button", { class: "rate r1", onclick: () => answer(-1) }, "Again"), h("button", { class: "rate r3", onclick: () => answer(1) }, "Got it"));
+    const hint = h("p", { class: "swipe-hint small center" }, "or swipe: ↑ for easy");
+    this.controls.replaceChildren(reveal);
+
+    const doReveal = () => {
+      if (revealed || busy) return;
+      revealed = true;
+      haptic("tap");
+      f.answer.classList.remove("hidden");
+      const dur = 560, ease = "cubic-bezier(.35,.1,.25,1)";
+      // Turned over like a real card: lifted a little at the middle, the shadow narrowing as it turns edge-on.
+      const flip = flipper.animate([{ transform: "rotateY(0)" }, { transform: "translateZ(70px) rotateY(90deg)", offset: 0.5 }, { transform: "rotateY(180deg)" }], { duration: dur, easing: ease, fill: "forwards" });
+      for (const sh of [shRest, shLift]) sh.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(.12) translateY(12px)", offset: 0.5 }, { transform: "scaleX(1)" }], { duration: dur, easing: ease });
+      // Each side darkens while it faces away from the light.
+      const shades = [
+        f.front.querySelector(".shade")!.animate([{ opacity: 0 }, { opacity: 0.45 }], { duration: dur / 2, easing: "ease-in", fill: "forwards" }),
+        f.back.querySelector(".shade")!.animate([{ opacity: 0.45 }, { opacity: 0.45, offset: 0.5 }, { opacity: 0 }], { duration: dur, easing: "ease-out", fill: "forwards" }),
+      ];
+      // Done: drop the held shades (WebKit could keep showing a stale one); the front is out of sight.
+      flip.finished.then(() => shades.forEach((a) => a.cancel()), () => {});
+      this.controls.replaceChildren(ratings, hint);
+      if (!f.forward && canSpeak()) f.say();
+    };
+
+    // Stamps ink in while dragging; the matching button rises.
+    let hot = 0;
+    const ink = (x: number, y: number) => {
+      if (!revealed) return;
+      const up = -y > Math.abs(x);
+      const p = up ? 0 : clamp((Math.abs(x) - 18) / 90, 0, 1), pu = up ? clamp((-y - 18) / 100, 0, 1) : 0;
+      stamps.good.style.opacity = String(x > 0 ? p : 0);
+      stamps.again.style.opacity = String(x < 0 ? p : 0);
+      stamps.easy.style.opacity = String(pu);
+      stamps.good.style.transform = `rotate(-12deg) scale(${1.25 - 0.25 * (x > 0 ? p : 0)})`;
+      stamps.again.style.transform = `rotate(10deg) scale(${1.25 - 0.25 * (x < 0 ? p : 0)})`;
+      stamps.easy.style.transform = `rotate(-4deg) scale(${1.25 - 0.25 * pu})`;
+      const now = p > 0.5 ? Math.sign(x) : 0;
+      if (now !== hot) {
+        hot = now;
+        ratings.children[0].classList.toggle("hot", hot === -1);
+        ratings.children[1].classList.toggle("hot", hot === 1);
+      }
+    };
+    // Where the card goes if let go now: 0 = back to its spot.
+    const zone = (): Dir | 0 => {
+      if (!revealed) return 0;
+      const x = body.x - body.home.x, y = body.y - body.home.y;
+      if (-y > Math.abs(x)) return -y > body.h * 0.22 ? 2 : 0;
+      return Math.abs(x) > body.w * 0.33 ? (Math.sign(x) as Dir) : 0;
+    };
+    const settle = () => {
+      const { x, y, r } = body.home;
+      body.unpivot();
+      body.spring({ x, y, r, lift: 0, s: 1 }, { k: 380, c: 22, onFrame: () => ink(body.x - x, body.y - y) });
+    };
+
+    const commit = async (dir: Dir, vx: number, vy: number) => {
+      busy = true;
+      setKeys(null);
+      el.classList.add("leaving"); // no longer the card being studied, while it moves away
+      haptic(dir === -1 ? "double" : "thud");
+      ink(dir === 2 ? 0 : dir * 200, dir === 2 ? -400 : 0);
+      const duration = Math.min(performance.now() - shownAt, 120_000);
+      if (dir === -1) {
+        // Back under the pile: out to the side, then tucked beneath, into the bottom spot.
+        const bottom = this.n + this.left;
+        const t = this.pose(bottom);
+        body.spring({ x: -body.w * 0.78, y: body.y + 6, r: body.r - 7, lift: 1, s: 1.02 }, { k: 520, c: 34 });
+        el.style.zIndex = "19";
+        setTimeout(() => {
+          el.style.zIndex = "1"; // under every sheet, over the pile's shadow
+          for (const st of Object.values(stamps)) st.animate([{ opacity: st.style.opacity }, { opacity: 0 }], { duration: 250, fill: "forwards" });
+          body.unpivot();
+          body.spring({ x: t.x, y: t.y, r: t.r, lift: 0, s: 1 }, {
+            k: 260,
+            c: 26,
+            done: () => {
+              el.remove();
+              if (this.el.isConnected) this.syncPile(bottom);
+            },
+          });
+          setTimeout(() => haptic("tick"), 260); // it lands under the pile
+        }, 230);
+      } else if (dir === 2) body.fly(clamp(vx, -0.5, 0.5), Math.min(vy, -2.2), (Math.random() - 0.5) * 0.08, body.w * 2.2, () => el.remove(), 0);
+      else body.fly(dir * Math.max(Math.abs(vx), 1.5), clamp(vy, -0.6, 0.6), dir * (0.12 + Math.random() * 0.1), body.w * 2.2, () => el.remove());
+
+      try {
+        await s.answer(card, pick, RATING[dir], duration);
+      } catch (e) {
+        toast(`Could not save: ${errorText(e)}`);
+        this.show(pick, due); // nothing was saved: the same card again
+        return;
+      }
+      await s.refresh(card);
+      this.next();
+    };
+
+    const answer = (dir: Dir) => {
+      if (!revealed || busy) return;
+      body.stop();
+      body.unpivot();
+      body.px = 0;
+      body.py = body.h * 0.3;
+      body.spring({ lift: 1, s: 1.025 }, { k: 900, c: 50 });
+      void commit(dir, dir === 2 ? 0 : dir * 1.6, dir === 2 ? -2.2 : -0.25);
+    };
+
+    // Dragging: the card follows the finger, turning around the point held.
+    let down: { x: number; y: number; bx: number; by: number; br: number; moved: boolean; queued: boolean; zone: Dir | 0 } | null = null;
+    let samples: { x: number; y: number; t: number }[] = [];
+    const velocity = (e: PointerEvent) => {
+      const s0 = samples[0], dt = s0 ? Math.max(1, performance.now() - s0.t) : 1;
+      return s0 ? { vx: (e.clientX - s0.x) / dt, vy: (e.clientY - s0.y) / dt } : { vx: 0, vy: 0 };
+    };
+    el.addEventListener("pointerdown", (e) => {
+      if (busy || (e.target as HTMLElement).closest("button")) return;
+      body.grab(e.clientX, e.clientY);
+      down = { x: e.clientX, y: e.clientY, bx: body.x, by: body.y, br: body.r, moved: false, queued: false, zone: 0 };
+      samples = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* synthetic or already released */
+      }
+      body.spring({ lift: 1, s: 1.025 }, { k: 700, c: 40 });
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (!down) return;
+      const now = performance.now();
+      samples.push({ x: e.clientX, y: e.clientY, t: now });
+      while (samples.length > 2 && now - samples[0].t > 90) samples.shift();
+      let dx = e.clientX - down.x, dy = e.clientY - down.y;
+      if (Math.hypot(dx, dy) > 6) down.moved = true;
+      if (!revealed) {
+        // Rubber band until the answer is shown.
+        dx = Math.sign(dx) * Math.pow(Math.abs(dx), 0.72) * 1.6;
+        dy = Math.sign(dy) * Math.pow(Math.abs(dy), 0.72) * 1.2;
+      }
+      const { vx } = velocity(e);
+      const gy = clamp(body.py / (body.h / 2), -1, 1);
+      body.x = down.bx + dx;
+      body.y = down.by + dy * 0.85;
+      body.r = down.br + clamp(dx * 0.055 * -gy + vx * 2.2, -24, 24);
+      if (down.queued) return;
+      down.queued = true;
+      requestAnimationFrame(() => {
+        if (!down) return;
+        down.queued = false;
+        if (!body.moving) body.render(); // else the pick-up spring draws it
+        ink(body.x - body.home.x, body.y - body.home.y);
+        // A detent: a light tick the moment letting go would answer.
+        const z = zone();
+        if (z !== down.zone) {
+          if (z) haptic("tick");
+          down.zone = z;
+        }
+      });
+    });
+    const end = (e: PointerEvent, cancelled: boolean) => {
+      if (!down) return;
+      const d = down;
+      down = null;
+      if (!d.moved && !cancelled) {
+        settle();
+        doReveal();
+        return;
+      }
+      const { vx, vy } = velocity(e);
+      const z = zone();
+      const dx = body.x - body.home.x, dy = body.y - body.home.y;
+      const fastUp = vy < -0.6 && -dy > 30 && -vy > Math.abs(vx);
+      const fastSide = Math.abs(vx) > 0.55 && Math.sign(vx) === Math.sign(dx) && Math.abs(dx) > 24 && Math.abs(vx) > -vy;
+      if (revealed && !cancelled && (z === 2 || (!z && fastUp))) void commit(2, vx, vy);
+      else if (revealed && !cancelled && (z || fastSide)) void commit((z || Math.sign(dx || vx)) as Dir, vx, vy);
+      else {
+        settle();
+        if (!revealed && !cancelled) doReveal();
+      }
+    };
+    el.addEventListener("pointerup", (e) => end(e, false));
+    el.addEventListener("pointercancel", (e) => end(e, true));
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement) return;
+      if (!revealed && (e.key === " " || e.key === "Enter")) {
+        e.preventDefault();
+        doReveal();
+      } else if (revealed && e.key === "ArrowRight") answer(1);
+      else if (revealed && e.key === "ArrowLeft") answer(-1);
+      else if (revealed && e.key === "ArrowUp") {
+        e.preventDefault();
+        answer(2);
+      }
+    };
+    setKeys(onKey);
+    if (f.forward && canSpeak() && pick.kind === "new") f.say();
+  }
 }
