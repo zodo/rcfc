@@ -11,17 +11,6 @@ declare const __BUILD__: string;
 export function settings(): void {
   const { store } = app;
   const sync = syncParts();
-  const storageOut = h("p", { class: "muted small" });
-  void (async () => {
-    try {
-      const est = await navigator.storage?.estimate?.();
-      const persisted = await navigator.storage?.persisted?.();
-      const usage = est?.usage ? ` · ${(est.usage / 1e6).toFixed(1)} MB on this device` : "";
-      storageOut.textContent = `${store.col.liveNotes().length} words, ${store.col.reviews.length} answers${usage}${persisted ? ", protected from automatic cleanup" : ""}.`;
-    } catch {
-      /* ignore */
-    }
-  })();
 
   const download = async () => {
     const events = await store.allEvents();
@@ -63,7 +52,6 @@ export function settings(): void {
         h("p", { class: "muted small" }, "A copy you keep yourself, apart from sync."),
         h("div", { class: "row2" }, h("button", { class: "secondary", onclick: download }, "Download"), h("label", { class: "secondary file-btn" }, "Restore", h("input", { type: "file", accept: ".json,application/json", onchange: restore }))),
       ),
-      storageOut,
     ),
     h("p", { class: "muted small center" }, `rcfc · ${__BUILD__}`),
   );

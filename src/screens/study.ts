@@ -45,7 +45,6 @@ function done(s: StudySession) {
     h(
       "section",
       { class: "done" },
-      h("div", { class: "big-emoji", "aria-hidden": "true" }, "✓"),
       h("h2", {}, s.answered ? "All caught up" : "Nothing due right now"),
       h("p", { class: "muted" }, s.answered ? `${s.answered} ${s.answered === 1 ? "answer" : "answers"} this session.` : "Today's words are done.", more ? "" : " No new words left to learn."),
       more ? h("button", { class: "primary wide", onclick: learnMore }, `Learn ${more} more ${more === 1 ? "word" : "words"}`) : null,

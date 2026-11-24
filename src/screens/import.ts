@@ -68,13 +68,12 @@ export function importScreen(): void {
   });
   subPage(
     "words",
-    "Import",
+    "Import from Duocards",
     () => go.words(),
     h(
       "div",
       { class: "card-box" },
-      h("h2", {}, "From Duocards"),
-      h("p", { class: "muted" }, "In Duocards, export your cards as CSV, then pick the file here. Words come in as new cards, oldest first. Importing the same file again only adds what's missing."),
+      h("p", { class: "muted" }, "In Duocards, export your cards as CSV, then pick the file here. Importing the same file again only adds what's missing."),
       file,
     ),
     box,

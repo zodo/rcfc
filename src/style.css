@@ -352,10 +352,6 @@ button:disabled {
   gap: 12px;
   min-height: 70dvh;
 }
-.big-emoji {
-  font-size: 48px;
-  color: var(--good);
-}
 
 /* words */
 .list {

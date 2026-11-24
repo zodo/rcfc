@@ -17,8 +17,6 @@ export function add(): void {
   const hint = h("p", { class: "muted small" });
   // The word just added, with its picture arriving; adjustable right here.
   const last = h("div", { class: "last-added" });
-  front.placeholder = `Word in ${langName(d.lang_pair.from)}`;
-  back.placeholder = `Translation in ${langName(d.lang_pair.to)}`;
   subPage(
     "words",
     "Add a word",
@@ -51,8 +49,8 @@ export function add(): void {
           front.focus();
         },
       },
-      h("label", {}, "Word", front),
-      h("label", {}, "Translation", back),
+      h("label", {}, langName(d.lang_pair.from), front),
+      h("label", {}, langName(d.lang_pair.to), back),
       h("label", {}, "Example (optional)", example),
       hint,
       h("button", { class: "primary", type: "submit" }, "Add"),
