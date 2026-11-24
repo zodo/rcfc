@@ -111,8 +111,7 @@ function faces(card: Card, note: Note, picTilt: "l" | "r"): Faces {
   };
   const example = note.fields.example?.trim();
   const target = [
-    h("div", { class: "face", lang: lang.from }, note.fields.front),
-    speakBtn("Pronounce", say),
+    h("div", { class: "face", lang: lang.from }, note.fields.front, speakBtn("Pronounce", say, "speak inline")),
     example ? h("div", { class: "example", lang: lang.from }, example, speakBtn("Say the example", () => void app.speech.say(example, lang.from), "speak small")) : null,
   ];
   const known = [note.picture ? cutout(note.picture.key, picTilt) : null, h("div", { class: "face", lang: lang.to }, note.fields.back)];

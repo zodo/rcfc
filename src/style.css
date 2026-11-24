@@ -1204,6 +1204,19 @@ header.top.sub .back svg {
   width: 24px;
   height: 24px;
 }
+/* in the word's line, right after it; a spacer as wide on the left keeps the word centred */
+.speak.inline {
+  display: inline-block;
+  width: 36px;
+  margin-right: -6px;
+  padding: 6px;
+  vertical-align: -2px;
+}
+.face:has(> .speak.inline)::before {
+  content: "";
+  display: inline-block;
+  width: 30px;
+}
 /* at the end of the example: says the example */
 .speak.small {
   display: inline-block;
