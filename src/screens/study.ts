@@ -7,7 +7,8 @@
 // The pile is real: every card has its own spot (a little off, a little
 // turned), so taking the top one moves nothing else. Its height is the number
 // of cards dealt and left (src/domain/piles.ts); the card under the top one is
-// the next card, fixed once shown (StudySession.peek).
+// the next card, fixed once shown (StudySession.peek). A finished pile goes
+// back to the table (src/screens/home.ts), where its spot shows the check.
 import { app, errorText, fullScreen, go, setKeys } from "../app";
 import type { Card, Note } from "../domain/collection";
 import type { ReviewPayload } from "../domain/events";
@@ -64,41 +65,15 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const ICON_CLOSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
 const ICON_SPEAK = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5c1.3 1 2 2.2 2 3.5s-.7 2.5-2 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
-export async function study(deckId?: EntityId): Promise<void> {
+export async function study(deckId?: EntityId, again = false): Promise<void> {
   const deck = deckId === undefined ? currentDeck() : app.store.col.decks.get(deckId);
   if (!deck) return go.home();
   rememberDeck(deck.id);
   fullScreen(h("p", { class: "muted center" }, "Preparing…"));
   const s = new StudySession(app.store, deck.lang_pair);
   await s.start();
+  if (again) s.againThese(s.doneToday());
   new Table(s).next();
-}
-
-/** The pile is empty: more cards from the same words, the same cards again, or stop. */
-function done(s: StudySession) {
-  const more = s.moreCount();
-  const again = s.sitting.length;
-  const dealMore = async () => {
-    await s.more();
-    new Table(s).next();
-  };
-  const goAgain = () => {
-    s.againThese();
-    new Table(s).next();
-  };
-  const addWords = !more && !s.unseenLeft();
-  fullScreen(
-    h(
-      "section",
-      { class: "done" },
-      h("h2", {}, s.answered ? "Pile done" : "Nothing to study right now"),
-      h("p", { class: "muted" }, s.answered ? `${s.answered} ${s.answered === 1 ? "answer" : "answers"}.` : "Today's cards are done.", addWords ? " No new words left to learn." : ""),
-      more ? h("button", { class: "primary wide", onclick: () => void dealMore() }, `${more} more`) : null,
-      again ? h("button", { class: more ? "secondary wide" : "primary wide", onclick: goAgain }, again === 1 ? "Again, this one" : `Again, these ${again}`) : null,
-      addWords ? h("button", { class: "secondary wide", onclick: () => go.words() }, "Add words") : null,
-      h("button", { class: "secondary wide", onclick: () => go.home() }, "Done"),
-    ),
-  );
 }
 
 interface Faces {
@@ -167,7 +142,12 @@ class Table {
   next(): void {
     if (!this.el.isConnected) return; // closed while an answer was saving
     const n = this.s.next();
-    if (!n) return done(this.s);
+    if (!n) {
+      // The pile is finished: back to the table, where its spot shows it.
+      if (this.s.answered) app.cleared = this.s.pile;
+      void go.home();
+      return;
+    }
     this.n++;
     this.show(n.pick, n.left);
   }

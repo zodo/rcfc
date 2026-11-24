@@ -208,7 +208,9 @@ Nov 24, 2026. Agreed, not built yet; built in the order of the plan at the end o
 **The table (Study tab)**
 
 - One pile per language pair (a single pile, named after the language, while there is only one pair), plus one spot for every label that exists.
-- A pile is a stack whose thickness shows how many cards are left, with the count written under it. The top card lies face up. A finished pile leaves its outline printed on the table.
+- Spots are printed on the table, two per row. A pile is a stack on its spot whose thickness shows how many cards are left, with the count written under it. The top card lies face up, and the cards under it show their edges, white or cream.
+- Looking at the table deals nothing: it shows the pile the dealer would deal. The deal is recorded when the pile is first studied that day.
+- A finished pile leaves its spot empty with a pencil check (drawn in when the user comes back from clearing it). Tapping the spot offers "Deal 5 more", "Go through these N again" (the cards finished from that pile today) and, when nothing is left to learn, "Add words".
 
 **Piles**
 
@@ -227,7 +229,7 @@ What "needs the user most" means:
 - A face is not drawn within an hour of its twin being answered (it would be a free point and teach the model a false strength), unless nothing else is left. A new word's second face starts on a later day.
 - No two piles show the same word on top. If a pile's top card gets done in another pile, the next card comes up.
 - Size: starts at 20; +5 for the next deal when the user took "5 more"; -5 when a pile was left unfinished at the rollover; between 10 and 50.
-- When a pile is empty: "Again, these N" (exactly the same cards once more), "5 more" (from the same words), Done.
+- When a pile is empty, study goes back to the table; its spot offers "Go through these N again" (exactly the same cards once more) and "5 more" (from the same words).
 - Words marked known in the list need no rule: they no longer need the user, so they are not drawn.
 
 **Words screen**
@@ -257,7 +259,7 @@ Done today, cards waiting under a pile, cards left in a pile and each pile's siz
 
 1. This section.
 2. Fixed piles inside the current Study screen and its end screen. Hands-on review on a phone.
-3. The table on the Study tab. Mockups first, then hands-on review.
+3. The table on the Study tab (layout B: printed spots; finished spots tapped for choices). Built; hands-on review.
 4. No decks: the pair on the word, the Add screen, the model group from the pair, language piles. Mockups first.
 5. Labels: events, the Words chips, the Stickers sheet, label piles on the table. Mockups first.
 

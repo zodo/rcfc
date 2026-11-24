@@ -24,6 +24,8 @@
   --highlight: rgb(247 212 70 / 0.55);
   --rule: #c3d4e4;
   --margin-rule: #e7a49a;
+  /* lines printed on the table (pile spots) */
+  --printed: rgb(38 54 42 / 0.3);
   --font: "Balsamiq Sans", system-ui, sans-serif;
   color-scheme: light;
   font-family: var(--font);
@@ -42,6 +44,7 @@
     --muted: #636961;
     --highlight: rgb(240 200 50 / 0.5);
     --rule: #aebdcc;
+    --printed: rgb(238 240 234 / 0.22);
     color-scheme: dark;
   }
 }
@@ -112,8 +115,7 @@ pre {
 /* ---------- white card stock ---------- */
 .card-box,
 .sheet,
-.deck,
-.done,
+.pile-sheet,
 .list,
 #toast,
 .update-banner,
@@ -134,8 +136,6 @@ pre {
 }
 .card-box .muted,
 .sheet .muted,
-.deck .muted,
-.done .muted,
 .list .muted {
   color: var(--muted);
 }
@@ -429,76 +429,164 @@ h1.picker .chev {
   color: #fff;
 }
 
-/* ---------- Study tab: one small pile per language ---------- */
-.decks {
+/* ---------- Study tab: the table, a spot printed for every pile ---------- */
+.table {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+  row-gap: 26px;
+  padding-top: 14px;
+}
+.pile-cell {
   display: flex;
   flex-direction: column;
-  gap: 26px;
-  padding-top: 6px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
-.deck {
+/* the spot: a card-sized place with its outline printed on the table */
+.spot {
   position: relative;
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  min-height: 132px;
-  padding: 18px 18px 16px;
+  display: block;
+  width: calc(100% - 14px);
+  aspect-ratio: 3 / 4;
+  margin: 7px 0 0;
+  padding: 0;
+  color: var(--on-table-muted);
 }
-/* two sheets under it, a little askew */
-.deck::before,
-.deck::after {
+.spot::before {
   content: "";
   position: absolute;
+  inset: -7px;
+  border: 1.5px solid var(--printed);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.spot:focus-visible {
+  outline: 2px solid var(--on-table);
+  outline-offset: 10px;
+}
+.pile-stack {
+  position: absolute;
   inset: 0;
-  z-index: -1;
-  border-radius: 3px;
-  background: var(--card);
-  box-shadow:
-    0 1px 1px rgb(var(--shadow) / 0.2),
-    0 2px 5px rgb(var(--shadow) / 0.14);
-}
-.deck::before {
-  transform: translate(3px, 4px) rotate(1.6deg);
-}
-.deck::after {
-  transform: translate(-4px, 2px) rotate(-1.1deg);
-}
-.decks {
   isolation: isolate;
+  transition: transform 0.12s;
 }
-.deck:nth-child(2n)::before {
-  transform: translate(-2px, 5px) rotate(-1.8deg);
+.spot:active .pile-stack {
+  transform: translateY(2px);
 }
-.deck:nth-child(2n)::after {
-  transform: translate(4px, 1px) rotate(0.9deg);
+.pile-edge,
+.pile-top {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  background-color: var(--card);
+  background-image: var(--grain, none);
+  box-shadow:
+    0 0.6px 0 rgb(var(--shadow) / 0.3),
+    0 1px 1px rgb(var(--shadow) / 0.12);
 }
-.deck-main {
-  flex: 1;
-  min-width: 0;
-  align-self: stretch;
+.pile-edge.last {
+  box-shadow:
+    0 0.6px 0 rgb(var(--shadow) / 0.3),
+    0 2px 3px rgb(var(--shadow) / 0.22),
+    0 5px 10px rgb(var(--shadow) / 0.16);
+}
+.pile-edge.known,
+.pile-top.known {
+  background-color: var(--card-known);
+}
+.pile-top {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  overflow: hidden;
+  color: var(--ink);
+  text-align: center;
+  transform: rotate(-0.6deg);
 }
-.deck-name {
-  font-size: 26px;
+.pile-word {
+  font-size: 19px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.pile-top .pic {
+  max-width: 100%;
+  max-height: 55%;
+}
+.pile-top .pic img {
+  max-height: 100%;
+  object-fit: contain;
+}
+/* a finished pile: the spot, and a pencil check once something was done */
+.spot.finished,
+.spot.empty {
+  display: grid;
+  place-items: center;
+}
+.spot svg {
+  width: 40px;
+  height: 40px;
+}
+.spot.fresh svg path {
+  stroke-dasharray: 1;
+  animation: draw-check 0.5s 0.25s ease-out backwards;
+}
+@keyframes draw-check {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+.pile-name {
+  max-width: 100%;
+  font-size: 20px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.counts {
-  display: flex;
-  gap: 10px;
-  font-size: 15px;
+.pile-count {
+  font-size: 14px;
+  color: var(--on-table-muted);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
-.deck button {
-  min-width: 112px;
-  height: 46px;
-  padding: 0 16px;
-  font-size: 17px;
+/* tapping a finished spot: a sheet of paper with what can be done next */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  background: rgb(var(--shadow) / 0.28);
+}
+.pile-sheet {
+  position: fixed;
+  left: 50%;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  z-index: 9;
+  width: min(100% - 24px, 520px);
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  animation: sheet-in 0.22s ease-out;
+}
+.pile-sheet h2 {
+  margin: 0;
+  font-size: 24px;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pile-sheet,
+  .spot.fresh svg path {
+    animation: none;
+  }
 }
 
 /* ---------- study ---------- */
@@ -807,29 +895,6 @@ h1.picker .chev {
 .controls .big {
   height: 56px;
 }
-.done {
-  margin: 40px 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  gap: 14px;
-  padding: 24px;
-  min-height: 70dvh;
-}
-.done h2 {
-  font-size: 28px;
-  margin: 0;
-}
-.done p {
-  margin: 0 0 6px;
-}
-.done button {
-  max-width: 260px;
-}
-
 /* ---------- pictures ---------- */
 .pic {
   width: 100%;

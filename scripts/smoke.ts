@@ -175,7 +175,7 @@ export class Browser {
   /** A real mouse click (pointer events included) on the element. */
   async click(css: string, text = ""): Promise<void> {
     const { x, y } = await this.find(css, text);
-    if (process.env.RCFC_TRACE) console.log(`    click ${css} "${text}" at ${x.toFixed(0)},${y.toFixed(0)} on: ${await this.text("header.top h1, .study-top, .done h2")}`);
+    if (process.env.RCFC_TRACE) console.log(`    click ${css} "${text}" at ${x.toFixed(0)},${y.toFixed(0)} on: ${await this.text("header.top h1, .study-top, .pile-sheet h2")}`);
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
       await this.send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1 });
     }
@@ -217,7 +217,7 @@ async function shot(s: Browser, name: string) {
 async function answerUntilDone(s: Browser, max: number): Promise<number> {
   let n = 0;
   for (; n < max; n++) {
-    const state = await s.until<string>("a card or the end", `document.querySelector(".flashcard:not(.leaving)") ? "card" : document.querySelector(".done") ? "done" : ""`);
+    const state = await s.until<string>("a card or the end", `document.querySelector(".flashcard:not(.leaving)") ? "card" : document.querySelector(".table") ? "done" : ""`);
     if (state === "done") return n;
     await s.click("button", "Show answer");
     await s.click("button.rate", n % 4 === 3 ? "Again" : "Got it");
@@ -257,12 +257,13 @@ async function run(s: Browser, url: string) {
   await s.click("button[aria-label=Back]");
   await s.until("2 words listed", `document.querySelectorAll(".list button.word").length === 2`);
 
-  log("Study tab counts the pile: both new words");
+  log("the table shows the pile: both new words, the first face up");
   await s.click("nav .nav-item", "Study");
-  await s.until("2 cards", `document.querySelector(".counts")?.textContent === "2 cards"`);
+  await s.until("2 cards", `document.querySelector(".pile-count")?.textContent === "2 cards"`);
+  await s.until("top card face up", `document.querySelector(".spot .pile-top .pile-word")?.textContent === "hola"`);
 
   log("study both words");
-  await s.click(".deck button", "Study");
+  await s.click("button.spot");
   const first = await s.until<string>("first card", `document.querySelector(".flashcard:not(.leaving) .face.prompt")?.textContent`);
   if (first !== "hola") throw new Error(`first card is "${first}", expected "hola"`);
   await s.until("a new word is pronounced (silently)", `window.__rcfcSpoken.includes("hola")`);
@@ -277,10 +278,13 @@ async function run(s: Browser, url: string) {
   await s.until("next screen", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
   const answered = 1 + (await answerUntilDone(s, 10));
   if (answered < 2) throw new Error(`only ${answered} cards shown`);
-  log("done screen: no words left to learn, so it offers adding some");
-  await s.until("Add words", `[...document.querySelectorAll(".done button")].some((b) => b.textContent === "Add words")`);
-  await s.click("button", "Done");
-  await s.until("pile done", `document.querySelector(".counts")?.textContent === "done for today"`);
+  log("a finished pile goes back to the table: its spot has a check; tapped, it offers adding words");
+  await s.until("pile done", `document.querySelector(".pile-count")?.textContent === "done for today" && document.querySelector(".spot.finished.fresh svg")`);
+  await s.click("button.spot.finished");
+  await s.until("Add words", `[...document.querySelectorAll(".pile-sheet button")].some((b) => b.textContent === "Add words")`);
+  if (!(await s.js<boolean>(`return [...document.querySelectorAll(".pile-sheet button")].some((b) => b.textContent === "Go through these 2 again");`))) throw new Error("the sheet does not offer the same 2 cards again");
+  await s.js(`document.querySelector(".sheet-backdrop").click();`); // fixed: the click helper skips elements without an offsetParent
+  await s.until("sheet closed", `!document.querySelector(".pile-sheet")`);
 
   log("words list and edit");
   await s.click("nav .nav-item", "Words");
@@ -296,7 +300,7 @@ async function run(s: Browser, url: string) {
   await s.js(`history.back();`);
   await s.until("list after back", `document.querySelectorAll(".list button.word").length === 2 && !document.querySelector("header.sub")`);
   await s.js(`history.back();`);
-  await s.until("Study after back", `document.querySelector(".deck-name")`);
+  await s.until("Study after back", `document.querySelector(".pile-name")`);
   await s.click("nav .nav-item", "Words");
   await s.until("words again", `document.querySelectorAll(".list button.word").length === 2`);
 
@@ -308,13 +312,16 @@ async function run(s: Browser, url: string) {
 
   log("seeded collection: replay, due cards");
   await s.go(`${url}/?reset&seed=60`);
-  await s.until("seeded home", `document.querySelector(".deck-name")?.textContent === "Demo Spanish"`, 90_000);
-  const pile = Number((await s.text(".counts")).split(" ")[0]);
+  await s.until("seeded home", `document.querySelector(".pile-name")?.textContent === "Demo Spanish"`, 90_000);
+  const pile = Number((await s.text(".pile-count")).split(" ")[0]);
   if (!(pile > 0)) throw new Error(`seeded deck shows a pile of ${pile}`);
-  await s.click(".deck button", "Study");
+  const edges = await s.js<number>(`return document.querySelectorAll(".spot .pile-edge").length;`);
+  await shot(s, "table");
+  if (pile > 1 && !(edges > 0 && edges <= Math.min(30, pile - 1))) throw new Error(`a pile of ${pile} shows ${edges} card edges`);
+  await s.click("button.spot");
   await answerUntilDone(s, 6);
   await s.click("button[aria-label=Close]");
-  await s.until("home", `document.querySelector(".deck-name")`);
+  await s.until("home", `document.querySelector(".pile-name")`);
 
   await s.click("nav .nav-item", "Words");
   await s.until("words", `document.querySelectorAll(".list button.word").length > 0`);
@@ -343,15 +350,17 @@ async function run(s: Browser, url: string) {
   await s.until("tab bar back", `!document.querySelector(".list.selecting") && document.querySelector(".select-actions.hidden")`);
   log("the word asked for comes first in study");
   await s.click("nav .nav-item", "Study");
-  await s.click(".deck button", "Study");
+  await s.click("button.spot");
   // New words come after the due ones; deal more until one shows.
   for (let i = 0; ; i++) {
     if (i > 80) throw new Error("no new card in 80 answers");
-    const state = await s.until<string>("a card or the end", `document.querySelector(".flashcard:not(.leaving)") ? "card" : document.querySelector(".done") ? "done" : ""`);
+    const state = await s.until<string>("a card or the end", `document.querySelector(".flashcard:not(.leaving)") ? "card" : document.querySelector(".table") ? "done" : ""`);
     if (state === "done") {
-      const more = await s.js<string | null>(`return [...document.querySelectorAll(".done button")].map((b) => b.textContent).find((t) => / more$/.test(t)) ?? null;`);
+      await s.click("button.spot");
+      await s.until("sheet", `document.querySelector(".pile-sheet")`);
+      const more = await s.js<string | null>(`return [...document.querySelectorAll(".pile-sheet button")].map((b) => b.textContent).find((t) => / more$/.test(t)) ?? null;`);
       if (!more) throw new Error("pile done without the new word, and nothing more to deal");
-      await s.click(".done button", more);
+      await s.click(".pile-sheet button", more);
       continue;
     }
     if ((await s.text(".study-top")).includes("New word")) {
