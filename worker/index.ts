@@ -2,6 +2,7 @@
 // only /api/* reaches this code (see run_worker_first in wrangler.jsonc).
 import { handlePictures, type AiRunner } from "./pictures";
 import { handleSync, json } from "./sync";
+import { handleTts } from "./tts";
 
 async function health(env: Env): Promise<Response> {
   const checks: Record<string, string> = {};
@@ -25,6 +26,7 @@ async function health(env: Env): Promise<Response> {
     checks.r2 = `error: ${(e as Error).message}`;
   }
   checks.ai = "AI" in env ? "bound" : "not bound";
+  checks.tts = (env as { AZURE_SPEECH_KEY?: string }).AZURE_SPEECH_KEY ? "key set" : "no key (browser voice)";
   return json({ ok, env: env.APP_ENV, version: env.CF_VERSION_METADATA?.id ?? null, checks }, ok ? 200 : 500);
 }
 
@@ -36,6 +38,7 @@ export default {
     return (
       (await handleSync(request, env.DB)) ??
       (await handlePictures(request, { DB: env.DB, MEDIA: env.MEDIA, AI: env.AI as AiRunner | undefined, budget })) ??
+      (await handleTts(request, { DB: env.DB, MEDIA: env.MEDIA, AZURE_SPEECH_KEY: (env as { AZURE_SPEECH_KEY?: string }).AZURE_SPEECH_KEY, AZURE_SPEECH_REGION: env.AZURE_SPEECH_REGION, budget: Number(env.TTS_CHARS_PER_MONTH) || undefined })) ??
       json({ error: "not found" }, 404)
     );
   },

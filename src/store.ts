@@ -51,15 +51,23 @@ export interface PicBlob {
   v?: number;
 }
 
+/** Spoken audio of a text, kept for offline study (src/speech.ts); key = `lang|text`. */
+export interface TtsBlob {
+  key: string;
+  data: ArrayBuffer;
+}
+
 class AppDb extends Dexie {
   events!: Table<StoredEvent, number>;
   meta!: Table<{ key: string; value: unknown }, string>;
   pic_jobs!: Table<PicJob, EntityId>;
   pic_blobs!: Table<PicBlob, string>;
+  tts_blobs!: Table<TtsBlob, string>;
   constructor(name: string, options?: DexieOptions) {
     super(name, options);
     this.version(1).stores({ events: "++seq, &event_id, type", meta: "key" });
     this.version(2).stores({ pic_jobs: "note_id", pic_blobs: "key" });
+    this.version(3).stores({ tts_blobs: "key" });
   }
 }
 
@@ -370,6 +378,19 @@ export class Store {
       if (b.v === v) keys.add(b.key);
     });
     return keys;
+  }
+
+  getTts(key: string): Promise<TtsBlob | undefined> {
+    return this.db.tts_blobs.get(key);
+  }
+
+  putTts(b: TtsBlob): Promise<unknown> {
+    return this.db.tts_blobs.put(b);
+  }
+
+  /** Keys of every stored audio. */
+  ttsKeys(): Promise<string[]> {
+    return this.db.tts_blobs.toCollection().primaryKeys();
   }
 
   // ---------- sync ----------

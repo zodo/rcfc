@@ -101,7 +101,9 @@ function spot(s: StudySession, label: string, moved: Moved): { el: HTMLElement; 
     }
     return { el: h("div", { class: "pile-cell" }, askew(b, seed), name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due")), key: `finished:${done}` };
   }
-  void app.pictures.ahead(s.upcoming(AHEAD));
+  const coming = s.upcoming(AHEAD);
+  void app.pictures.ahead(coming);
+  void app.speech.ahead(coming);
   const pile = h("span", { class: "pile-stack" });
   const faces = s.faces(Math.min(EDGES, n.left - 1));
   const r = seeded(seed);

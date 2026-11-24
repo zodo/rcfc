@@ -1204,6 +1204,17 @@ header.top.sub .back svg {
   width: 24px;
   height: 24px;
 }
+/* at the end of the example: says the example */
+.speak.small {
+  display: inline-block;
+  padding: 4px 6px;
+  margin: -4px -6px -4px 0;
+  vertical-align: -3px;
+}
+.speak.small svg {
+  width: 18px;
+  height: 18px;
+}
 /* rubber stamps that ink in while you drag */
 .stamp {
   position: absolute;

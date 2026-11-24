@@ -2,6 +2,7 @@
 // which screen is showing, page chrome, keyboard handling and navigation.
 import type { EntityId } from "./domain/ids";
 import type { Pictures } from "./pictures";
+import type { Speech } from "./speech";
 import type { Hold } from "./router";
 import type { Store } from "./store";
 import type { Sync } from "./sync";
@@ -57,6 +58,7 @@ export const app = {
   store: undefined as unknown as Store,
   sync: undefined as unknown as Sync,
   pictures: undefined as unknown as Pictures,
+  speech: undefined as unknown as Speech,
   /** What is on screen, so sync knows when it may re-render or reload. */
   current: "home" as ScreenName,
   /** The model needs a full replay; reload at the next safe moment (home). */

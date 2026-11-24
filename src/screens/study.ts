@@ -23,7 +23,6 @@ import { relight, startTilt, tiltNeedsTap } from "../ui/light";
 import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
 import { EDGE, Turn } from "../ui/turn";
-import { canSpeak, speak } from "../ui/speech";
 import { languages, lastLanguage, rememberLanguage } from "./languages";
 
 /** Cards drawn under the top one; the pile's shadow stands in for the rest. */
@@ -103,14 +102,19 @@ interface Faces {
 function faces(card: Card, note: Note, picTilt: "l" | "r"): Faces {
   const lang = note.lang_pair;
   const forward = card.template === "forward";
-  const say = () => speak(note.fields.front, lang.from);
-  const speakBtn = () => {
-    if (!canSpeak()) return null;
-    const b = h("button", { class: "speak", "aria-label": "Pronounce", title: "Pronounce", onclick: say });
+  const say = () => void app.speech.say(note.fields.front, lang.from);
+  const speakBtn = (label: string, onclick: () => void, cls = "speak") => {
+    if (!app.speech.canSay(lang.from)) return null;
+    const b = h("button", { class: cls, "aria-label": label, title: label, onclick });
     b.innerHTML = ICON_SPEAK;
     return b;
   };
-  const target = [h("div", { class: "face", lang: lang.from }, note.fields.front), speakBtn(), note.fields.example ? h("div", { class: "example", lang: lang.from }, note.fields.example) : null];
+  const example = note.fields.example?.trim();
+  const target = [
+    h("div", { class: "face", lang: lang.from }, note.fields.front),
+    speakBtn("Pronounce", say),
+    example ? h("div", { class: "example", lang: lang.from }, example, speakBtn("Say the example", () => void app.speech.say(example, lang.from), "speak small")) : null,
+  ];
   const known = [note.picture ? cutout(note.picture.key, picTilt) : null, h("div", { class: "face", lang: lang.to }, note.fields.back)];
   const up = forward ? target : known;
   up.find((e) => e?.classList.contains("face"))!.classList.add("prompt");
@@ -221,7 +225,9 @@ class Table {
     const card = store.col.cards.get(pick.card)!;
     const note = store.col.notes.get(card.note_id)!;
     if (!note.picture) void app.pictures.ensure(note.id); // no picture yet: draw one for next time
-    void app.pictures.ahead(s.upcoming(AHEAD)); // and for the cards coming up
+    const coming = s.upcoming(AHEAD);
+    void app.pictures.ahead(coming); // and for the cards coming up
+    void app.speech.ahead([card.id, ...coming]); // their word and example, so they speak at once
     this.left = left;
     this.status.textContent = pick.kind === "new" ? "New word" : `${left} left`;
     this.recall.textContent = pick.p !== undefined ? `recall ${(pick.p * 100).toFixed(0)}%` : "";
@@ -268,7 +274,7 @@ class Table {
       angle = side * 180;
       turn.to(angle, { done: () => el.classList.add("noted") });
       this.controls.replaceChildren(ratings);
-      if (!f.forward && canSpeak()) f.say();
+      if (!f.forward) f.say(); // the word side just came up
     };
 
     /** After the answer was shown: turn the card over again, onwards the same way. */
@@ -465,6 +471,6 @@ class Table {
       }
     };
     setKeys(onKey);
-    if (f.forward && canSpeak() && pick.kind === "new") f.say();
+    if (f.forward) f.say(); // a card lying word side up says its word
   }
 }

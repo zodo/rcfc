@@ -9,13 +9,13 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
   - `domain/` pure logic: event fold, RWKV row derivation, piles (`piles.ts`: deals, draws, sizes), new-card daily limits (`newcards.ts`), stickers (`labels.ts`: names, ids, pile keys)
   - `engine/` RWKV Web Worker + checkpoints; `EngineApi` is what the app uses (tests stub it)
   - `store.ts` ties log + engine. No UI side effects: writes return `{ replay }` / set `stale`, the app decides when to reload
-  - `session.ts` one sitting at a pile (UI-free; the cards on screen); `sync.ts` sync loop; `pictures.ts` picture queue + offline picture store
+  - `session.ts` one sitting at a pile (UI-free; the cards on screen); `sync.ts` sync loop; `pictures.ts` picture queue + offline picture store; `speech.ts` spoken audio: downloaded ahead, offline store, browser voice fallback
   - `app.ts` shell shared by screens: `app` (store, sync, current screen), `go.*` navigation, `page()` / `fullScreen()`, `setKeys()`
   - `router.ts` `go.*` as browser history, so the phone's back gesture matches the back buttons: Study at the bottom, tabs and study one level up (tabs replace each other), add/import/edit/addLanguage on top of Words; going up = `history.go(-n)`; a reload shows the screen history was on. `hold(onBack)` (via `app.ts`) pushes an entry for the same screen so back closes a sheet, Select or Edit first; `sheet()` in `app.ts` uses it, and holds are released when a screen renders
   - `screens/` one module per screen; they navigate through `go`, never import each other (except helpers in `languages.ts` and `stickers.ts`). Three tabs: Study (`home.ts`: the table), Words (`words.ts`: every word in one list, rendered in chunks on scroll; chips: languages once there are two or more, stickers on a sideways-scrolling line with + Sticker; with new/learning/known; select → stickers / know / don't know / delete; Edit sticks the open sticker on and off; add/import/edit are sub-pages with a back button), Settings (sync + backup only)
   - `main.ts` boot only; `dev/` dev-only URL hooks (`?reset`, `?seed=N`), excluded from production builds
 - `rwkv/engine/` Rust RWKV-SRS V1 inference (→ Wasm), checked against upstream goldens in `rwkv/golden/`; `rwkv/models/` weights
-- `worker/` Cloudflare Worker: API under `/api/*`; everything else is static assets. `sync.ts` is the sync API, written against a small `SqlDb` slice of D1 so tests run it on bun:sqlite; `pictures.ts` draws and serves card pictures
+- `worker/` Cloudflare Worker: API under `/api/*`; everything else is static assets. `sync.ts` is the sync API, written against a small `SqlDb` slice of D1 so tests run it on bun:sqlite; `pictures.ts` draws and serves card pictures; `tts.ts` spoken audio (Azure Speech, kept in R2)
 - `test/` bun tests; `test/support/` harness: fake-indexeddb, `FakeEngine`, in-process sync server (`Device`, `Server`, `Clock`)
 - `migrations/` D1 SQL migrations (applied automatically on deploy)
 - `scripts/` deploy tooling (below)
@@ -84,6 +84,12 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 - Cost: must stay inside the free 10,000 neurons/day (UTC). The Worker reserves ~60 neurons per picture in D1 `ai_budget` and answers 429 past `PICTURE_NEURONS_PER_DAY`; the client queue waits for the reset. Error 3030 (false safety flag) is retried with new seeds.
 - When: typed words right after adding; any other word when it comes up: the next `AHEAD` (10) cards of each pile (`StudySession.upcoming`), queued from the table and after each card in study, drawn after pictures needed now (`PicJob.ahead`), so they are there when the card shows, offline too; and the card on top if still missing. Redraws on request with meaning + details. A removed picture (`asset_attached` with `r2_key: null`) is never redrawn automatically.
 - Client (`src/pictures.ts`): jobs in Dexie `pic_jobs` (per device, not synced; the result syncs as `asset_attached`), downloaded pictures get their photographed paper flattened to pure white (`src/domain/paper.ts`, so light cards show through with multiply blending; dark mode pastes them as a light cut-out), are re-encoded and kept in `pic_blobs` for offline study. Local dev has no AI binding: the Worker draws an SVG placeholder for free.
+
+## Speech notes
+
+- Voices (`src/domain/tts.ts`): one Azure neural voice per language in `LANGS`, 10% slower. `GET /api/tts?lang=&text=` (`worker/tts.ts`, header `X-User-Code`) serves R2 `tts/<voice>/<sha256>.mp3`, else makes it once with Azure Speech (secret `AZURE_SPEECH_KEY`, var `AZURE_SPEECH_REGION`) and keeps it. Characters sent to Azure are capped per UTC month in D1 `tts_budget` (`TTS_CHARS_PER_MONTH`, under the free 500k); past it 429. No key (local dev): 404 "no voice service", and the app uses the browser voice.
+- Client (`src/speech.ts`): word + example of the cards coming up are downloaded with the pictures' `AHEAD` (Dexie `tts_blobs`, per device, not synced) and played with Web Audio (unlocked on the first tap; `navigator.audioSession` "playback" so iOS's silent switch doesn't mute it). Not on the device: fetched for up to 1.5 s, else the browser voice (`src/ui/speech.ts`). A forward card says its word when it comes up; a reverse one when turned to the word side; the example has its own speak button. `rcfc-said` window events tell the smoke test what was said.
+- Health (`/api/health`) says whether the key is set.
 
 ## Sync notes
 

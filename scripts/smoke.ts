@@ -111,7 +111,7 @@ export class Browser {
     await b.send("Page.enable");
     // Speech goes through the OS text-to-speech, which --mute-audio does not
     // silence: keep the API (the speak buttons still render) but only count calls.
-    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__rcfcSpoken = []; if (window.speechSynthesis) speechSynthesis.speak = (u) => void window.__rcfcSpoken.push(u.text);" });
+    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__rcfcSpoken = []; if (window.speechSynthesis) speechSynthesis.speak = () => {}; addEventListener('rcfc-said', (e) => void window.__rcfcSpoken.push(e.detail.text));" });
     // iPhone 14-sized viewport.
     await b.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     return b;
@@ -242,6 +242,7 @@ async function run(s: Browser, url: string) {
   for (const [front, back] of [["hola", "hello"], ["adiós", "goodbye"]]) {
     await s.type("input[name=front]", front);
     await s.type("input[name=back]", back);
+    if (front === "adiós") await s.type("textarea[name=example]", "¡Adiós, amigo!");
     await s.click("button[type=submit]", "Add");
     await s.until(`toast for ${front}`, `document.getElementById("toast")?.textContent === 'Added "${front}"'`);
   }
@@ -275,6 +276,13 @@ async function run(s: Browser, url: string) {
   await s.until("ratings still there", `document.querySelector("button.rate")`);
   await s.click("button.rate", "Got it");
   await s.until("next screen", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
+  log("a card lying word side up says its word; the example has its own speak button");
+  await s.until("adiós on top", `document.querySelector(".flashcard:not(.leaving) .face.prompt")?.textContent === "adiós"`);
+  await s.until("adiós said", `window.__rcfcSpoken.includes("adiós")`);
+  await s.click(".flashcard:not(.leaving) .example .speak");
+  await s.until("example said", `window.__rcfcSpoken.includes("¡Adiós, amigo!")`);
+  await shot(s, "study-example");
+  if (await s.js<boolean>(`return !document.querySelector(".flashcard:not(.leaving) .answer.hidden");`)) throw new Error("the example's speak button turned the card over");
   const answered = 1 + (await answerUntilDone(s, 10));
   if (answered < 2) throw new Error(`only ${answered} cards shown`);
   log("a finished pile goes back to the table: its spot has a check; tapped, it offers adding words or the same cards again");

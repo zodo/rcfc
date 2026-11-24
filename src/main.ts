@@ -13,6 +13,7 @@ import { study } from "./screens/study";
 import { addLanguage, edit, words } from "./screens/words";
 import { joinFromLink } from "./screens/sync";
 import { Pictures } from "./pictures";
+import { Speech, webAudio } from "./speech";
 import { Store } from "./store";
 import { setupPaper } from "./ui/paper";
 import { Sync } from "./sync";
@@ -43,6 +44,7 @@ async function boot() {
     if (store.col.reviews.length || store.col.notes.size) void requestPersistence();
     app.sync = await Sync.open(store);
     app.pictures = await Pictures.open(store, () => app.sync.code);
+    app.speech = await Speech.open(store, () => app.sync.code, webAudio());
     if (await joinFromLink()) return;
     app.sync.onPulled = () => {
       void app.pictures.prefetch();
