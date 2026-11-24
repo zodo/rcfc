@@ -530,7 +530,7 @@ h1.picker .chev {
 }
 .study-top {
   position: relative;
-  z-index: 2; /* cards thrown or tucked away pass under the close button */
+  z-index: 3; /* cards thrown or tucked away pass under the close button */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -562,6 +562,7 @@ h1.picker .chev {
 }
 .pile {
   position: relative;
+  z-index: 2; /* a card held or thrown passes over the buttons */
   flex: 1;
   margin: 10px 18px 14px;
   min-height: 300px;
@@ -602,6 +603,10 @@ h1.picker .chev {
 }
 .flashcard:active {
   cursor: grabbing;
+}
+/* answered and on its way out: taps go through to the buttons under it */
+.flashcard.leaving {
+  pointer-events: none;
 }
 .sh {
   position: absolute;
