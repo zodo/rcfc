@@ -11,8 +11,8 @@
   --on-table-muted: #4d6150;
   --shadow: 32 48 34;
   --card: #ffffff;
-  /* the back of a study card: a whisper of cream, so a turned card reads as turned */
-  --card-back: #faf4e4;
+  /* the known-language side of a study card (the studied language is on white) */
+  --card-known: #faf4e4;
   --slot: #ffffff;
   --ink: #26302a;
   --muted: #6d756e;
@@ -37,7 +37,7 @@
     --on-table-muted: #a9b0aa;
     --shadow: 0 0 0;
     --card: #dcd8cf;
-    --card-back: #d7cdb4;
+    --card-known: #d7cdb4;
     --slot: #e8e5dd;
     --muted: #636961;
     --highlight: rgb(240 200 50 / 0.5);
@@ -651,7 +651,7 @@ h1.picker .chev {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 40px 20px 24px;
+  padding: 24px 20px;
   text-align: center;
   background-color: var(--card);
   background-image: var(--grain, none);
@@ -662,9 +662,11 @@ h1.picker .chev {
 }
 .side.back {
   transform: rotateY(180deg);
-  background-color: var(--card-back);
   padding-left: 32px;
   padding-right: 32px;
+}
+.side.known {
+  background-color: var(--card-known);
 }
 /* pencil notes at the edges of the back, until the throws are learnt (study.ts LEARN) */
 .note {
@@ -709,24 +711,11 @@ h1.picker .chev {
   z-index: 3;
   border-radius: inherit;
 }
-.lang {
-  position: absolute;
-  top: 14px;
-  left: 0;
-  right: 0;
-  font-size: 13px;
-  color: var(--muted);
-}
 .face {
   font-size: clamp(28px, 8vw, 36px);
   line-height: 1.15;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-.prompt-small {
-  font-size: 19px;
-  color: var(--muted);
-  overflow-wrap: anywhere;
 }
 .answer {
   display: flex;

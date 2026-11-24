@@ -13,7 +13,7 @@ import type { EntityId } from "../domain/ids";
 import type { Pick } from "../domain/scheduler";
 import { StudySession } from "../session";
 import { Body, type Pose } from "../ui/body";
-import { h, langName, toast } from "../ui/h";
+import { h, toast } from "../ui/h";
 import { relight, startTilt, tiltNeedsTap } from "../ui/light";
 import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
@@ -99,6 +99,7 @@ function done(s: StudySession) {
 }
 
 interface Faces {
+  /** The side lying up, and the one underneath (its content stays hidden until turned over). */
   front: HTMLElement;
   back: HTMLElement;
   answer: HTMLElement;
@@ -106,13 +107,14 @@ interface Faces {
   forward: boolean;
 }
 
-/** Both sides of a card: the prompt on the front; the prompt small, the answer and the example on the back. */
+/**
+ * One card per word, like a real one: the studied language on the white side
+ * (word, pronunciation, example), the known language and the picture on the
+ * cream side. A forward card lies white side up, a reverse card cream side up.
+ */
 function faces(card: Card, note: Note, picTilt: "l" | "r"): Faces {
   const lang = note.lang_pair;
   const forward = card.template === "forward";
-  const label = forward ? `${langName(lang.from)} → ${langName(lang.to)}` : `${langName(lang.to)} → ${langName(lang.from)}`;
-  const prompt = forward ? note.fields.front : note.fields.back;
-  const answerText = forward ? note.fields.back : note.fields.front;
   const say = () => speak(note.fields.front, lang.from);
   const speakBtn = () => {
     if (!canSpeak()) return null;
@@ -120,11 +122,14 @@ function faces(card: Card, note: Note, picTilt: "l" | "r"): Faces {
     b.innerHTML = ICON_SPEAK;
     return b;
   };
-  // Reverse cards (translation → word): the picture is part of the cue. Forward cards: it comes with the answer.
-  const pic = () => (note.picture ? cutout(note.picture.key, picTilt) : null);
-  const front = h("div", { class: "side front" }, h("div", { class: "lang" }, label), forward ? null : pic(), h("div", { class: "face prompt" }, prompt), forward ? speakBtn() : null, h("div", { class: "shade" }));
-  const answer = h("div", { class: "answer hidden" }, forward ? pic() : null, h("div", { class: "face" }, answerText), speakBtn(), note.fields.example ? h("div", { class: "example" }, note.fields.example) : null);
-  const back = h("div", { class: "side back" }, h("div", { class: "lang" }, label), h("div", { class: "prompt-small" }, prompt), answer, h("div", { class: "shade" }));
+  const target = [h("div", { class: "face", lang: lang.from }, note.fields.front), speakBtn(), note.fields.example ? h("div", { class: "example", lang: lang.from }, note.fields.example) : null];
+  const known = [note.picture ? cutout(note.picture.key, picTilt) : null, h("div", { class: "face", lang: lang.to }, note.fields.back)];
+  const up = forward ? target : known;
+  up.find((e) => e?.classList.contains("face"))!.classList.add("prompt");
+  const answer = h("div", { class: "answer hidden" }, ...(forward ? known : target));
+  const side = (geom: "front" | "back", lng: "target" | "known") => `side ${geom} ${lng}`;
+  const front = h("div", { class: side("front", forward ? "target" : "known") }, ...up, h("div", { class: "shade" }));
+  const back = h("div", { class: side("back", forward ? "known" : "target") }, answer, h("div", { class: "shade" }));
   return { front, back, answer, say, forward };
 }
 
