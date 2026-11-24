@@ -431,22 +431,6 @@ pre {
 .swipe-hint {
   margin: 8px 0 0;
 }
-.sort-buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.small-face {
-  font-size: 22px;
-}
-.sort-entry {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  text-align: left;
-}
-
 .update-banner {
   position: fixed;
   top: calc(8px + env(safe-area-inset-top));
@@ -770,4 +754,18 @@ details.stack > summary {
 .nav.select-actions button {
   flex: 1;
   max-width: 260px;
+}
+.w-p {
+  min-width: 4.5em;
+  text-align: right;
+}
+.st-new {
+  color: var(--accent);
+}
+.st-learning {
+  color: var(--muted);
+}
+.st-known {
+  color: var(--good);
+  font-weight: 600;
 }

@@ -211,20 +211,26 @@ export class Store {
   /** Re-predict P(recall) now for the given (reviewed) cards. */
   async predict(cards: Card[]): Promise<void> {
     const now = this.now();
+    const ps = await this.predictAt(cards, now);
+    for (const [id, p] of ps) {
+      this.preds.set(id, p);
+      this.predAt.set(id, now);
+    }
+  }
+
+  /** P(recall) of the given (reviewed) cards at time `at` (e.g. a week ahead). Changes nothing. */
+  async predictAt(cards: Card[], at: number): Promise<Map<EntityId, number>> {
     const tz = this.tz();
     const rows: number[] = [];
     const list = cards.filter((c) => c.reviews > 0);
     for (const c of list) {
       const note = this.col.notes.get(c.note_id)!;
       const deck = this.col.decks.get(note.deck_id)!;
-      this.rows.predictRow({ card_id: c.id, note_id: note.id, deck_id: deck.id, preset_id: deck.preset_id }, now, tz, this.rolloverOf(deck), rows);
+      this.rows.predictRow({ card_id: c.id, note_id: note.id, deck_id: deck.id, preset_id: deck.preset_id }, at, tz, this.rolloverOf(deck), rows);
     }
-    if (!list.length) return;
+    if (!list.length) return new Map();
     const ps = await this.engine.predict(Float64Array.from(rows));
-    list.forEach((c, i) => {
-      this.preds.set(c.id, ps[i]);
-      this.predAt.set(c.id, now);
-    });
+    return new Map(list.map((c, i) => [c.id, ps[i]]));
   }
 
   /** Last predictions of the given cards (reviewed ones only). */
@@ -249,7 +255,7 @@ export class Store {
     return { now: this.now(), tzOffsetMin: this.tz(), rolloverHour: this.preset().day_rollover_hour };
   }
 
-  /** First cards of words never studied, all of them (for sorting known words). */
+  /** First cards of words never studied, all of them (what "Learn more" can introduce). */
   unseenWords(deckId?: EntityId): Card[] {
     return unseenCards(this.col, this.clock(), deckId).fresh;
   }

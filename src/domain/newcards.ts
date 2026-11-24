@@ -68,8 +68,8 @@ export function newQueue(col: Collection, clock: DayClock, limit: number, deckId
 
 /**
  * Cards to answer "Easy" when the user says they already know these words: the
- * first card of a never-studied word (like sorting known words; the other
- * direction then starts on a later day), else every card of it studied so far.
+ * first card of a never-studied word (the other direction then starts on a
+ * later day), else every card of it studied so far.
  */
 export function knownCards(col: Collection, noteIds: Iterable<EntityId>): Card[] {
   const out: Card[] = [];

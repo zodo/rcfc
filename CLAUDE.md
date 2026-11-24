@@ -10,7 +10,7 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
   - `store.ts` ties log + engine. No UI side effects: writes return `{ replay }` / set `stale`, the app decides when to reload
   - `session.ts` study-session logic (UI-free); `sync.ts` sync loop; `pictures.ts` picture queue + offline picture store
   - `app.ts` shell shared by screens: `app` (store, sync, current screen), `go.*` navigation, `page()` / `fullScreen()`, `setKeys()`
-  - `screens/` one module per screen; they navigate through `go`, never import each other (except helpers in `decks.ts`, `sort.ts`). Three tabs: Study (`home.ts`), Words (`words.ts`: list, select → know/delete, sort entry; add/import/edit are sub-pages with a back button), Settings (sync + backup only)
+  - `screens/` one module per screen; they navigate through `go`, never import each other (except helpers in `decks.ts`). Three tabs: Study (`home.ts`), Words (`words.ts`: list with new/learning/known, select → know/delete; add/import/edit are sub-pages with a back button), Settings (sync + backup only)
   - `main.ts` boot only; `dev/` dev-only URL hooks (`?reset`, `?seed=N`), excluded from production builds
 - `rwkv/engine/` Rust RWKV-SRS V1 inference (→ Wasm), checked against upstream goldens in `rwkv/golden/`; `rwkv/models/` weights
 - `worker/` Cloudflare Worker: API under `/api/*`; everything else is static assets. `sync.ts` is the sync API, written against a small `SqlDb` slice of D1 so tests run it on bun:sqlite; `pictures.ts` draws and serves card pictures
@@ -39,7 +39,7 @@ Bun is the package manager, script runner and test runner (`bun.lock`; never use
 - `bun run build` typecheck + build
 - `scripts/build-icons.sh` re-rasterize `public/icon.svg` into the committed PNG icons (manifest + iOS) after changing it
 - `bun test` all tests (`bun:test`): pure domain, Store/StudySession on fake-indexeddb + fake engine, multi-device sync through the real Worker handler. `RCFC_DUOCARDS_EXPORT=/path/to/export.csv bun test` also runs the importer over a real export (never commit real exports: personal data)
-- `bun run smoke [url]` UI smoke test in headless Chromium (Chromium.app, else Chrome; `RCFC_CHROMIUM` overrides) over the DevTools Protocol, no deps: starts a dev server on :5199 unless given one, walks language → add → study → words → settings/sync → seeded replay with the real model → sorting → select/know/delete, fails on page errors; screenshot on failure in `.wrangler/smoke/`. `RCFC_HEADFUL=1` to watch, `RCFC_TRACE=1` to log clicks, `RCFC_SHOTS=1` to save screenshots of the add/study screens. Against preview/production it draws real pictures (~60 neurons each). ~4 s after the dev server is up
+- `bun run smoke [url]` UI smoke test in headless Chromium (Chromium.app, else Chrome; `RCFC_CHROMIUM` overrides) over the DevTools Protocol, no deps: starts a dev server on :5199 unless given one, walks language → add → study → words → settings/sync → seeded replay with the real model → select/know/delete, fails on page errors; screenshot on failure in `.wrangler/smoke/`. `RCFC_HEADFUL=1` to watch, `RCFC_TRACE=1` to log clicks, `RCFC_SHOTS=1` to save screenshots of the add/study screens. Against preview/production it draws real pictures (~60 neurons each). ~4 s after the dev server is up
 - Dev URL hooks (dev server only): `/?reset` wipes this origin's data, `/?seed=60` adds a demo deck with a month of reviews
 - `bun run deploy:preview` build → remote D1 migrations → deploy → smoke test; prints the URL
 - `bun run deploy:prod` same for production; refuses a dirty tree. **Only on explicit user request.**
@@ -72,7 +72,7 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 
 - Pipeline (`src/domain/pictures.ts`): Granite 4.0 micro writes one scene, FLUX.2 klein 4B draws it at 768×512 in the house cut-paper style (medium first in the prompt, or it drifts to photos). The meaning is chosen in code (user's choice, else the example decides, else the first listed meaning): LLMs ignore that rule.
 - Cost: must stay inside the free 10,000 neurons/day (UTC). The Worker reserves ~60 neurons per picture in D1 `ai_budget` and answers 429 past `PICTURE_NEURONS_PER_DAY`; the client queue waits for the reset. Error 3030 (false safety flag) is retried with new seeds.
-- When: typed words right after adding; any other word the first time it is shown in study (not in sorting); redraws on request with meaning + details. A removed picture (`asset_attached` with `r2_key: null`) is never redrawn automatically.
+- When: typed words right after adding; any other word the first time it is shown in study redraws on request with meaning + details. A removed picture (`asset_attached` with `r2_key: null`) is never redrawn automatically.
 - Client (`src/pictures.ts`): jobs in Dexie `pic_jobs` (per device, not synced; the result syncs as `asset_attached`), downloaded pictures get their photographed paper flattened to pure white (`src/domain/paper.ts`, so light cards show through with multiply blending; dark mode pastes them as a light cut-out), are re-encoded and kept in `pic_blobs` for offline study. Local dev has no AI binding: the Worker draws an SVG placeholder for free.
 
 ## Sync notes

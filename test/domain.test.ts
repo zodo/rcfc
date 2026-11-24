@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AppEvent, Review, ReviewPayload } from "../src/domain/events";
 import { RowBuilder, ROW_WIDTH, nextPhase, studyDay } from "../src/domain/rows";
-import { dueCount, pickNext } from "../src/domain/scheduler";
+import { dueCount, pickNext, wordStatus } from "../src/domain/scheduler";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -130,5 +130,18 @@ describe("pickNext", () => {
     expect(pickNext({ ...n, sinceNew: 4 })).toEqual({ card: 10, kind: "new" });
     expect(pickNext({ ...n, preds: new Map() })?.card).toBe(10); // nothing due
     expect(pickNext({ ...n, newLeft: 0, preds: new Map() })).toBeNull();
+  });
+});
+
+describe("wordStatus", () => {
+  const card = (id: number, reviews: number) => ({ id, reviews });
+  it("new until studied, known when every studied card holds a week ahead, else learning", () => {
+    expect(wordStatus([card(1, 0), card(2, 0)], new Map())).toBe("new");
+    expect(wordStatus([card(1, 2), card(2, 0)], new Map([[1, 0.95]]))).toBe("known");
+    expect(wordStatus([card(1, 2), card(2, 1)], new Map([[1, 0.95], [2, 0.7]]))).toBe("learning");
+    expect(wordStatus([card(1, 2)], new Map())).toBeUndefined();
+    // Marked known (last answer Easy): known whatever the model says, until answered again.
+    expect(wordStatus([{ id: 1, reviews: 1, last_rating: 4 }, card(2, 0)], new Map([[1, 0.8]]))).toBe("known");
+    expect(wordStatus([{ id: 1, reviews: 3, last_rating: 1 }], new Map([[1, 0.8]]))).toBe("learning");
   });
 });

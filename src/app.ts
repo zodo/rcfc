@@ -7,13 +7,12 @@ import type { Sync } from "./sync";
 import { append, clear, h } from "./ui/h";
 
 export type Tab = "home" | "words" | "settings";
-/** "study" covers every full-screen flow without the tab bar (study, sorting). */
+/** "study" covers the full-screen study flow (no tab bar). */
 export type ScreenName = Tab | "study";
 
 export interface Screens {
   home(): void | Promise<void>;
   study(deckId?: EntityId): void | Promise<void>;
-  sortWords(deckId: EntityId): void;
   /** The Words tab, for the current language (decks.ts `currentDeck`). */
   words(): void;
   add(): void;
@@ -77,7 +76,7 @@ function show(active: Tab, header: Node, body: Body): void {
   append(app.root, [header, h("section", { class: "content" }, ...body), nav(active)]);
 }
 
-/** A full-screen view without the tab bar (study, sorting, their summaries). */
+/** A full-screen view without the tab bar (study and its summary). */
 export function fullScreen(...children: Node[]): void {
   app.current = "study";
   setKeys(null);

@@ -40,6 +40,8 @@ export interface Card {
   /** Rating of the first review (4 = already known when first seen). */
   first_rating?: number;
   last_review_ts?: number;
+  /** Rating of the latest review (4 after "I know these"). */
+  last_rating?: number;
 }
 
 export const DEFAULT_PRESET: Omit<Preset, "preset_id"> = {
@@ -133,7 +135,10 @@ export class Collection {
             c.first_review_ts = e.ts;
             c.first_rating = e.payload.rating;
           }
-          c.last_review_ts = Math.max(c.last_review_ts ?? -Infinity, e.ts);
+          if (c.last_review_ts === undefined || e.ts >= c.last_review_ts) {
+            c.last_review_ts = e.ts;
+            c.last_rating = e.payload.rating;
+          }
         }
         break;
       }

@@ -1,17 +1,17 @@
-// Words tab: the current language's words. Search, add (+), select several to
-// mark known or delete, swipe through unseen ones, tap one to edit it.
+// Words tab: the current language's words with their progress (new, learning,
+// known). Search, add (+), select several to mark known or delete, tap one to edit.
 import { app, errorText, go, page, subPage } from "../app";
 import type { Note } from "../domain/collection";
 import type { AppEvent } from "../domain/events";
 import type { EntityId } from "../domain/ids";
+import { KNOWN_HORIZON_MS, wordStatus } from "../domain/scheduler";
 import { append, clear, h, langName, toast } from "../ui/h";
 import { pictureEditor } from "../ui/picture";
 import { currentDeck, languageForm, languagePicker } from "./decks";
-import { unsortedWords } from "./sort";
 
 const LIST_MAX = 300;
-/** Offer swiping through unseen words once there are at least this many. */
-const SORT_MIN = 5;
+/** P(recall) a week ahead per studied card, kept between visits so the list shows at once. */
+const weekAhead = new Map<EntityId, number>();
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -26,7 +26,6 @@ export function words(): void {
   const q = h("input", { type: "search", placeholder: `Search ${plural(all().length, "word")}`, autocomplete: "off", "aria-label": "Search" });
   const tools = h("div", { class: "word-tools" });
   const selInfo = h("div", { class: "select-info" });
-  const banner = h("div", {});
   const list = h("div", { class: "list" });
   const knowBtn = h("button", { class: "secondary", onclick: () => void markKnown() }, "I know these");
   const delBtn = h("button", { class: "danger", onclick: () => void remove() }, "Delete");
@@ -37,10 +36,13 @@ export function words(): void {
     return term ? all().filter((n) => `${n.fields.front}\n${n.fields.back}\n${n.fields.example ?? ""}`.toLocaleLowerCase().includes(term)) : all();
   };
 
-  const status = (n: Note): string => {
-    const cards = (store.col.cardsByNote.get(n.id) ?? []).map((id) => store.col.cards.get(id)!);
-    const ps = cards.map((c) => store.preds.get(c.id)).filter((p): p is number => p !== undefined);
-    return ps.length ? `${Math.round(Math.min(...ps) * 100)}%` : "new";
+  const status = (n: Note) => wordStatus((store.col.cardsByNote.get(n.id) ?? []).map((id) => store.col.cards.get(id)!), weekAhead);
+
+  /** Re-predict a week ahead for this language, then redraw. */
+  const refresh = async () => {
+    const cards = store.col.liveCards(deck!.id);
+    for (const [id, p] of await store.predictAt(cards, Date.now() + KNOWN_HORIZON_MS)) weekAhead.set(id, p);
+    if (list.isConnected) render();
   };
 
   const setSelecting = (on: boolean) => {
@@ -71,14 +73,6 @@ export function words(): void {
     }
     knowBtn.disabled = delBtn.disabled = selected.size === 0;
 
-    clear(banner);
-    const unsorted = unsortedWords(deck!.id).length;
-    if (!selecting && !q.value && unsorted >= SORT_MIN) {
-      banner.appendChild(
-        h("button", { class: "secondary wide sort-entry", onclick: () => go.sortWords(deck!.id) }, h("strong", {}, "Already know some?"), h("span", { class: "muted small" }, `Swipe through ${plural(unsorted, "new word")}`)),
-      );
-    }
-
     clear(list);
     list.classList.toggle("selecting", selecting);
     for (const n of found.slice(0, LIST_MAX)) {
@@ -95,7 +89,7 @@ export function words(): void {
         selecting ? h("span", { class: "check", "aria-hidden": "true" }, selected.has(n.id) ? "✓" : "") : null,
         h("span", { class: "w-front" }, n.fields.front),
         h("span", { class: "w-back muted" }, n.fields.back),
-        h("span", { class: "w-p muted small" }, status(n)),
+        h("span", { class: `w-p small st-${status(n) ?? "pending"}` }, status(n) ?? ""),
       );
       list.appendChild(row);
     }
@@ -114,8 +108,8 @@ export function words(): void {
       toast(`Could not save: ${errorText(e)}`);
     }
     knowBtn.textContent = "I know these";
-    await store.predict(store.col.liveCards(deck!.id));
     if (list.isConnected) setSelecting(false);
+    await refresh();
   }
 
   async function remove() {
@@ -137,11 +131,10 @@ export function words(): void {
         h("button", { class: "primary", onclick: () => go.add() }, "Add a word"),
         h("button", { class: "secondary", onclick: () => go.import() }, "Import from Duocards"),
       );
-  page("words", languagePicker(deck, () => go.words()), empty ?? tools, empty ? null : selInfo, banner, list);
+  page("words", languagePicker(deck, () => go.words()), empty ?? tools, empty ? null : selInfo, list);
   app.root.appendChild(actions);
   render();
-  // Predictions may be older than the list: refresh, then redraw the percentages.
-  void store.predict(store.col.liveCards(deck.id)).then(() => list.isConnected && render());
+  void refresh();
 }
 
 export function edit(noteId: EntityId): void {

@@ -6,7 +6,6 @@ import { add } from "./screens/add";
 import { home } from "./screens/home";
 import { importScreen } from "./screens/import";
 import { settings } from "./screens/settings";
-import { sortWords } from "./screens/sort";
 import { study } from "./screens/study";
 import { addLanguage, edit, words } from "./screens/words";
 import { joinFromLink } from "./screens/sync";
@@ -17,7 +16,7 @@ import { clear, h } from "./ui/h";
 import { setupInstallPrompt } from "./ui/install";
 import { setupUpdates } from "./ui/update";
 
-const screens: Screens = { home, study, sortWords, words, add, import: importScreen, edit, addLanguage, settings };
+const screens: Screens = { home, study, words, add, import: importScreen, edit, addLanguage, settings };
 Object.assign(go, screens);
 
 async function boot() {

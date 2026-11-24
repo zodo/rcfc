@@ -298,28 +298,22 @@ async function run(s: Browser, url: string) {
   await s.click("button[aria-label=Close]");
   await s.until("home", `document.querySelector(".deck-name")`);
 
-  log("sort known words from the Words tab");
   await s.click("nav .nav-item", "Words");
-  await s.click(".sort-entry");
-  for (let i = 0; i < 3; i++) {
-    await s.until(`sort card ${i + 1}`, `document.querySelector(".study-top span")?.textContent.startsWith("${i + 1} /")`);
-    await s.click("button.rate", i === 1 ? "Teach me" : "I know it");
-  }
-  await s.click("button[aria-label=Stop]");
-  await s.until("paused", `document.querySelector(".done h2")?.textContent === "Paused"`);
-  await s.click("button", "Done");
   await s.until("words", `document.querySelectorAll(".list button.word").length > 0`);
 
   log("select words: mark known, delete");
   const before = await words(s);
   await s.click("button", "Select");
   await s.until("selecting", `document.querySelector(".list.selecting")`);
-  await s.click(".list button.word:nth-of-type(1)");
-  await s.click(".list button.word:nth-of-type(2)");
+  // Two words never studied: the model must call them known once marked.
+  const fresh = await s.js<string[]>(`return [...document.querySelectorAll(".list button.word")].filter((b) => b.querySelector(".st-new")).slice(0, 2).map((b) => b.querySelector(".w-front").textContent);`);
+  if (fresh.length < 2) throw new Error("seeded list has fewer than 2 new words");
+  for (const w of fresh) await s.click(".list button.word", w);
   await s.until("2 selected", `document.querySelector(".select-info")?.textContent.startsWith("2 selected")`);
   await s.click(".select-actions button", "I know these");
   await s.until("marked known", `document.getElementById("toast")?.textContent === "2 words marked as known"`);
   await s.until("tab bar back", `!document.querySelector(".list.selecting") && document.querySelector(".select-actions.hidden")`);
+  await s.until("marked words show known", `${JSON.stringify(fresh)}.every((w) => [...document.querySelectorAll(".list button.word")].some((b) => b.querySelector(".w-front").textContent === w && b.querySelector(".w-p").textContent === "known"))`);
   await s.js(`window.confirm = () => true;`);
   await s.click("button", "Select");
   await s.click(".list button.word:nth-of-type(1)");
