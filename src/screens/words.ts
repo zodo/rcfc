@@ -137,10 +137,10 @@ export function words(): void {
           renderInfo();
         },
       },
+      h("span", { class: "check", "aria-hidden": "true" }),
       h("span", { class: "w-front" }, n.fields.front),
       h("span", { class: "w-back muted" }, n.fields.back),
       st,
-      h("span", { class: "check", "aria-hidden": "true" }),
     );
     rows.set(n.id, { el, st });
     return el;
