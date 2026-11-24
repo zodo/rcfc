@@ -209,6 +209,7 @@ Nov 24, 2026. Agreed, not built yet; built in the order of the plan at the end o
 
 - One pile per language pair (a single pile, named after the language, while there is only one pair), plus one spot for every label that exists.
 - Spots are printed on the table, two per row. A pile is a stack on its spot whose thickness shows how many cards are left, with the count written under it. The top card lies face up, and the cards under it show their edges, white or cream.
+- After the last pile, one more spot printed empty with a plus: the place for a new pile, so it is clear more piles can be made. Once labels exist it opens where labels are made and stuck on words (a new label is a new pile). Until then it is not shown.
 - Looking at the table deals nothing: it shows the pile the dealer would deal. The deal is recorded when the pile is first studied that day.
 - A finished pile leaves its spot empty with a pencil check (drawn in one stroke when the user comes back from clearing it, with a few bits of coloured paper jumping off it). Tapping the spot offers "Deal 5 more", "Go through these N again" (the cards finished from that pile today) and, when nothing is left to learn, "Add words". Either refill drops the cards onto the spot as one handful (bottom card first, the top one last, face up as it lies); studying them takes a tap on the pile, like any pile. Gathered cards lie there until studied, for the rest of that day.
 
@@ -261,7 +262,7 @@ Done today, cards waiting under a pile, cards left in a pile and each pile's siz
 2. Fixed piles inside the current Study screen and its end screen. Hands-on review on a phone.
 3. The table on the Study tab (layout B: printed spots; finished spots tapped for choices). Built; hands-on review.
 4. No decks: the pair on the word, the Add screen, the model group from the pair, language piles. Mockups first.
-5. Labels: events, the Words chips, the Stickers sheet, label piles on the table. Mockups first.
+5. Labels: events, the Words chips, the Stickers sheet, label piles on the table, the empty "new pile" spot. Mockups first.
 
 Later: the LLM fills the other field when adding; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; editing words.
 
