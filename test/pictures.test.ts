@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AssetAttached, NoteCreatedPayload } from "../src/domain/events";
-import { budgetDay, imagePrompt, meanings, parseScene, sceneMessages, secondsToReset, senseFor, withoutQuotes } from "../src/domain/pictures";
+import { budgetDay, imagePrompt, meanings, parseScene, parseSense, sceneMessages, secondsToReset, senseFor, senseMessages, withoutQuotes } from "../src/domain/pictures";
 import { Pictures } from "../src/pictures";
 import { handlePictures, type AiRunner, type BlobStore, type PictureEnv } from "../worker/pictures";
 import { sqliteD1 } from "./support/d1";
@@ -32,8 +32,9 @@ class FakeAi implements AiRunner {
     this.calls.push({ model, input });
     if (model.includes("granite")) {
       const user = (input as { messages: { content: string }[] }).messages[1].content;
+      if (user.includes("Meanings:")) return { response: JSON.stringify({ meaning: 2 }) };
       const word = /Word: (.*)/.exec(user)![1];
-      return { response: JSON.stringify({ sense: "llm sense", scene: `A scene for ${word}.` }) };
+      return { response: JSON.stringify({ scene: `A scene for ${word}.` }) };
     }
     if (this.fail) throw new Error("5000: model down");
     if (this.flagged > 0) {
@@ -59,24 +60,33 @@ describe("picture prompts", () => {
     expect(meanings("the tower")).toEqual(["the tower"]);
   });
 
-  it("decides the meaning in code: user's choice, else the example, else the first one", () => {
+  it("decides the meaning in code: user's choice, else the only one, else (no example) the first", () => {
     expect(senseFor({ word: "la vela", translation: "candle, sail", sense: "sail" })).toBe("sail");
     expect(senseFor({ word: "la vela", translation: "candle, sail" })).toBe("candle");
+    expect(senseFor({ word: "un camello", translation: "a camel", example: "Un camello tiene dos jorobas." })).toBe("a camel");
     expect(senseFor({ word: "el banco", translation: "bank, bench", example: "Me senté en el banco del parque." })).toBeUndefined();
   });
 
-  it("passes example, sense and details to the scene writer", () => {
-    const [, user] = sceneMessages({ word: "la vela", translation: "candle, sail", details: "on a birthday cake" });
-    expect(user.content).toBe("Word: la vela\nTranslation: candle, sail\nSense: candle\nDetails: on a birthday cake");
+  it("with several meanings, the example picks one of them, never another", () => {
+    const r = { word: "el banco", translation: "bank, bench", example: "Me senté en el banco del parque." };
+    expect(senseMessages(r)[1].content).toBe("Word: el banco\nExample: Me senté en el banco del parque.\nMeanings:\n1. bank\n2. bench");
+    expect(parseSense('{"meaning": 2}', r)).toBe("bench");
+    expect(parseSense("2", r)).toBe("bench");
+    expect(parseSense('{"meaning": "sitting"}', r)).toBe("bank");
+    expect(parseSense({ meaning: 7 }, r)).toBe("bank");
   });
 
-  it("keeps the sense it asked for over the LLM's label, and survives junk replies", () => {
-    const r = { word: "la vela", translation: "candle, sail" };
-    expect(parseScene('{"sense":"sail","scene":"A boat."}', r)).toEqual({ sense: "candle", scene: "A boat." });
-    expect(parseScene('```json\n{"sense":"bench","scene":"A park bench."}\n```', { ...r, example: "x" })).toEqual({ sense: "bench", scene: "A park bench." });
-    expect(parseScene({ scene: "Obj." }, r).scene).toBe("Obj.");
-    expect(parseScene("not json at all", r).scene).toBe("not json at all");
-    expect(parseScene(undefined, r).scene).toBe("A simple everyday scene that shows candle.");
+  it("writes the scene from word and meaning only: never the example", () => {
+    const [, user] = sceneMessages({ word: "la torre", translation: "the tower", example: "En el castillo hay una torre donde vivía la princesa.", details: "at night" }, "the tower");
+    expect(user.content).toBe("Word: la torre\nMeaning: the tower\nDetails: at night");
+  });
+
+  it("survives junk scene replies", () => {
+    expect(parseScene('{"scene":"A boat."}', "sail")).toBe("A boat.");
+    expect(parseScene('```json\n{"scene":"A park bench."}\n```', "bench")).toBe("A park bench.");
+    expect(parseScene({ scene: "Obj." }, "x")).toBe("Obj.");
+    expect(parseScene("not json at all", "x")).toBe("not json at all");
+    expect(parseScene(undefined, "candle")).toBe("A simple everyday scene that shows candle.");
   });
 
   it("drops quoted words and dialogue from the scene, so the picture never spells the answer", () => {
@@ -84,8 +94,8 @@ describe("picture prompts", () => {
     expect(withoutQuotes("Three friends, asking each other '¿Vosotros queréis ir al cine?' as they talk.")).toBe("Three friends as they talk.");
     expect(withoutQuotes('A man waves and says "Hola, Pedro!" to his friend.')).toBe("A man waves to his friend.");
     expect(withoutQuotes("The friends' house and a person's dog.")).toBe("The friends' house and a person's dog.");
-    const r = { word: "lunes", translation: "Monday" };
-    expect(parseScene({ scene: "'lunes'" }, r).scene).not.toContain("lunes");
+    expect(withoutQuotes("A person peers at an object, saying 'Aver, let's see what this is!' with a thoughtful expression")).toBe("A person peers at an object with a thoughtful expression");
+    expect(parseScene({ scene: "'lunes'" }, "Monday")).not.toContain("lunes");
   });
 
   it("names the medium before the scene", () => {
@@ -132,6 +142,14 @@ describe("pictures API", () => {
     expect(img.headers.get("content-type")).toBe("image/jpeg");
     expect(img.headers.get("cache-control")).toContain("immutable");
     expect(new Uint8Array(await img.arrayBuffer())).toEqual(JPEG);
+  });
+
+  it("asks which meaning the example uses, then writes the scene without the example", async () => {
+    const s = server();
+    const body = (await (await s.fetch("/api/pictures", post({ word: "el banco", translation: "bank, bench", example: "Me senté en el banco." }))).json()) as { sense: string };
+    expect(body.sense).toBe("bench");
+    const texts = s.ai.calls.filter((c) => c.model.includes("granite")).map((c) => (c.input as { messages: { content: string }[] }).messages[1].content);
+    expect(texts).toEqual(["Word: el banco\nExample: Me senté en el banco.\nMeanings:\n1. bank\n2. bench", "Word: el banco\nMeaning: bench"]);
   });
 
   it("retries with a new seed when the safety filter flags a harmless picture", async () => {
@@ -246,7 +264,7 @@ describe("Pictures (client)", () => {
     expect(p.key).not.toBe(first);
     expect(p).toMatchObject({ sense: "bench", details: "in a park" });
     const lastScene = s.ai.calls.filter((c) => c.model.includes("granite")).at(-1)!.input as { messages: { content: string }[] };
-    expect(lastScene.messages[1].content).toContain("Sense: bench\nDetails: in a park");
+    expect(lastScene.messages[1].content).toBe("Word: el banco\nMeaning: bench\nDetails: in a park");
     pics.stop();
   });
 

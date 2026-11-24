@@ -5,7 +5,7 @@
 // Spending is capped per UTC day in D1 (ai_budget) below the free Workers AI
 // allocation: past the cap the API answers 429 with Retry-After, never a bill.
 // Without an AI binding (local dev) it draws a placeholder instead.
-import { budgetDay, DEFAULT_DAILY_NEURONS, IMAGE_MODEL, imagePrompt, MAX_DETAILS, NEURONS_PER_PICTURE, parseScene, PICTURE_H, PICTURE_W, SCENE_MODEL, sceneMessages, secondsToReset, type PictureRequest } from "../src/domain/pictures";
+import { budgetDay, DEFAULT_DAILY_NEURONS, IMAGE_MODEL, imagePrompt, MAX_DETAILS, meanings, NEURONS_PER_PICTURE, parseScene, parseSense, PICTURE_H, PICTURE_W, SCENE_MODEL, sceneMessages, secondsToReset, senseFor, senseMessages, type PictureRequest } from "../src/domain/pictures";
 import { isSyncCode } from "../src/domain/sync";
 import { json, type SqlDb } from "./sync";
 
@@ -53,12 +53,18 @@ async function reserve(db: SqlDb, day: string, cost: number, cap: number): Promi
   return (r.meta.changes ?? 0) > 0;
 }
 
-async function drawScene(ai: AiRunner, r: PictureRequest): Promise<{ sense: string; scene: string }> {
-  const res = (await ai.run(SCENE_MODEL, { messages: sceneMessages(r), response_format: { type: "json_object" }, max_tokens: 400, temperature: 0.3 })) as {
+async function chat(ai: AiRunner, messages: { role: string; content: string }[], maxTokens: number): Promise<unknown> {
+  const res = (await ai.run(SCENE_MODEL, { messages, response_format: { type: "json_object" }, max_tokens: maxTokens, temperature: 0.3 })) as {
     response?: unknown;
     choices?: { message?: { content?: unknown } }[];
   };
-  return parseScene(res.response ?? res.choices?.[0]?.message?.content, r);
+  return res.response ?? res.choices?.[0]?.message?.content;
+}
+
+/** The meaning (decided in code, else picked from the listed ones by the example), then a scene from word + meaning only. */
+async function drawScene(ai: AiRunner, r: PictureRequest): Promise<{ sense: string; scene: string }> {
+  const sense = senseFor(r) ?? parseSense(await chat(ai, senseMessages(r), 20), r);
+  return { sense, scene: parseScene(await chat(ai, sceneMessages(r, sense), 400), sense) };
 }
 
 async function drawImage(ai: AiRunner, prompt: string): Promise<Uint8Array> {
@@ -94,7 +100,8 @@ async function create(request: Request, env: PictureEnv): Promise<Response> {
   if (!r) return json({ error: "word and translation are required" }, 400);
   const now = (env.now ?? Date.now)();
   if (!env.AI) {
-    const { sense, scene } = parseScene(null, r);
+    const sense = senseFor(r) ?? meanings(r.translation)[0] ?? r.translation;
+    const scene = parseScene(null, sense);
     const key = `pics/${crypto.randomUUID()}.svg`;
     await env.MEDIA.put(key, placeholder(r.word, sense), { httpMetadata: { contentType: "image/svg+xml" } });
     return json({ key, sense, scene });
