@@ -1118,6 +1118,9 @@ header.top.sub .back svg {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   overflow: hidden;
+  /* WebKit draws a side's positioned children (the edit pencil) through the card when it lies
+     face down; in 3D with their own hidden backface they turn away with it */
+  transform-style: preserve-3d;
 }
 .side.back {
   transform: rotateY(180deg);
@@ -1178,6 +1181,8 @@ header.top.sub .back svg {
   color: #8f978f;
   background: none;
   visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 .edit-card svg {
   width: 18px;
