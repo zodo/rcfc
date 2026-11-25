@@ -22,6 +22,8 @@ export interface PictureEnv {
   AI?: AiRunner;
   /** Daily neuron cap (default DEFAULT_DAILY_NEURONS). */
   budget?: number;
+  /** Outside production a request may name another scene model and ask for the scene only (comparing models on preview). */
+  production?: boolean;
   now?: () => number;
 }
 
@@ -53,8 +55,11 @@ export async function reserve(db: SqlDb, day: string, cost: number, cap: number)
   return (r.meta.changes ?? 0) > 0;
 }
 
-async function chat(ai: AiRunner, messages: { role: string; content: string }[], maxTokens: number): Promise<unknown> {
-  const res = (await ai.run(SCENE_MODEL, { messages, response_format: { type: "json_object" }, max_tokens: maxTokens, temperature: 0.3 })) as {
+async function chat(ai: AiRunner, model: string, messages: { role: string; content: string }[], maxTokens: number): Promise<unknown> {
+  const input: Record<string, unknown> = { messages, response_format: { type: "json_object" }, max_tokens: maxTokens, temperature: 0.3 };
+  // Gemma 4 thinks by default: slower, and no better at one short scene.
+  if (model.includes("gemma-4")) input.chat_template_kwargs = { enable_thinking: false };
+  const res = (await ai.run(model, input)) as {
     response?: unknown;
     choices?: { message?: { content?: unknown } }[];
   };
@@ -62,9 +67,9 @@ async function chat(ai: AiRunner, messages: { role: string; content: string }[],
 }
 
 /** The meaning (decided in code, else picked from the listed ones by the example), then a scene from word + meaning only. */
-async function drawScene(ai: AiRunner, r: PictureRequest): Promise<{ sense: string; scene: string }> {
-  const sense = senseFor(r) ?? parseSense(await chat(ai, senseMessages(r), 20), r);
-  return { sense, scene: parseScene(await chat(ai, sceneMessages(r, sense), 400), sense) };
+async function drawScene(ai: AiRunner, r: PictureRequest, model = SCENE_MODEL): Promise<{ sense: string; scene: string }> {
+  const sense = senseFor(r) ?? parseSense(await chat(ai, model, senseMessages(r), 20), r);
+  return { sense, scene: parseScene(await chat(ai, model, sceneMessages(r, sense), 400), sense) };
 }
 
 async function drawImage(ai: AiRunner, prompt: string): Promise<Uint8Array> {
@@ -99,6 +104,15 @@ async function create(request: Request, env: PictureEnv): Promise<Response> {
   const r = parseRequest(body);
   if (!r) return json({ error: "word and translation are required" }, 400);
   const now = (env.now ?? Date.now)();
+  const b = body as { scene_model?: unknown; scene_only?: unknown };
+  if (!env.production && env.AI && b.scene_only === true) {
+    const model = typeof b.scene_model === "string" && b.scene_model.startsWith("@cf/") ? b.scene_model : SCENE_MODEL;
+    try {
+      return json(await drawScene(env.AI, r, model));
+    } catch (e) {
+      return json({ error: `scene failed: ${e instanceof Error ? e.message : String(e)}` }, 502);
+    }
+  }
   if (!env.AI) {
     const sense = senseFor(r) ?? meanings(r.translation)[0] ?? r.translation;
     const scene = parseScene(null, sense);

@@ -10,7 +10,7 @@
 export const PICTURE_W = 768;
 export const PICTURE_H = 512;
 
-export const SCENE_MODEL = "@cf/ibm-granite/granite-4.0-h-micro";
+export const SCENE_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 export const IMAGE_MODEL = "@cf/black-forest-labs/flux-2-klein-4b";
 
 /** Estimated neurons per picture: klein 4B at 768×512 is 2 tiles (~52), the scene ~1.3. Rounded up. */

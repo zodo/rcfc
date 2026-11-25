@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AssetAttached, NoteCreatedPayload } from "../src/domain/events";
-import { budgetDay, imagePrompt, meanings, parseScene, parseSense, sceneMessages, secondsToReset, senseFor, senseMessages, withoutQuotes } from "../src/domain/pictures";
+import { budgetDay, imagePrompt, meanings, parseScene, parseSense, SCENE_MODEL, sceneMessages, secondsToReset, senseFor, senseMessages, withoutQuotes } from "../src/domain/pictures";
 import { Pictures } from "../src/pictures";
 import { handlePictures, type AiRunner, type BlobStore, type PictureEnv } from "../worker/pictures";
 import { sqliteD1 } from "./support/d1";
@@ -30,7 +30,7 @@ class FakeAi implements AiRunner {
   fail = false;
   async run(model: string, input: unknown) {
     this.calls.push({ model, input });
-    if (model.includes("granite")) {
+    if (model === SCENE_MODEL) {
       const user = (input as { messages: { content: string }[] }).messages[1].content;
       if (user.includes("Meanings:")) return { response: JSON.stringify({ meaning: 2 }) };
       const word = /Word: (.*)/.exec(user)![1];
@@ -148,7 +148,7 @@ describe("pictures API", () => {
     const s = server();
     const body = (await (await s.fetch("/api/pictures", post({ word: "el banco", translation: "bank, bench", example: "Me senté en el banco." }))).json()) as { sense: string };
     expect(body.sense).toBe("bench");
-    const texts = s.ai.calls.filter((c) => c.model.includes("granite")).map((c) => (c.input as { messages: { content: string }[] }).messages[1].content);
+    const texts = s.ai.calls.filter((c) => c.model === SCENE_MODEL).map((c) => (c.input as { messages: { content: string }[] }).messages[1].content);
     expect(texts).toEqual(["Word: el banco\nExample: Me senté en el banco.\nMeanings:\n1. bank\n2. bench", "Word: el banco\nMeaning: bench"]);
   });
 
@@ -367,9 +367,9 @@ describe("Pictures (client)", () => {
     if (!r.ok) throw new Error(r.reason);
     expect(d.store.col.notes.get(id)!.picture!.key).toBe(r.picture.key);
     expect(await d.store.picJobs()).toEqual([]);
-    const images = s.ai.calls.filter((c) => !c.model.includes("granite")).length;
+    const images = s.ai.calls.filter((c) => c.model !== SCENE_MODEL).length;
     await pics.kick();
-    expect(s.ai.calls.filter((c) => !c.model.includes("granite")).length).toBe(images);
+    expect(s.ai.calls.filter((c) => c.model !== SCENE_MODEL).length).toBe(images);
     pics.stop();
   });
 
