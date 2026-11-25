@@ -2,8 +2,8 @@
 // will show, the meaning first and then the scene as the server streams it in,
 // at a steady handwriting pace; with nothing left to write it doodles curls
 // after the last word, line after line, until the picture comes. Then the
-// picture is glued on over the note: held a little above the card, brought
-// down and pressed flat; the note under it goes once it lies flat.
+// picture is brought in from past the top of the screen and laid down over
+// the note (`bringIn`); the note under it goes once it lies flat.
 //
 // One pencil on a card: given `yieldTo`, the note pauses while that other
 // pencil (the card editor's fills) is busy, with no pencil of its own, and
@@ -19,6 +19,61 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const LETTER_MS = 26;
 /** The meaning is written a little slower than the scene: it's the heading. */
 const SENSE_LETTER_MS = 70;
+/**
+ * The picture is brought in from past the top of the screen and laid down, as
+ * a camera over the card would see it: close to the lens it is bigger and its
+ * shadow falls far off and soft; it slows over its place, hovers, and comes
+ * down, the shadow sliding under it and sharpening. Transform and opacity
+ * only: a soft and a sharp shadow cross-fade.
+ */
+async function bringIn(layer: HTMLElement, pic: HTMLElement, box: DOMRect): Promise<void> {
+  // A sheet casts a sheet's shadow; a picture melted into the card (study) only its own drawn ones.
+  const sheet = pic.classList.contains("cut");
+  const shadow = (cls: string) => {
+    const el = document.createElement("div");
+    if (!sheet) return el;
+    el.className = `sk-shadow ${cls}`;
+    el.style.transform = getComputedStyle(pic).transform; // the picture's own tilt
+    layer.prepend(el);
+    return el;
+  };
+  const far = shadow("far");
+  const near = shadow("near");
+  layer.classList.add("moving");
+  const x = box.width * 0.25;
+  const y = -(box.bottom + box.height * 0.4 + 60);
+  const ms = 1000;
+  const T = 0.45; // share of the time spent travelling
+  const done = [
+    layer.animate(
+      [
+        { transform: `translate(${x}px, ${y}px) rotate(12deg) scale(1.4)` },
+        { transform: "translate(6px, -14px) rotate(-2deg) scale(1.07)", offset: T, easing: "cubic-bezier(.2,.6,.35,1)" },
+        { transform: "translate(2px, -4.7px) rotate(-0.7deg) scale(1.03)", offset: T + (0.8 - T) * 0.55, easing: "ease-in" },
+        { transform: "none", offset: 0.8, easing: "ease-out" },
+        { transform: "scale(0.994)", offset: 0.88 },
+        { transform: "none" },
+      ],
+      { duration: ms, easing: "cubic-bezier(.45,.05,.55,.95)" },
+    ),
+    far.animate(
+      [
+        { translate: "46px 70px", scale: "1.12", opacity: 0.55 },
+        { translate: "18px 26px", scale: "1.04", opacity: 0.7, offset: T },
+        { translate: "4px 6px", scale: "1", opacity: 0.25, offset: 0.74 },
+        { translate: "0 0", scale: "1", opacity: 0, offset: 0.8 },
+        { translate: "0 0", scale: "1", opacity: 0 },
+      ],
+      { duration: ms, fill: "forwards" },
+    ),
+    near.animate([{ opacity: 0 }, { opacity: 0, offset: T + 0.1 }, { opacity: 1, offset: 0.8 }, { opacity: 1 }], { duration: ms, fill: "forwards" }),
+  ];
+  await Promise.all(done.map((a) => a.finished.catch(() => {})));
+  layer.classList.remove("moving");
+  far.remove();
+  near.remove();
+}
+
 /** Before the scene has come, the pencil rests this long after the meaning before it doodles (the scene is usually on its way). */
 const SCENE_GRACE_MS = 450;
 /** One run of three curls. */
@@ -104,7 +159,7 @@ export class SketchNote {
 
   /**
    * The picture is here: what's left of the note is written at once, the pencil
-   * lifts off and the picture is glued on over the note. Resolves once it lies flat.
+   * lifts off and the picture is brought in and laid down over the note. Resolves once it lies flat.
    */
   async glue(pic: HTMLElement): Promise<void> {
     if (this.closed) return;
@@ -119,19 +174,7 @@ export class SketchNote {
     layer.className = "sk-glued";
     layer.append(pic);
     this.el.append(layer);
-    if (!reducedMotion()) {
-      await layer
-        .animate(
-          [
-            { transform: "translate(10px, -26px) rotate(3deg) scale(1.06)", offset: 0 },
-            { transform: "translate(4px, -12px) rotate(1.2deg) scale(1.04)", offset: 0.25 },
-            { transform: "translate(0, 0) rotate(0) scale(0.985)", offset: 0.62, easing: "ease-out" },
-            { transform: "none", offset: 1 },
-          ],
-          { duration: 700, easing: "cubic-bezier(.4,0,.6,1)" },
-        )
-        .finished.catch(() => {});
-    }
+    if (!reducedMotion()) await bringIn(layer, pic, this.el.getBoundingClientRect());
     // Only now, under the picture lying flat, the note and the outline go.
     this.el.classList.add("glued");
   }

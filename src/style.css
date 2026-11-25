@@ -85,6 +85,7 @@
 html,
 body {
   margin: 0;
+  overflow-x: clip; /* a picture being brought in from off the screen never widens the page */
 }
 body {
   min-height: 100dvh;
@@ -2040,11 +2041,41 @@ header.top.sub .back svg {
   z-index: 4;
 }
 .sk-glued .pic {
+  position: relative;
   max-width: none;
+}
+/* While it is brought in: above everything on the screen, its shadows drawn apart from it. */
+.sk-glued.moving {
+  z-index: 50;
+}
+.sk-glued.moving .pic {
+  filter: none;
+}
+.sk-shadow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.sk-shadow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.26);
+  clip-path: polygon(0.6% 1.8%, 22% 0.4%, 47% 1.4%, 71% 0%, 99.2% 1.2%, 100% 34%, 99.1% 68%, 99.7% 98.6%, 74% 99.6%, 51% 98.4%, 26% 100%, 0.4% 98.9%, 1.2% 66%, 0% 33%);
+}
+.sk-shadow.near {
+  filter: blur(3px);
+  margin-top: 2px;
+}
+.sk-shadow.far {
+  filter: blur(16px);
 }
 .ed-pic.busy .ed-pic-box,
 .ed-pic.busy .pic {
   animation: pic-pulse 1.4s ease-in-out infinite;
+}
+.ed-pic.busy .sk-glued .pic {
+  animation: none;
 }
 .ed-caption {
   padding: 6px 4px;
