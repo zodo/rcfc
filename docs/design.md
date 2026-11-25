@@ -50,7 +50,7 @@ Entity ids (`note_id`, `card_id`, `deck_id`, `preset_id`, `label_id`) are random
 | `deck_created` | `deck_id, name, preset_id, lang_pair` | Decks are hidden: one per studied language, only to give the model a group (see [Piles, labels and languages](#piles-labels-and-languages)) |
 | `deck_renamed` | `deck_id, name` | Last write wins; nothing emits it now |
 | `preset_updated` | `preset_id, desired_retention, day_rollover_hour, new_per_day` | Rollover (4) drives `day_offset`; new words a day (10) per studied language; `desired_retention` is no longer read (target recall is fixed at 0.9). No UI sets them |
-| `note_created` | `note_id, deck_id, fields{front, back, example?}, lang_pair{from, to}, source?` | Emits its forward and reverse cards in the same batch; `source` marks an import |
+| `note_created` | `note_id, deck_id, fields{front, back, example?, memo_target?, memo_known?}, lang_pair{from, to}, source?` | Emits its forward and reverse cards in the same batch; `memo_*` are the user's own notes, one per side; `source` marks an import |
 | `card_created` | `card_id, note_id, template` | `forward` or `reverse` |
 | `note_edited` | `note_id, field, value` | One event per field; last write wins per field |
 | `note_deleted` | `note_id` | Tombstone only; history stays usable by RWKV |
@@ -165,9 +165,9 @@ The plan: one Workers AI chat call returns strict JSON (`translation, part_of_sp
 
 A small LLM (Granite 4.0 micro) writes one concrete scene for one meaning. The meaning is chosen first: the user's choice, else the only listed meaning, else a separate LLM call picks one of the listed meanings using the example, else the first. The scene is written from the word and the meaning only, never the example (given one, the LLM drew the sentence's situation instead of the word). FLUX.2 klein 4B draws it at 768×512 in one house style: one free-standing cut-paper cut-out with a hand-cut outline on white (the medium first in the prompt, or it drifts to photos). No writing: the picture is on the known side, so a drawn word gives the answer away; quotes and dialogue the LLM writes anyway are stripped in code.
 
-- When: typed words right after adding; any other word when it comes up: the next 10 cards of each pile are queued from the table and after each card in study, behind pictures needed now, so they are on the device when the card shows, offline too.
+- When: on the card editor while typing (see above); any other word when it comes up: the next 10 cards of each pile are queued from the table and after each card in study, behind pictures needed now, so they are on the device when the card shows, offline too.
 - The client keeps jobs in IndexedDB (per device, not synced; the result syncs as `asset_attached`), flattens the photographed paper to pure white so cards show through, and stores the picture for offline study.
-- The user can redraw with another meaning or extra details, or remove it; a removed picture is never redrawn automatically.
+- The user can redraw with extra details, or remove it; a removed picture is never redrawn automatically.
 - A forward card shows the picture with the answer (cream side); a reverse card shows it as part of the cue.
 
 **Pronunciation**
@@ -237,18 +237,24 @@ What "needs the user most" means:
 - The open sticker's chip has a pencil: a sheet to rename it (or merge, when the name is another sticker's) or delete it.
 - With a sticker open, Edit sits next to Select. Only the line above the list changes ("Tap words to stick on or peel off · Done"): the list becomes every word, a yellow dot sticker on those wearing it, a dotted ring on the others, and each tap sticks or peels at once. "+ Sticker" (or New pile on the table) names a sticker, makes it, opens it and starts Edit.
 - A sticker with no words: the ruled sheet says "No words yet." and a pencil note, "add words", has an arrow drawn up to Edit. No other buttons; deleting is in the pencil sheet.
-- Selecting words offers "Stickers" (with I know, Don't know, Delete): a sheet with every sticker as a box (on for all, some, none; a tap sticks it on all or peels it off all, at once) and a field for a new one. The word page shows its stickers, × to peel one off, "+ Sticker" for the same sheet.
-- Adding a word while a sticker is open sticks it on ("Sticks: kitchen ×" above Add; × skips it for that word); an import sticks a sticker naming its source ("Duocards").
+- Selecting words offers "Stickers" (with I know, Don't know, Delete): a sheet with every sticker as a box (on for all, some, none; a tap sticks it on all or peels it off all, at once) and a field for a new one. The card editor shows a card's stickers on its corner, a tap peels one off, "+ Sticker" opens the same sheet.
+- A card added while a sticker is open starts with it on its corner (a tap peels it off); an import sticks a sticker naming its source ("Duocards").
 - The back gesture closes a sheet, Select or Edit before it leaves the screen.
 
-**Adding a word**
+**The card editor (Add and Edit)**
 
-Built for now: the studied language is the last one used (opening a language in Words or studying its pile counts as using it), switchable with a native picker whose last option, "Add a language…", picks a new one (made with its first word). The translation's language sits above its field, remembered per studied language. Front, back and an optional example are typed. With a sticker open in Words, the word gets it ("×" skips it for that word).
+Add ("Add a card") and Edit ("Edit card") are one screen that looks like the card itself, both sides at once: stacked on a phone, side by side from 900 px. Nothing is written until Add or Save; back drops every change, a redrawn picture included.
 
-Planned with the Add screen's rework:
+- White side: the word with its speak button, an example, the user's own note; the card's stickers on its corner with "+ Sticker". Cream side: the translation, the picture with "+ how it looks" under it, the user's own note. Places left empty show nothing in study.
+- A blank card has pencil notes with arrows pointing at its places: "the *Spanish* word goes here", "its *English* translation goes here", "an example, if you like". The language names are words that pick the language (a native picker; "Add a language…" opens a sheet and keeps what was typed). Once a place is filled its note shrinks to the arrow and the language. On Edit the languages are plain pencil: a card's pair is fixed.
+- The studied language is the last one used (opening a language in Words or studying its pile counts); the translation's language is remembered per studied language.
+- Picture: once both words are in, the picture space mirrors the translation in pencil; 1.5 s after typing pauses (at once on Enter or leaving the field) it draws, and typing more draws again. "+ how it looks" opens a details line with Redraw and No picture. There is no meaning to choose: the meaning is the translation. Offline or past the daily budget it says so, and Add leaves the picture to the queue.
+- Add takes the picture along; one still drawing follows the card when it arrives (never drawn twice), and the queue draws it only if that drawing fails. After Add: a fresh blank card, same languages, and the cards added this sitting under it (a tap opens Edit).
+- Duplicates: the same word with the same translation and pair is refused ("this card is already in your words", with a link); the same word with another translation gets a pencil note ("you already have *banco* · bench"), told as soon as typing pauses.
+- Edit: Save writes only what changed; "Delete card" under it. A removed picture is not redrawn by word edits, only by Redraw. Leaving the editor goes one step back in history, to where it was opened.
+- In study, a pencil in the corner of a turned card opens it in the editor; back returns to the same card, still turned over, with the changes, and the time spent editing doesn't count toward the answer.
 
-- The studied language from a sticker's most common language too. Recent languages as chips instead of the picker.
-- Two fields, one per language. The user types in either, and the other is filled by the LLM: the field typed into is the side, so nothing needs detecting.
+Planned: the LLM filling the other field (the user types in either, the field typed into is the side, so nothing needs detecting); the studied language from a sticker's most common language; later maybe drawing on the card and moving its blocks.
 
 **Events and sync**
 
@@ -271,10 +277,12 @@ Done today, cards waiting under a pile, cards left in a pile and each pile's siz
 1. This section.
 2. Fixed piles inside the current Study screen and its end screen. Hands-on review on a phone.
 3. The table on the Study tab (layout B: printed spots; finished spots tapped for choices). Built; hands-on review.
-4. No decks: languages on the word, one pile and model group per studied language, the translation's language per word, language chips in Words. Built; hands-on review. The Add screen got only a language picker ("Add a language…" last) and the translation's language as its field's label; its chips and the two-way fields wait for its rework.
+4. No decks: languages on the word, one pile and model group per studied language, the translation's language per word, language chips in Words. Built; hands-on review.
 5. Labels as stickers: events, the Words chips, Edit, the pencil and Stickers sheets, sticker piles on the table with "Deal all N", the New pile spot, the back gesture. Sticker colours. Built; hands-on review.
 
-Later: the Add screen's rework, with the LLM filling the other field; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; whether a word's text or language pair can change (today a word's pair is fixed: delete and add it again).
+6. The card editor for Add and Edit, with the pencil from study. Built; hands-on review.
+
+Later: the LLM filling the other field on the card editor; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; whether a card's language pair can change (today it is fixed: delete and add it again).
 
 ## Identity and pairing
 
@@ -301,7 +309,7 @@ RWKV goes first because it is the reason for the project and the biggest unknown
 5. **Piles, stickers, no decks.** Done (see [Piles, labels and languages](#piles-labels-and-languages)).
 6. **Nice-to-haves.** Duocards import done. Not built: Anki import, stats and calibration charts, WebGPU.
 
-**Not built yet**, besides the above: the Add screen's rework; iPhone haptics (Android vibrates; iOS needs the iOS 18 switch-checkbox trick); recurrent states on disk (see RWKV in Wasm, Known limit); the save-your-code prompt and the abuse guard (see Identity and pairing).
+**Not built yet**, besides the above: the LLM filling a card's other field; iPhone haptics (Android vibrates; iOS needs the iOS 18 switch-checkbox trick); recurrent states on disk (see RWKV in Wasm, Known limit); the save-your-code prompt and the abuse guard (see Identity and pairing).
 
 **Risks**
 

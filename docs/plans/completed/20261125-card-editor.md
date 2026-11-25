@@ -132,9 +132,9 @@ Mockups: https://claude.ai/artifact/2amCHokAgdXWZZynNPjzcV (layout A "Stacked"; 
 - [x] build, tests and smoke test pass
 
 ### Task 8: Documentation
-- [ ] `docs/design.md`: a "Card editor" section; picture timing; own notes in the data model
-- [ ] `CLAUDE.md`: layout and UX notes for the editor and the study pencil
-- [ ] move this plan to `docs/plans/completed/`
+- [x] `docs/design.md`: a "Card editor" section; picture timing; own notes in the data model
+- [x] `CLAUDE.md`: layout and UX notes for the editor and the study pencil
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-completion
 
