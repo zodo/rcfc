@@ -72,8 +72,8 @@ function cutPolygon(r: () => number): string {
 
 /**
  * Haptics through the Vibration API (Android). iPhones have none: iOS 26
- * gives a tap only when a finger flips a real switch checkbox, not when one
- * is clicked from code (`?haptics`, hapticsTest.ts, tried each way).
+ * gives a tap only when a finger taps a real switch checkbox, never one
+ * clicked from code, and a drag flips nothing, so no knock while dragging.
  */
 const PATTERN = { tick: 5, tap: 9, thud: 16, double: [10, 70, 12] };
 export function haptic(kind: keyof typeof PATTERN): void {

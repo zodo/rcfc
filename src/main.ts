@@ -32,7 +32,6 @@ async function boot() {
   root.appendChild(status);
   try {
     if (import.meta.env.DEV && (await (await import("./dev/hooks")).devHooks())) return;
-    if (new URLSearchParams(location.search).has("haptics")) return (await import("./ui/hapticsTest")).hapticsTest(root);
     const { store, info } = await Store.open({
       onProgress: (done, total) => {
         status.textContent = `Updating the memory model… ${Math.round((100 * done) / total)}%`;
