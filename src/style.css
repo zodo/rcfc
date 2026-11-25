@@ -839,6 +839,8 @@ header.top.sub .back svg {
   flex-direction: column;
   gap: 12px;
   padding: 20px;
+  overflow-y: auto; /* app.ts aboveKeyboard caps its height to what shows */
+  overscroll-behavior: contain;
   animation: sheet-in 0.22s ease-out;
 }
 .pile-sheet h2 {

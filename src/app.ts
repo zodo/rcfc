@@ -149,6 +149,29 @@ export function fullScreen(...children: Node[]): void {
 }
 
 /**
+ * Keeps a bottom sheet above the on-screen keyboard and within what shows.
+ * iOS (and Android Chrome by default) doesn't shrink the page for the
+ * keyboard, it covers it: a sheet fixed to the page's bottom lies under it.
+ * The visual viewport is what shows. Returns the stop.
+ */
+function aboveKeyboard(el: HTMLElement): () => void {
+  const vv = window.visualViewport;
+  if (!vv) return () => {};
+  const fit = () => {
+    const covered = Math.max(0, window.innerHeight - vv.offsetTop - vv.height);
+    el.style.bottom = covered > 1 ? `${covered + 12}px` : "";
+    el.style.maxHeight = `${vv.height - 24}px`;
+  };
+  fit();
+  vv.addEventListener("resize", fit);
+  vv.addEventListener("scroll", fit);
+  return () => {
+    vv.removeEventListener("resize", fit);
+    vv.removeEventListener("scroll", fit);
+  };
+}
+
+/**
  * A sheet of paper over the screen, with what can be done next. A tap
  * outside, Escape or the back gesture closes it. Returns close.
  */
@@ -158,6 +181,7 @@ export function sheet(label: string, title: string | Node, ...body: Body): () =>
   const remove = () => {
     backdrop.remove();
     el.remove();
+    unfit();
     document.removeEventListener("keydown", onKey);
   };
   const close = () => {
@@ -168,6 +192,7 @@ export function sheet(label: string, title: string | Node, ...body: Body): () =>
   backdrop.addEventListener("click", close);
   document.addEventListener("keydown", onKey);
   app.root.append(backdrop, el);
+  const unfit = aboveKeyboard(el);
   const release = hold(remove);
   (el.querySelector("input, button") as HTMLElement | null)?.focus();
   return close;
