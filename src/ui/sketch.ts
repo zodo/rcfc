@@ -68,6 +68,8 @@ export class SketchNote {
   /** Its own clock: runs only while it has the pencil. */
   private clock = 0;
   private lastFrame = 0;
+  /** After the other pencil leaves: not before it has lifted off (real time). */
+  private resumeAt = 0;
 
   constructor(private yieldTo?: () => boolean) {
     this.senseEl = document.createElement("span");
@@ -182,11 +184,13 @@ export class SketchNote {
     const dt = this.lastFrame ? Math.min(100, real - this.lastFrame) : 0;
     this.lastFrame = real;
     if (this.yieldTo?.()) {
-      // The other pencil is on the card: this one waits off it.
+      // The other pencil is on the card: this one waits off it, until that one has lifted off.
       this.stopDoodle();
       if (this.pen) this.lift();
+      this.resumeAt = real + 260;
       return;
     }
+    if (real < this.resumeAt) return;
     const now = (this.clock += dt) + 1;
     this.started ||= now;
     const all = this.all();
