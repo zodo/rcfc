@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "bun:test";
 import { parseCsv } from "../src/import/csv";
-import { IMPORT_HEADER, importEvents, importPrompt, intervalStatus, langCode, planImport, readDate, readImport, readStatus, scriptLang } from "../src/import/anything";
+import { fileLang, IMPORT_HEADER, importEvents, importPrompt, intervalStatus, langCode, planImport, readDate, readImport, readStatus, scriptLang } from "../src/import/anything";
 import { EventFactory } from "../src/domain/collection";
 import type { NoteCreated } from "../src/domain/events";
 import { Device } from "./support/harness";
@@ -128,6 +128,22 @@ describe("readImport: more than the prompt asks for", () => {
       ["la cuenta", "La cuenta, por favor.", Date.parse("2026-03-05T10:00:00Z")],
       ["aprovechar", "", Date.parse("2026-03-01T10:00:00Z")],
     ]);
+  });
+
+  it("reads a raw Duocards export: its language from the file name, its dates as the order", () => {
+    expect(fileLang("duo_cards_es_export.csv")).toBe("es");
+    expect(fileLang("duocards_de_export (1).csv")).toBe("de");
+    expect(fileLang("Spanish words.csv")).toBe("es");
+    expect(fileLang("export.csv")).toBeUndefined();
+    const read = readImport(fixture("duocards_es_export.csv"));
+    const plan = planImport(read, [{ fields: { front: "hola", back: "hello" }, lang_pair: ES_EN }], { from: fileLang("duocards_es_export.csv")!, to: "en" });
+    expect(plan.ready.map((r) => r.word)).toEqual(["too", "enrollarse", "ya", 'decir "hola"', "el columpio", "ponerse las pilas", "la torre", "sin fecha"]);
+    expect(plan.skipped.map((x) => [x.word, x.reason])).toEqual([["Ya", "repeated"], ["hola", "exists"]]);
+    expect(plan.errors).toEqual([{ line: 10, message: "no word" }]);
+    const byWord = Object.fromEntries(plan.ready.map((r) => [r.word, r]));
+    expect(byWord["el columpio"].example).toBe("Los niños\njuegan en el columpio.");
+    expect(byWord["ponerse las pilas"]).toMatchObject({ translation: "get energized, get to work", example: "¡Ponte las pilas!", created: Date.parse("2026-06-03T21:00:00.000Z"), pair: ES_EN });
+    expect(byWord["sin fecha"].created).toBeUndefined();
   });
 
   it("ends an unfenced table at the blank line before the chat text", () => {

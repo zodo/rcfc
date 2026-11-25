@@ -637,6 +637,12 @@ async function run(s: Browser, url: string) {
   await s.click("button.link", "Import from anything");
   await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ${JSON.stringify(reply)}; t.dispatchEvent(new Event("input"));`);
   await s.until("nothing new", `document.querySelector(".import-preview")?.textContent.includes("3 already in your words") && document.querySelector(".import-preview button.primary")?.disabled`);
+  log("a raw Duocards export picked as a file: its language from the file name");
+  await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ""; t.dispatchEvent(new Event("input"));`);
+  const { root } = await s.send<{ root: { nodeId: number } }>("DOM.getDocument", {});
+  const { nodeId } = await s.send<{ nodeId: number }>("DOM.querySelector", { nodeId: root.nodeId, selector: "input[type=file]" });
+  await s.send("DOM.setFileInputFiles", { nodeId, files: [new URL("../test/fixtures/import/duocards_es_export.csv", import.meta.url).pathname] });
+  await s.until("Duocards preview in Spanish", `document.querySelector(".import-paste").value.includes("front,back,hint") && document.querySelector(".import-preview select[name=from]")?.value === "es" && document.querySelector(".import-groups")?.textContent.startsWith("Spanish → English")`);
   await s.click("button[aria-label=Back]");
   await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
 

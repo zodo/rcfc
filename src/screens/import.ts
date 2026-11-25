@@ -1,7 +1,7 @@
 // Import from anything (docs/design.md "Import from anything"): copy a prompt
 // for an AI chat, paste its answer (or pick a file), see what comes in, add it.
 import { app, go, requestPersistence, subPage } from "../app";
-import { importPrompt, planImport, readImport, scriptLang, type ImportPlan, type ReadResult } from "../import/anything";
+import { fileLang, importPrompt, planImport, readImport, scriptLang, type ImportPlan, type ReadResult } from "../import/anything";
 import { labelPile } from "../domain/labels";
 import { append, clear, h, LANGS, langName, langSelect, toast } from "../ui/h";
 import { deckFor, languages, lastLanguage, rememberLanguage, rememberTranslation, setOpenChip, translationFor } from "./languages";
@@ -65,11 +65,16 @@ export function importScreen(): void {
     if (!f) return;
     paste.value = await f.text();
     file.value = "";
+    // A Duocards export says its language only in its name.
+    named = fileLang(f.name);
+    pickers = null;
     update();
   });
 
   const box = h("div", {});
   let pickers: { from: HTMLSelectElement; to: HTMLSelectElement } | null = null;
+  /** The studied language the picked file's name gives. */
+  let named: string | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   paste.addEventListener("input", () => {
     clearTimeout(timer);
@@ -81,6 +86,7 @@ export function importScreen(): void {
     clear(box);
     if (!text.trim()) {
       pickers = null;
+      named = undefined;
       return;
     }
     const read = readImport(text);
@@ -100,7 +106,7 @@ export function importScreen(): void {
     }
     // Rows that don't name their languages take the pickers' (kept while the paste changes).
     if (!pickers) {
-      const from = scriptLang(read.rows.map((r) => r.word)) ?? lastLanguage() ?? "es";
+      const from = named ?? scriptLang(read.rows.map((r) => r.word)) ?? lastLanguage() ?? "es";
       pickers = { from: langSelect("from", from), to: langSelect("to", scriptLang(read.rows.map((r) => r.translation)) ?? translationFor(from)) };
       pickers.from.addEventListener("change", () => ((pickers!.to.value = translationFor(pickers!.from.value)), update()));
       pickers.to.addEventListener("change", update);

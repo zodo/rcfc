@@ -150,6 +150,17 @@ export function langCode(raw: string): string | undefined {
   return languageNames().get(squash(s)) ?? languageNames().get(squash(s.replace(/\(.*\)/, "")));
 }
 
+/**
+ * The studied language a file's name gives: Duocards names its export
+ * `duo_cards_es_export.csv`; others may say "spanish_words.csv".
+ */
+export function fileLang(name: string): string | undefined {
+  const duo = /duo_?cards_([a-z]{2,3}(?:-[a-z]{2,4})?)_export/i.exec(name)?.[1];
+  if (duo) return langCode(duo);
+  for (const part of name.replace(/\.[^.]*$/, "").split(/[^\p{L}]+/u)) if (part.length >= 4 && languageNames().has(squash(part))) return languageNames().get(squash(part));
+  return undefined;
+}
+
 // ---------------------------------------------------------------- status and dates
 
 const KNOWN_WORDS = new Set(["known", "know", "mastered", "learned", "learnt", "done", "yes", "y", "true", "1", "x", "✓", "✔", "fullygrown", "ja", "да", "sí", "si", "oui", "sì", "sim", "tak", "evet", "gelernt", "выучено", "выучил", "знаю", "conocida", "conocido", "sabida", "bekannt", "connu", "mature", "strong"]);
