@@ -289,6 +289,11 @@ class Table {
 
     /** Where the card is turning to, in degrees: every turn adds half a turn the same way. */
     let angle = 0;
+    /** Only the side lying up shows its pencil, and neither while turning: browsers draw a face-down side's pencil through the card. */
+    const settled = () => {
+      el.classList.remove("turning");
+      el.dataset.up = Math.round(angle / 180) % 2 ? "back" : "front";
+    };
 
     /** Turn the card over (towards `side`: 1 = to the right), from wherever a drag left it. */
     const doReveal = (side: 1 | -1 = 1) => {
@@ -298,7 +303,8 @@ class Table {
       el.classList.add("turned");
       f.answer.classList.remove("hidden");
       angle = side * 180;
-      turn.to(angle, { done: () => el.classList.add("noted") });
+      el.classList.add("turning");
+      turn.to(angle, { done: () => (el.classList.add("noted"), settled()) });
       this.controls.replaceChildren(ratings);
       if (!f.forward) f.say(); // the word side just came up
     };
@@ -308,7 +314,8 @@ class Table {
       if (!revealed || busy) return;
       haptic("tap");
       angle += Math.sign(angle) * 180;
-      turn.to(angle);
+      el.classList.add("turning");
+      turn.to(angle, { done: settled });
     };
 
     // Stamps ink in while dragging; the matching button rises.
@@ -515,6 +522,7 @@ class Table {
       f.answer.classList.remove("hidden");
       angle = 180;
       turn.set(angle);
+      settled();
       this.controls.replaceChildren(ratings);
       return;
     }

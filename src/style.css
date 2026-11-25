@@ -1118,9 +1118,6 @@ header.top.sub .back svg {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   overflow: hidden;
-  /* WebKit draws a side's positioned children (the edit pencil) through the card when it lies
-     face down; in 3D with their own hidden backface they turn away with it */
-  transform-style: preserve-3d;
 }
 .side.back {
   transform: rotateY(180deg);
@@ -1181,14 +1178,15 @@ header.top.sub .back svg {
   color: #8f978f;
   background: none;
   visibility: hidden;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
 }
 .edit-card svg {
   width: 18px;
   height: 18px;
 }
-.flashcard.turned .edit-card {
+/* only on the side lying up, once the card is still (study.ts settled): browsers draw a
+   face-down side's pencil through the card, mirrored */
+.flashcard.turned[data-up="front"]:not(.turning) .side.front .edit-card,
+.flashcard.turned[data-up="back"]:not(.turning) .side.back .edit-card {
   visibility: visible;
 }
 .flashcard.noted .note {
