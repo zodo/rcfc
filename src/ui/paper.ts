@@ -71,13 +71,35 @@ function cutPolygon(r: () => number): string {
 }
 
 /**
- * Haptics through the Vibration API (Android). iPhones have none; they get
- * nothing for now.
+ * Haptics: the Vibration API on Android. iPhones have none, but since iOS 18
+ * toggling a switch checkbox (`<input type="checkbox" switch>`) gives a light
+ * tap, also when its label is clicked from code: one kind of tap only, so a
+ * double is two. Whether it fires outside a touch (after a timeout) is up to
+ * WebKit; `?haptics` (hapticsTest.ts) tries each case on the phone.
  */
 const PATTERN = { tick: 5, tap: 9, thud: 16, double: [10, 70, 12] };
+const canVibrate = typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
+
+function switchTap(): void {
+  const label = document.createElement("label");
+  label.ariaHidden = "true";
+  label.style.display = "none";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.setAttribute("switch", "");
+  label.append(input);
+  document.head.append(label);
+  label.click();
+  label.remove();
+}
+
 export function haptic(kind: keyof typeof PATTERN): void {
   try {
-    navigator.vibrate?.(PATTERN[kind]);
+    if (canVibrate) navigator.vibrate(PATTERN[kind]);
+    else if (navigator.maxTouchPoints > 0) {
+      switchTap();
+      if (kind === "double") setTimeout(switchTap, 80);
+    }
   } catch {
     /* not allowed before the first tap */
   }
