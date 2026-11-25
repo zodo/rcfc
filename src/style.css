@@ -1085,16 +1085,39 @@ header.top.sub .back svg {
   pointer-events: none;
   will-change: opacity, translate;
 }
-.sh.rest {
-  box-shadow:
-    0 1px 1px rgb(var(--shadow) / 0.22),
-    0 3px 7px rgb(var(--shadow) / 0.18);
+/* Filled, not box-shadow: a box-shadow is empty inside its box, and when the
+   turning card moves its shadow down (turn.ts) that empty inside shows under
+   the card as the outline of a bigger one. Each layer is the card's shape,
+   offset and blurred as box-shadow "0 y b" would be (blur = b / 2). */
+.sh::before,
+.sh::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.sh.rest::before {
+  background: rgb(var(--shadow) / 0.22);
+  transform: translateY(1px);
+  filter: blur(0.5px);
+}
+.sh.rest::after {
+  background: rgb(var(--shadow) / 0.18);
+  transform: translateY(3px);
+  filter: blur(3.5px);
 }
 .sh.lift {
-  box-shadow:
-    0 6px 8px rgb(var(--shadow) / 0.16),
-    0 24px 44px rgb(var(--shadow) / 0.28);
   opacity: 0;
+}
+.sh.lift::before {
+  background: rgb(var(--shadow) / 0.16);
+  transform: translateY(6px);
+  filter: blur(4px);
+}
+.sh.lift::after {
+  background: rgb(var(--shadow) / 0.28);
+  transform: translateY(24px);
+  filter: blur(22px);
 }
 .flipper {
   position: absolute;
