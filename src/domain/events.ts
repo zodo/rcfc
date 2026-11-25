@@ -21,6 +21,10 @@ export interface NoteFields {
   back: string;
   /** Example sentence (Duocards calls it "hint"). */
   example?: string;
+  /** The user's own pencil note on the white side (studied language). */
+  memo_target?: string;
+  /** The user's own pencil note on the cream side (known language). */
+  memo_known?: string;
   [field: string]: string | undefined;
 }
 

@@ -78,11 +78,11 @@ Mockups: https://claude.ai/artifact/2amCHokAgdXWZZynNPjzcV (layout A "Stacked"; 
 ## Implementation steps
 
 ### Task 1: Duplicate rules and own notes
-- [ ] the duplicate rule: exact repeat (word + translation + language pair) and same word (word + language pair)
-- [ ] the two own-note fields on cards
-- [ ] what Add and Save write, worked out from a draft without the screen (used from task 3 on)
-- [ ] tests: exact repeat, same word with another translation, another language pair, deleted cards, the edited card itself; notes stored and edited; what Add/Save write for a few drafts
-- [ ] all tests pass
+- [x] the duplicate rule: exact repeat (word + translation + language pair) and same word (word + language pair)
+- [x] the two own-note fields on cards
+- [x] what Add and Save write, worked out from a draft without the screen (used from task 3 on)
+- [x] tests: exact repeat, same word with another translation, another language pair, deleted cards, the edited card itself; notes stored and edited; what Add/Save write for a few drafts
+- [x] all tests pass
 
 ### Task 2: Draft pictures
 - [ ] draw a picture for words that aren't a card yet, keep it on the device, hand it to Add/Save
