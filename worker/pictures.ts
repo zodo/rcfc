@@ -43,8 +43,8 @@ function parseRequest(body: unknown): PictureRequest | null {
   return { word, translation, example: str(b.example, MAX_FIELD), sense: str(b.sense, 100), details: str(b.details, MAX_DETAILS) };
 }
 
-/** Reserve neurons for one picture; false when today's cap would be exceeded. */
-async function reserve(db: SqlDb, day: string, cost: number, cap: number): Promise<boolean> {
+/** Reserve neurons for one AI call (pictures, fills); false when today's cap would be exceeded. */
+export async function reserve(db: SqlDb, day: string, cost: number, cap: number): Promise<boolean> {
   const [r] = await db.batch([
     db
       .prepare("INSERT INTO ai_budget (day, neurons) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET neurons = neurons + excluded.neurons WHERE neurons + excluded.neurons <= ?")
