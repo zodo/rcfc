@@ -37,13 +37,14 @@ export function hapticsTest(root: HTMLElement): void {
   ];
   const kept = makeSwitch("clear");
   document.body.append(kept);
-  const real = h("label", { style: "display:flex;gap:10px;align-items:center;font-size:18px" }, h("input", { type: "checkbox", switch: "" }), "A real switch: tap it yourself");
+  const real = h("label", { style: "display:flex;gap:10px;align-items:center;font-size:18px" }, h("input", { type: "checkbox", switch: true }), "A real switch: tap it yourself");
   root.replaceChildren(
     h(
       "section",
       { style: "display:flex;flex-direction:column;gap:14px;padding:18px" },
       h("p", {}, `navigator.vibrate: ${typeof navigator.vibrate === "function" ? "yes" : "no"}`),
       h("p", {}, navigator.userAgent),
+      h("p", {}, `switch supported: ${"switch" in HTMLInputElement.prototype ? "yes" : "no"}`),
       h("div", { class: "card-box" }, real),
       h("div", { class: "card-box" }, h("h2", {}, "Hidden switch, clicked from code"), ...variants.map(([name, fire]) => h("button", { class: "secondary", type: "button", onclick: fire }, name))),
       row("haptic(): on tap", (k) => haptic(k)),
