@@ -15,6 +15,8 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const LETTER_MS = 26;
 /** The meaning is written a little slower than the scene: it's the heading. */
 const SENSE_LETTER_MS = 70;
+/** Before the scene has come, the pencil rests this long after the meaning before it doodles (the scene is usually on its way). */
+const SCENE_GRACE_MS = 450;
 /** One run of three curls. */
 const CURLS_MS = 1140;
 const LINE = 23;
@@ -53,6 +55,8 @@ export class SketchNote {
   /** When the scene's first letters could be written (the sense done, the scene there). */
   private sceneFrom = 0;
   private frame = 0;
+  /** When everything that had arrived was written. */
+  private caughtUp = 0;
   private doodling: { stopped: boolean; anims: Animation[] } | undefined;
   private closed = false;
   private hurry = false;
@@ -176,6 +180,7 @@ export class SketchNote {
     }
     target = Math.min(target, all.length);
     if (this.written < target) {
+      this.caughtUp = 0;
       this.stopDoodle();
       while (this.written < target) all[this.written++].classList.add("on");
       const tip = this.tipOf(all[this.written - 1]);
@@ -185,6 +190,8 @@ export class SketchNote {
     } else if (this.written >= all.length) {
       // Everything that has arrived is written: doodle after it until there's more.
       this.hand && (this.hand.className = "ink-hand");
+      this.caughtUp ||= now;
+      if (!this.scene.length && now - this.caughtUp < SCENE_GRACE_MS) return;
       const last = all[this.written - 1];
       this.doodle(last ? this.tipOf(last) : { x: 18, y: 30 });
     }
