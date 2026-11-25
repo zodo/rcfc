@@ -1058,11 +1058,11 @@ header.top.sub .back svg {
   box-shadow:
     0 var(--thick) 0 var(--edge),
     0 calc(var(--thick) + 0.6px) 0 rgb(var(--shadow) / 0.25);
-  --edge: color-mix(in srgb, var(--card) 90%, rgb(var(--shadow)));
+  --edge: color-mix(in srgb, var(--card) 88%, rgb(var(--shadow)));
 }
 .under > .sheet.known {
   background-color: var(--card-known);
-  --edge: var(--edge-known);
+  --edge: color-mix(in srgb, var(--card-known) 88%, rgb(var(--shadow)));
 }
 .flashcard {
   touch-action: none;
@@ -1147,6 +1147,27 @@ header.top.sub .back svg {
   pointer-events: none;
   transform: rotateY(90deg);
 }
+/* a face's bottom edge, under it in its plane; its .shade darkens with the face's as it turns */
+.lip {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 100%;
+  height: var(--thick);
+  border-radius: 0 0 2px 2px;
+  background: color-mix(in srgb, var(--card) 88%, rgb(var(--shadow))); /* its face's stock, turned from the light */
+  box-shadow: 0 0.6px 0 rgb(var(--shadow) / 0.25);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  pointer-events: none;
+  transform: translateZ(calc(var(--thick) / 2));
+}
+.lip.known {
+  background: color-mix(in srgb, var(--card-known) 88%, rgb(var(--shadow)));
+}
+.lip.back {
+  transform: rotateY(180deg) translateZ(calc(var(--thick) / 2));
+}
 .rim.l {
   left: calc(var(--thick) / -2);
 }
@@ -1171,10 +1192,6 @@ header.top.sub .back svg {
   -webkit-backface-visibility: hidden;
   overflow: hidden;
   transform: translateZ(calc(var(--thick) / 2));
-  box-shadow:
-    0 var(--thick) 0 var(--edge),
-    0 calc(var(--thick) + 0.6px) 0 rgb(var(--shadow) / 0.25);
-  --edge: color-mix(in srgb, var(--card) 90%, rgb(var(--shadow)));
 }
 .side.back {
   transform: rotateY(180deg) translateZ(calc(var(--thick) / 2));
@@ -1183,7 +1200,6 @@ header.top.sub .back svg {
 }
 .side.known {
   background-color: var(--card-known);
-  --edge: var(--edge-known);
 }
 /* pencil notes at the edges of the back, until the throws are learnt (study.ts LEARN) */
 .note {

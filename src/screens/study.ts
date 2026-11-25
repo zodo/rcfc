@@ -246,7 +246,9 @@ class Table {
     const shRest = h("div", { class: "sh rest", "data-light": "0.6" });
     const shLift = h("div", { class: "sh lift", "data-light": "1.7" });
     const shadow = h("div", { class: "shs" }, shRest, shLift);
-    const flipper = h("div", { class: "flipper" }, f.front, f.back, h("div", { class: "rim l" }), h("div", { class: "rim r" }));
+    // Each face's bottom edge, shaded with it while it turns.
+    const lip = (geom: "front" | "back", side: HTMLElement) => h("div", { class: `lip ${geom}${side.classList.contains("known") ? " known" : ""}` }, h("div", { class: "shade" }));
+    const flipper = h("div", { class: "flipper" }, f.front, f.back, lip("front", f.front), lip("back", f.back), h("div", { class: "rim l" }), h("div", { class: "rim r" }));
     const stamps = { good: h("div", { class: "stamp good" }, "got it"), again: h("div", { class: "stamp again" }, "again"), easy: h("div", { class: "stamp easy" }, "easy") };
     const el = h("div", { class: "flashcard" }, shadow, flipper, stamps.good, stamps.again, stamps.easy);
     el.style.zIndex = "20";
