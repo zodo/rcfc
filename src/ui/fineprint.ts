@@ -123,8 +123,9 @@ function reveal(pg: HTMLElement, seen = SEEN): void {
  * Chrome keeps a `will-change: transform` layer rasterized at the largest
  * scale it was drawn at, so after the zoom the pile's cards, shadows and
  * buttons stay rasterized 1/K times over: on a phone that overruns the GPU's
- * tile memory, and the card comes back laggy with tiles missing. Without
- * will-change for a frame they are rasterized afresh at their real size.
+ * tile memory, and the card comes back laggy with tiles missing. Hinted
+ * for opacity instead for a moment, they stay layers but are rasterized
+ * afresh at their real size.
  */
 function relayer(screen: HTMLElement): void {
   screen.classList.add("relayer");
