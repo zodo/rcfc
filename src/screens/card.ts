@@ -4,7 +4,7 @@
 // The picture draws itself once both words are in and typing pauses.
 // Nothing is written until Add or Save (src/domain/cards.ts turns the draft
 // into events); a picture still drawing then follows the card.
-import { app, back as goBack, go, sheet, subPage } from "../app";
+import { app, back as goBack, go, hold, sheet, subPage } from "../app";
 import { addEvents, draftOf, duplicates, MEMO_KNOWN, MEMO_TARGET, saveEvents, type CardDraft, type DraftPicture } from "../domain/cards";
 import type { Note } from "../domain/collection";
 import type { NoteDeleted } from "../domain/events";
@@ -46,7 +46,12 @@ const QUEUE_TEXT: Record<PicState, string> = {
   failed: "the picture couldn't be drawn",
 };
 
-function open(note?: Note): void {
+/**
+ * `over`: this editor lies on top of another card being filled in (opened
+ * from its "you already have" note or its added list); leaving it puts that
+ * card back as it was left, instead of going back in history.
+ */
+function open(note?: Note, over?: { leave: () => void }): void {
   const { store, pictures } = app;
   const editing = !!note;
   let from = note?.lang_pair.from ?? lastLanguage();
@@ -227,12 +232,16 @@ function open(note?: Note): void {
   // ---- duplicates: told as soon as typing pauses ----
   const checkDup = () => {
     const d = duplicates(store.col.liveNotes(), { front: front.value, back: back.value, lang_pair: { from: from!, to } }, note?.id);
-    const link = (n: Note) => h("button", { type: "button", class: "link", onclick: () => go.edit(n.id) }, `${n.fields.front} · ${n.fields.back}`);
+    const link = (n: Note) => h("button", { type: "button", class: "link", onclick: () => openOver(n.id) }, `${n.fields.front} · ${n.fields.back}`);
+    const said = d.exact ? `=${d.exact.id}:${d.exact.fields.back}` : d.sameWord.map((n) => `${n.id}:${n.fields.back}`).join();
+    if (said === dupSaid) return d; // the same note: left as it is, a tap on its link may be under way
+    dupSaid = said;
     if (d.exact) dupNote.replaceChildren("this card is already in your words: ", link(d.exact));
     else if (d.sameWord.length) dupNote.replaceChildren("you already have ", link(d.sameWord[0]), d.sameWord.length > 1 ? ` and ${d.sameWord.length - 1} more` : "");
     else dupNote.replaceChildren();
     return d;
   };
+  let dupSaid = "";
 
   // ---- the arrow notes follow what is filled in ----
   const update = () => {
@@ -339,6 +348,7 @@ function open(note?: Note): void {
     drawnFor = details = "";
     removed = detailsOpen = false;
     dupNote.replaceChildren();
+    dupSaid = "";
     update();
     renderPic();
     renderStickers();
@@ -368,7 +378,38 @@ function open(note?: Note): void {
 
   const leave = () => {
     sketcher.cancel();
-    goBack();
+    if (over) over.leave();
+    else goBack();
+  };
+
+  /** While another card is open on top of this one: kept whole, put back when that one is left. */
+  let parked = false;
+  /** Open a saved card on top of this one; back (button, gesture, Save, Delete) returns here, nothing lost. */
+  const openOver = (id: EntityId) => {
+    const n = store.col.liveNote(id);
+    if (!n || busy) return;
+    clearTimeout(timer);
+    const saved = [...app.root.childNodes];
+    const scroll = window.scrollY;
+    parked = true;
+    const putBack = () => {
+      parked = false;
+      app.root.replaceChildren(...saved);
+      window.scrollTo(0, scroll);
+      update();
+      checkDup();
+      renderStickers();
+      renderPic();
+      renderAdded();
+    };
+    let release = () => {};
+    open(n, {
+      leave: () => {
+        release();
+        putBack();
+      },
+    });
+    release = hold(putBack); // the back gesture
   };
 
   // ---- cards added this sitting ----
@@ -380,7 +421,7 @@ function open(note?: Note): void {
       return [
         h(
           "button",
-          { type: "button", class: "ed-added-row", onclick: () => go.edit(id) },
+          { type: "button", class: "ed-added-row", onclick: () => openOver(id) },
           n.picture ? cutout(n.picture.key) : h("span", { class: `ed-added-pic${pictures.state(id) ? " busy" : ""}` }),
           h("span", { class: "ed-added-word", lang: n.lang_pair.from }, n.fields.front),
           h("span", { class: "ed-added-trans", lang: n.lang_pair.to }, n.fields.back),
@@ -419,6 +460,7 @@ function open(note?: Note): void {
 
   // Pictures arriving (the queue, a drawing adopted after Add) redraw what shows them.
   const off = pictures.subscribe((id) => {
+    if (parked) return;
     if (!root.isConnected) return off();
     if (note && id === note.id) {
       // The queue's picture arrived while the card is open: show it, unless one was drawn here.
