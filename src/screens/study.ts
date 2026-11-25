@@ -476,7 +476,7 @@ class Table {
           body.unpivot();
           Object.assign(body, body.home, { lift: 0, s: 1 });
           body.render();
-          zoomInto(fine, this.el, body.home.r);
+          zoomInto(fine, body.home.r);
         }
         else if (revealed) turnAgain();
         else doReveal();

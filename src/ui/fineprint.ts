@@ -120,40 +120,43 @@ function reveal(pg: HTMLElement, seen = SEEN): void {
 }
 
 /**
- * Chrome keeps a `will-change: transform` layer rasterized at the largest
- * scale it was drawn at, so after the zoom the pile's cards, shadows and
- * buttons stay rasterized 1/K times over: on a phone that overruns the GPU's
- * tile memory, and the card comes back laggy with tiles missing. Hinted
- * for opacity instead for a moment, they stay layers but are rasterized
- * afresh at their real size.
+ * Zoom into `fine` until it reads, then show the page. `cardTilt` is the
+ * card's rotation in degrees (the camera turns with it, so the page comes out
+ * straight).
+ *
+ * What zooms is a copy of the card (pose, pencil notes and all) laid over
+ * it; the study screen itself never moves. Scaling the screen 1/K times made Chrome on
+ * Android rasterize its many layers (pile, shadows, buttons) at that scale:
+ * past the GPU's tile memory, with missing tiles and flashes on the way back.
  */
-function relayer(screen: HTMLElement): void {
-  screen.classList.add("relayer");
-  requestAnimationFrame(() => requestAnimationFrame(() => screen.classList.remove("relayer")));
-}
-
-/**
- * Zoom into `fine` until it reads, then show the page. `screen` is the whole
- * study screen (the camera moves over it), `cardTilt` the card's rotation in
- * degrees (the camera turns with it, so the page comes out straight).
- */
-export function zoomInto(fine: HTMLElement, screen: HTMLElement, cardTilt: number): void {
+export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   const what = shown.get(fine);
-  if (open || !what) return;
+  const card = fine.closest<HTMLElement>(".flashcard");
+  const side = fine.closest<HTMLElement>(".side");
+  const pile = card?.offsetParent;
+  if (open || !what || !card || !side || !pile) return;
   open = true;
-  const clip = fine.querySelector<HTMLElement>(".fine-clip")!;
+  // The copy: the card with its own transforms, in a box where the pile is.
+  const pb = pile.getBoundingClientRect();
+  const mid = { x: pb.left + pb.width / 2, y: pb.top + pb.height / 2 };
+  const copy = card.cloneNode(true) as HTMLElement;
+  const copyFine = [...copy.querySelectorAll<HTMLElement>(".fine")][[...card.querySelectorAll(".fine")].indexOf(fine)];
+  const stand = h("div", { class: "sum-stand", "aria-hidden": "true" }, copy);
+  Object.assign(stand.style, { left: `${pb.left}px`, top: `${pb.top}px`, width: `${pb.width}px`, height: `${pb.height}px` });
+  const clip = copyFine.querySelector<HTMLElement>(".fine-clip")!;
   const S = 1 / K;
-  const r = clip.getBoundingClientRect();
+  const r = fine.querySelector(".fine-clip")!.getBoundingClientRect();
   const c = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   // The tiny print's centre lands where the page's top shows in the view.
   const t = { x: window.innerWidth / 2, y: PAGE_TOP + (SHOWN * K) / K / 2 };
-  // Around the screen's own transform origin: its centre.
-  const box = screen.getBoundingClientRect();
-  const cx = c.x - (box.left + box.width / 2), cy = c.y - (box.top + box.height / 2);
+  // Around the box's own transform origin: its centre.
+  const cx = c.x - mid.x, cy = c.y - mid.y;
   const step = (dx: number, dy: number, a: number, s: number) => `translate(${dx}px,${dy}px) translate(${cx}px,${cy}px) rotate(${a}deg) scale(${s}) translate(${-cx}px,${-cy}px)`;
-  document.documentElement.classList.add("sum-zoom"); // the zoomed screen must not make the page scroll
+  document.documentElement.classList.add("sum-zoom"); // the zoomed copy must not make the page scroll
+  const atRest = step(0, 0, 0, 1);
   const zoomedIn = step(t.x - c.x, t.y - c.y, -cardTilt, S);
-  const anim = screen.animate([{ transform: step(0, 0, 0, 1) }, { transform: zoomedIn }], { ...ZOOM, fill: "forwards" });
+  document.body.append(stand);
+  const anim = stand.animate([{ transform: atRest }, { transform: zoomedIn }], { ...ZOOM, fill: "forwards" });
   const ink = clip.animate([{ opacity: FAINT }, { opacity: 1 }], { ...ZOOM, fill: "forwards" });
 
   const scroller = h("div", { class: "sum-scroll" });
@@ -163,6 +166,7 @@ export function zoomInto(fine: HTMLElement, screen: HTMLElement, cardTilt: numbe
   let pg = page(what.note, what.summary, what.lang);
   const sheet = h("div", { class: "sum-sheet" }, pg);
   sheet.style.backgroundSize = `${192 * S}px`; // the grain as big as on the zoomed card
+  sheet.style.backgroundColor = getComputedStyle(side).backgroundColor; // its paper, white or cream
   scroller.append(sheet);
   view.append(backBtn);
   // The other language: the notes written in it, from now on for this studied language.
@@ -183,7 +187,8 @@ export function zoomInto(fine: HTMLElement, screen: HTMLElement, cardTilt: numbe
         return;
       }
       app.summaries.setLang(what.note, want);
-      print(fine, what.note, s, want); // the card's tiny print too, for zooming out onto it
+      print(fine, what.note, s, want); // the card's tiny print too, and the copy's, for zooming out onto it
+      print(copyFine, what.note, s, want);
       Object.assign(what, { summary: s, lang: want });
       const fresh = page(what.note, s, want);
       pg.replaceWith(fresh);
@@ -202,8 +207,8 @@ export function zoomInto(fine: HTMLElement, screen: HTMLElement, cardTilt: numbe
     document.removeEventListener("keydown", onKey);
     const done = () => {
       document.documentElement.classList.remove("sum-zoom");
+      stand.remove();
       open = false;
-      relayer(screen);
     };
     if (anim.playState === "running") {
       // Closed while still zooming in: back the way it came.
@@ -217,8 +222,8 @@ export function zoomInto(fine: HTMLElement, screen: HTMLElement, cardTilt: numbe
     if (scroller.scrollTop > 4) view.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: "forwards" }).onfinish = () => view.remove();
     else view.remove();
     // Its own curve, not the zoom-in played backwards (that starts slow and stops hard):
-    // off at once, settling softly onto the table.
-    const back = screen.animate([{ transform: zoomedIn }, { transform: step(0, 0, 0, 1) }], ZOOM_OUT);
+    // off at once, settling softly onto the table. The copy stayed under the page, drawn.
+    const back = stand.animate([{ transform: zoomedIn }, { transform: step(0, 0, 0, 1) }], ZOOM_OUT);
     clip.animate([{ opacity: 1 }, { opacity: FAINT }], ZOOM_OUT);
     anim.cancel();
     ink.cancel();

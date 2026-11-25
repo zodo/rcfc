@@ -2205,10 +2205,11 @@ html.sum-zoom body {
   overflow: hidden;
 }
 /* the tap target: the tiny print and paper around it */
-/* a moment without the transform hint after zooming out, so they're rasterized at 1x again (fineprint.ts relayer);
-   still layers (opacity), so nothing is merged and split again: each keeps its old tiles until the new ones are drawn */
-.relayer :is(.glow, .under, .flashcard, .shs, .sh, .stamp, .rate) {
-  will-change: opacity !important;
+/* the copy of the card that zooms (fineprint.ts zoomInto), over the card, under the page */
+.sum-stand {
+  position: fixed;
+  z-index: 49;
+  pointer-events: none;
 }
 .fine {
   flex-shrink: 0;
