@@ -99,7 +99,7 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 
 - `src/domain/summary.ts` (prompt, parsing, keys) → `POST /api/summary {from,to,in,word,translation}` (`worker/summary.ts`): DeepSeek V4.1 Flash (`SUMMARY_MODEL`, thinking off, json_schema), ~100 neurons from the pictures' `ai_budget`, kept in R2 `summary/<sha256>.json` keyed by `SUMMARY_VERSION` + model + pair + `in` + words: bump `SUMMARY_VERSION` when the prompt changes. Outside production a request may pass `model`. Local dev: `devSummary` placeholders.
 - Client (`src/summaries.ts`): not events. Downloaded with the pictures' `AHEAD` cards (Dexie `sum_blobs`, per device), else asked for when the card shows; 429 pauses until the reset. Written in the studied language unless switched on the zoomed page (localStorage `rcfc:notes-in:<from>`).
-- Study (`src/ui/fineprint.ts`): tiny print (the page scaled by `K`) on the answer side; the zoom moves `.study` (transform only) and swaps to `.sum-view`, laid exactly over it.
+- Study (`src/ui/fineprint.ts`): tiny print (the page scaled by `K`) on the answer side; the zoom moves a copy of the card (`.sum-stand`, transform only), never `.study`: scaling the screen's ~30 layers 6.25x left Android Chrome with missing tiles and flashes; then swaps to `.sum-view`, laid exactly over it.
 
 ## Speech notes
 
