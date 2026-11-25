@@ -57,3 +57,6 @@ export function langSelect(name: string, value: string): HTMLSelectElement {
   for (const c of codes) s.appendChild(h("option", { value: c, selected: c === value }, langName(c)));
   return s;
 }
+
+/** The speak button's icon. */
+export const ICON_SPEAK = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5c1.3 1 2 2.2 2 3.5s-.7 2.5-2 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';

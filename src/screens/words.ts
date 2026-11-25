@@ -13,7 +13,7 @@ import { KNOWN_HORIZON_MS, wordStatus } from "../domain/scheduler";
 import { append, clear, h, langName, toast } from "../ui/h";
 import { pictureEditor } from "../ui/picture";
 import { editSticker, languageForm, languages, openChip, rememberLanguage, setOpenChip, takeEditNext } from "./languages";
-import { newStickerSheet, paint, pencilSheet, stickersSheet, stickerTag } from "./stickers";
+import { newStickerSheet, paint, pencilSheet, stickersSheet, stickerTag, wordsTarget } from "./stickers";
 
 /** Rows added at a time as the list scrolls into view. */
 const CHUNK = 150;
@@ -69,7 +69,7 @@ export function words(): void {
     });
     return b;
   };
-  const stickBtn = btn("Stickers", "secondary sticker-btn", async () => stickersSheet([...selected], () => (labelId !== undefined ? rebuild() : undefined)));
+  const stickBtn = btn("Stickers", "secondary sticker-btn", async () => stickersSheet(wordsTarget([...selected]), () => (labelId !== undefined ? rebuild() : undefined)));
   const knowBtn = btn("I know", "primary", async () => {
     const n = await store.markKnown([...selected]);
     toast(`${plural(n, "word")} marked as known`);
@@ -345,7 +345,7 @@ export function edit(noteId: EntityId): void {
           ),
         ),
       ),
-      h("button", { class: "chip new-sticker small", type: "button", onclick: () => stickersSheet([n.id], renderTags) }, "+ Sticker"),
+      h("button", { class: "chip new-sticker small", type: "button", onclick: () => stickersSheet(wordsTarget([n.id]), renderTags) }, "+ Sticker"),
     );
   renderTags();
   subPage(

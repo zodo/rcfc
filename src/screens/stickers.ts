@@ -68,19 +68,40 @@ export function newStickerSheet(made: (id: EntityId) => void): void {
   );
 }
 
+/** What the Stickers sheet sticks stickers on: saved words, or a card still being filled in. */
+export interface StickerTarget {
+  /** How many words (a card being filled in is one). */
+  count: number;
+  /** How many of them wear this sticker. */
+  wearing(labelId: EntityId): number;
+  /** Stick it on all of them, or peel it off all. */
+  set(labelId: EntityId, on: boolean): Promise<void> | void;
+}
+
+/** Saved words: every tap is written at once. */
+export function wordsTarget(noteIds: EntityId[]): StickerTarget {
+  const { store } = app;
+  return {
+    count: noteIds.length,
+    wearing: (id) => noteIds.filter((n) => store.col.wears(n, id)).length,
+    set: (id, on) => store.stick(id, noteIds, on),
+  };
+}
+
 /**
  * Stickers on these words: every sticker with a box on for all of them, half
  * for some, off for none. A tap sticks it on all or peels it off all, at once.
- * A name typed makes a new one, stuck on all.
+ * A name typed makes a new one (at once, like in Words), stuck on all.
  */
-export function stickersSheet(noteIds: EntityId[], changed: () => void): void {
+export function stickersSheet(target: StickerTarget, changed: () => void): void {
   const { store } = app;
+  const n = target.count;
   const rows = h("div", { class: "sticker-rows" });
   const render = () => {
     rows.replaceChildren(
       ...store.col.liveLabels().map((l) => {
-        const on = noteIds.filter((id) => store.col.wears(id, l.id)).length;
-        const state = on === 0 ? "none" : on === noteIds.length ? "all" : "some";
+        const on = target.wearing(l.id);
+        const state = on === 0 ? "none" : on === n ? "all" : "some";
         return h(
           "button",
           {
@@ -90,14 +111,14 @@ export function stickersSheet(noteIds: EntityId[], changed: () => void): void {
             "aria-checked": state === "all" ? "true" : state === "some" ? "mixed" : "false",
             onclick: () =>
               saving(async () => {
-                await store.stick(l.id, noteIds, state !== "all");
+                await target.set(l.id, state !== "all");
                 render();
                 changed();
               }),
           },
           h("span", { class: `box ${state}`, "aria-hidden": "true" }),
           stickerTag(l),
-          state === "some" ? h("span", { class: "n small" }, `${on} of ${noteIds.length}`) : null,
+          state === "some" ? h("span", { class: "n small" }, `${on} of ${n}`) : null,
         );
       }),
     );
@@ -110,7 +131,7 @@ export function stickersSheet(noteIds: EntityId[], changed: () => void): void {
   const add = h("button", { class: "secondary", type: "submit" }, "Stick");
   const close = sheet(
     "Stickers",
-    noteIds.length === 1 ? "Stickers" : `Stickers for ${plural(noteIds.length, "word")}`,
+    n === 1 ? "Stickers" : `Stickers for ${plural(n, "word")}`,
     rows,
     h(
       "form",
@@ -121,7 +142,7 @@ export function stickersSheet(noteIds: EntityId[], changed: () => void): void {
           if (!labelName(name.value)) return;
           void saving(async () => {
             const id = await store.makeLabel(name.value);
-            await store.stick(id, noteIds, true);
+            await target.set(id, true);
             name.value = "";
             render();
             changed();

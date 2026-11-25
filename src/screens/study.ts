@@ -18,7 +18,7 @@ import type { Draw } from "../domain/piles";
 import { AHEAD } from "../pictures";
 import { StudySession } from "../session";
 import { Body, type Pose } from "../ui/body";
-import { h, toast } from "../ui/h";
+import { h, ICON_SPEAK, toast } from "../ui/h";
 import { relight, startTilt, tiltNeedsTap } from "../ui/light";
 import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
@@ -64,7 +64,6 @@ function threw(dir: Dir): void {
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 const ICON_CLOSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
-const ICON_SPEAK = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5c1.3 1 2 2.2 2 3.5s-.7 2.5-2 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
 /** Study a pile: a sticker's (`label:7`), or a language's ("es"; default: the last one studied). */
 export async function study(want?: string): Promise<void> {

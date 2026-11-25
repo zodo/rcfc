@@ -227,6 +227,9 @@ async function answerUntilDone(s: Browser, max: number): Promise<number> {
   return n;
 }
 
+/** A pencil note's words as read, without the options of the picker lying in it. */
+const noteText = (css: string) => `(() => { const c = document.querySelector(${JSON.stringify(css)})?.cloneNode(true); c?.querySelectorAll("select").forEach((x) => x.remove()); return c?.textContent; })()`;
+
 const words = (s: Browser) => s.js<number>(`return document.querySelectorAll(".list button.word").length;`);
 
 async function run(s: Browser, url: string) {
@@ -238,22 +241,29 @@ async function run(s: Browser, url: string) {
   await s.click("button", "Start");
   await s.until("Add: Spanish", `document.querySelector("select[name=language]")?.selectedOptions[0]?.textContent === "Spanish"`);
 
-  log("add two words");
-  for (const [front, back] of [["hola", "hello"], ["adiós", "goodbye"]]) {
-    await s.type("input[name=front]", front);
-    await s.type("input[name=back]", back);
-    if (front === "adiós") await s.type("textarea[name=example]", "¡Adiós, amigo!");
-    await s.click("button[type=submit]", "Add");
-    await s.until(`toast for ${front}`, `document.getElementById("toast")?.textContent === 'Added "${front}"'`);
-  }
-  log("the last word's picture is drawn on the add screen");
-  await s.until("picture", `document.querySelector(".last-added .pic img")?.src.startsWith("blob:") && document.querySelector(".last-added .pic img").naturalWidth > 0`, 90_000);
-  await s.until("picture sense", `document.querySelector(".last-added .pic-status")?.textContent.startsWith("Shows: ")`);
-  await shot(s, "add-picture");
+  log("a blank card: pencil notes point at its places, the languages in them");
+  await s.until("arrow notes", `${noteText(".ed-note-word")} === "the Spanish word goes here" && ${noteText(".ed-note-trans")} === "its English translation goes here"`);
+  await shot(s, "add-blank");
+
+  log("add two cards; the second one's picture draws itself on the card before Add");
+  const addedRow = (front: string) => `[...document.querySelectorAll(".ed-added-word")].some((e) => e.textContent === ${JSON.stringify(front)})`;
   await s.type("input[name=front]", "hola");
   await s.type("input[name=back]", "hello");
-  await s.click("button[type=submit]", "Add");
-  await s.until("duplicate hint", `document.body.textContent.includes('"hola" is already in your words.')`);
+  await s.click("button.ed-add", "Add");
+  await s.until("hola added", addedRow("hola"));
+  await s.until("a fresh card", `document.querySelector("input[name=front]").value === "" && document.activeElement?.name === "front"`);
+  await s.type("input[name=front]", "adiós");
+  await s.type("input[name=back]", "goodbye");
+  await s.type("input[name=example]", "¡Adiós, amigo!"); // leaving the translation starts the drawing
+  await s.until("picture on the card", `document.querySelector(".ed-pic .pic img")?.src.startsWith("blob:") && document.querySelector(".ed-pic .pic img").naturalWidth > 0`, 90_000);
+  await shot(s, "add-picture");
+  await s.click("button.ed-add", "Add");
+  await s.until("adiós added with its picture", `${addedRow("adiós")} && document.querySelector(".ed-added-row .pic img")`);
+  await s.type("input[name=front]", "hola");
+  await s.type("input[name=back]", "hello");
+  await s.until("told before Add", `document.querySelector(".ed-dup")?.textContent.startsWith("this card is already in your words")`);
+  await s.click("button.ed-add", "Add");
+  await s.until("duplicate refused", `document.querySelector(".ed-hint")?.textContent === "This card is already in your words."`);
   await s.click("button[aria-label=Back]");
   await s.until("2 words listed", `document.querySelectorAll(".list button.word").length === 2`);
 
@@ -405,24 +415,26 @@ async function run(s: Browser, url: string) {
   if (await s.js<boolean>(`return !!document.querySelector(".lang-chips");`)) throw new Error("language chips with one language");
   await s.click("button[aria-label='Add a word']");
   await s.until("Add", `document.querySelector("select[name=language]")`);
+  await s.type("input[name=front]", "der");
   await s.js(`const l = document.querySelector("select[name=language]"); l.value = "new"; l.dispatchEvent(new Event("change"));`);
-  await s.until("Add a language", `document.querySelector("header.top h1")?.textContent === "Add a language"`);
-  await s.js(`const l = document.querySelector("select[name=from]"); l.value = "de"; l.dispatchEvent(new Event("change"));`);
-  await s.click("button[type=submit]", "Add a word");
-  await s.until("Add: German", `document.querySelector("select[name=language]")?.selectedOptions[0]?.textContent === "German"`);
+  await s.until("Add a language", `document.querySelector(".pile-sheet h2")?.textContent === "Add a language"`);
+  await s.js(`const l = document.querySelector(".pile-sheet select[name=from]"); l.value = "de"; l.dispatchEvent(new Event("change"));`);
+  await s.click(".pile-sheet button[type=submit]", "Use it");
+  await s.until("German, what was typed kept", `document.querySelector("select[name=language]")?.selectedOptions[0]?.textContent === "German" && document.querySelector("input[name=front]").value === "der" && !document.querySelector(".pile-sheet")`);
   await shot(s, "add-language");
   await s.type("input[name=front]", "der Schlüssel");
   await s.type("input[name=back]", "key");
-  await s.click("button[type=submit]", "Add");
-  await s.until("toast", `document.getElementById("toast")?.textContent === 'Added "der Schlüssel"'`);
+  await s.click("button.ed-add", "Add");
+  await s.until("der Schlüssel added", addedRow("der Schlüssel"));
   log("a Spanish word translated into Russian joins the Spanish pile");
   await s.js(`const l = document.querySelector("select[name=language]"); l.value = "es"; l.dispatchEvent(new Event("change"));`);
-  await s.until("Add: Spanish", `document.querySelector("select[name=language]")?.value === "es" && document.querySelector("select[name=to]")?.value === "en"`);
+  await s.until("Spanish into English", `document.querySelector("select[name=language]")?.value === "es" && document.querySelector("select[name=to]")?.value === "en"`);
   await s.js(`const t = document.querySelector("select[name=to]"); t.value = "ru"; t.dispatchEvent(new Event("change"));`);
+  await s.until("its Russian translation", `${noteText(".ed-note-trans")} === "its Russian translation goes here"`);
   await s.type("input[name=front]", "el gato");
   await s.type("input[name=back]", "кот");
-  await s.click("button[type=submit]", "Add");
-  await s.until("toast", `document.getElementById("toast")?.textContent === 'Added "el gato"'`);
+  await s.click("button.ed-add", "Add");
+  await s.until("el gato added", addedRow("el gato"));
   await s.click("button[aria-label=Back]");
   await s.until("chips", `document.querySelectorAll(".lang-chips .chip").length === 2`);
   await shot(s, "words-languages");

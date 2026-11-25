@@ -219,14 +219,12 @@ export class Pictures {
     this.cancel(noteId);
     this.setState(noteId, "drawing");
     const r = await pending;
-    this.setState(noteId, undefined);
     const n = this.store.col.liveNote(noteId);
-    if (!n || n.noPicture || n.picture?.key !== was) return;
-    if (r.ok) {
+    if (r.ok && n && !n.noPicture && n.picture?.key === was) {
       await this.store.append([this.store.factory.make<AssetAttached>("asset_attached", { note_id: noteId, kind: "image", r2_key: r.picture.key, sense: r.picture.sense, details: r.picture.details, scene: r.picture.scene })]);
-    } else if (!n.picture) {
-      await this.ensure(noteId);
     }
+    this.setState(noteId, undefined); // after the picture is attached, so listeners see it
+    if (!r.ok && n && !n.picture && !n.noPicture && was === undefined) await this.ensure(noteId);
   }
 
   /** The card's picture was decided elsewhere (the editor): drop any queued drawing, so it can't overwrite it. */

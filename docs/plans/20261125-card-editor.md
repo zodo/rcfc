@@ -93,14 +93,14 @@ Mockups: https://claude.ai/artifact/2amCHokAgdXWZZynNPjzcV (layout A "Stacked"; 
 - [x] all tests pass
 
 ### Task 3: The card editor as the Add screen
-- [ ] the blank card: both sides stacked, arrow notes with the languages in them, stickers corner, own notes
-- [ ] the Stickers sheet and the language picker (incl. adding a language) work on a draft without losing what was typed
-- [ ] the picture space and its states (hint, pencil mirror, drawing, drawn, details, offline/limit)
-- [ ] the same-word note and the exact-repeat refusal
-- [ ] Add writes everything at once; then a fresh card and the "added just now" list
-- [ ] tests: what Add writes (with and without a picture, with a sticker, with notes), duplicates
-- [ ] smoke test: fill in a card, picture appears, Add, fresh card and list; every other step of the walk that used the old Add form (picture status, a second language, a translation into another language) moved to the editor
-- [ ] all tests and the smoke test pass
+- [x] the blank card: both sides stacked, arrow notes with the languages in them, stickers corner, own notes
+- [x] the Stickers sheet and the language picker (incl. adding a language) work on a draft without losing what was typed
+- [x] the picture space and its states (hint, pencil mirror, drawing, drawn, details, offline/limit)
+- [x] the same-word note and the exact-repeat refusal
+- [x] Add writes everything at once; then a fresh card and the "added just now" list
+- [x] tests: what Add writes (with and without a picture, with a sticker, with notes), duplicates (in task 1's rules tests; the screen itself is covered by the smoke test)
+- [x] smoke test: fill in a card, picture appears, Add, fresh card and list; every other step of the walk that used the old Add form (picture status, a second language, a translation into another language) moved to the editor
+- [x] all tests and the smoke test pass
 
 ### Task 4: Edit on the same editor
 - [ ] Edit opens the card filled in, languages fixed, stickers and picture changeable on the card

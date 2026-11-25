@@ -1381,9 +1381,6 @@ header.top.sub .back svg {
 .pic-adjust .row > button {
   flex: 1;
 }
-.last-added h2 .muted {
-  color: var(--muted);
-}
 
 /* ---------- Words: a sheet of ruled paper ---------- */
 .word-tools {
@@ -1707,4 +1704,295 @@ header.top.sub .back svg {
 .install-banner .install-close {
   padding: 8px 10px;
   color: var(--muted);
+}
+
+/* ---------- the card editor (src/screens/card.ts): Add and Edit as the card itself ---------- */
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.ed-side {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 26px 20px 14px;
+  border-radius: 4px;
+  background-color: var(--card);
+  background-image: var(--grain, none);
+  color: var(--ink);
+  box-shadow:
+    0 1px 1px rgb(var(--shadow) / 0.22),
+    0 6px 14px rgb(var(--shadow) / 0.2);
+  transform: rotate(-0.4deg);
+}
+.ed-side.known {
+  background-color: var(--card-known);
+  padding-top: 18px;
+  transform: rotate(0.35deg);
+}
+/* places on the card: written on the paper, a dashed pencil line under each */
+.ed-side input {
+  padding: 4px 2px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  border-bottom: 2px dashed rgb(var(--shadow) / 0.22);
+}
+.ed-side input:focus-visible {
+  outline: none;
+  border-bottom-color: var(--easy);
+}
+.ed-word-line {
+  display: flex;
+  align-items: center;
+}
+.ed-word-line .speak.inline {
+  flex-shrink: 0;
+  margin-right: -8px;
+}
+.ed-word-line .speak[hidden] {
+  display: none;
+}
+.ed-word,
+.ed-trans {
+  font-size: clamp(24px, 7vw, 30px);
+  text-align: center;
+}
+.ed-word-line::before {
+  content: "";
+  width: 30px;
+  flex-shrink: 0;
+}
+.ed-word-line:has(.speak[hidden])::before {
+  display: none;
+}
+.ed-example {
+  margin-top: 10px;
+  font-style: italic;
+}
+.ed-memo-line {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  color: #8f978f;
+}
+.ed-memo-line input.ed-memo {
+  font-size: 15px;
+  color: #5d655e;
+  border-bottom-color: rgb(var(--shadow) / 0.12);
+}
+.ed-memo::placeholder {
+  color: #9ca39c;
+}
+/* pencil notes with an arrow pointing up at their place */
+.arrow-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  padding-left: 28px;
+  color: #6d756e;
+  font-size: 15.5px;
+}
+.arrow-note .arrow svg {
+  display: block;
+  width: 34px;
+  height: 28px;
+}
+.arrow-note .arrow-text {
+  padding-top: 11px;
+  transform: rotate(-1.5deg);
+  transform-origin: left center;
+}
+.arrow-note[hidden] {
+  display: none;
+}
+.ed-note-example {
+  padding-left: 40%;
+  font-size: 14.5px;
+}
+.ed-note-example .arrow svg {
+  width: 26px;
+  height: 24px;
+}
+.ed-note-example .arrow-text {
+  padding-top: 9px;
+  transform: rotate(1.5deg);
+}
+/* a language in a pencil note: blue, dotted, opens the system picker */
+.pick-word {
+  position: relative;
+  display: inline-block;
+  color: var(--easy);
+  text-decoration: underline dotted 1.5px;
+  text-underline-offset: 4px;
+}
+.pick-word select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.pick-word:has(select:focus-visible) {
+  outline: 2px solid var(--easy);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.ed-dup {
+  margin: 4px 0 0;
+  font-size: 14.5px;
+  color: #6d756e;
+}
+.ed-dup:empty {
+  display: none;
+}
+/* stickers stuck over the white side's top edge */
+.ed-stickers {
+  position: absolute;
+  top: -11px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 80%;
+}
+.ed-sticker {
+  padding: 0;
+}
+.ed-sticker .chip {
+  transform: rotate(3deg);
+}
+.ed-stickers .chip.new-sticker {
+  background: var(--card);
+}
+/* the picture space on the cream side */
+.ed-pic {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+}
+.ed-pic .pic {
+  max-width: 300px;
+}
+.ed-pic-box {
+  width: 100%;
+  max-width: 300px;
+  aspect-ratio: 3 / 2;
+  border: 2px dashed rgb(var(--shadow) / 0.2);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 24px;
+  text-align: center;
+  color: #8a8270;
+  font-size: 14.5px;
+}
+.ed-mirror {
+  font-size: 30px;
+  color: #b3a888;
+  transform: rotate(-2deg);
+  overflow-wrap: anywhere;
+}
+.ed-pic.busy .ed-pic-box,
+.ed-pic.busy .pic {
+  animation: pic-pulse 1.4s ease-in-out infinite;
+}
+.ed-caption {
+  padding: 6px 4px;
+  font-size: 14.5px;
+  color: #6d756e;
+  text-decoration: underline dotted 1.5px;
+  text-underline-offset: 4px;
+}
+.ed-pic input.ed-details-input {
+  max-width: 300px;
+  font-size: 15px;
+  text-align: center;
+}
+.ed-pic-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+.ed-hint {
+  margin: 0;
+  color: var(--on-table);
+  text-align: center;
+}
+.ed-hint:empty {
+  display: none;
+}
+.ed-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.ed-actions .primary {
+  width: 100%;
+}
+.danger-link {
+  color: var(--on-table-muted);
+}
+/* the cards added this sitting */
+.ed-added {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ed-added:empty {
+  display: none;
+}
+.ed-added h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--on-table-muted);
+}
+.ed-added-row {
+  display: grid;
+  grid-template-columns: 54px auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px 6px 6px;
+  border-radius: 3px;
+  background-color: var(--card);
+  background-image: var(--grain, none);
+  color: var(--ink);
+  text-align: left;
+  box-shadow: 0 1px 2px rgb(var(--shadow) / 0.2);
+}
+.ed-added-row .pic,
+.ed-added-pic {
+  width: 54px;
+  height: 36px;
+}
+.ed-added-pic {
+  border: 1.5px dashed rgb(var(--shadow) / 0.2);
+  border-radius: 3px;
+}
+.ed-added-pic.busy {
+  animation: pic-pulse 1.4s ease-in-out infinite;
+}
+.ed-added-trans {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ed-pic.busy .ed-pic-box,
+  .ed-pic.busy .pic,
+  .ed-added-pic.busy {
+    animation: none;
+  }
 }
