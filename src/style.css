@@ -1971,3 +1971,22 @@ header.top.sub .back svg {
     animation: none;
   }
 }
+/* wide screens: the two sides side by side, like a card opened flat */
+@media (min-width: 900px) {
+  #app:has(.editor) {
+    max-width: 1000px;
+  }
+  .editor {
+    flex-direction: row;
+    gap: 28px;
+  }
+  .editor > .ed-side {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .content:has(> .editor) > :not(.editor) {
+    width: 100%;
+    max-width: 520px;
+    margin-inline: auto;
+  }
+}

@@ -121,10 +121,10 @@ Mockups: https://claude.ai/artifact/2amCHokAgdXWZZynNPjzcV (layout A "Stacked"; 
 - [x] all tests and the smoke test pass
 
 ### Task 6: Wide screens and final pass
-- [ ] side by side on wide screens
-- [ ] a final clean-up pass over the editor and the study pencil (`/unslop-ui`)
-- [ ] screenshots of the phone and wide layouts checked
-- [ ] all tests and the smoke test pass
+- [x] side by side on wide screens
+- [x] a final clean-up pass over the editor and the study pencil (`/unslop-ui`)
+- [x] screenshots of the phone and wide layouts checked
+- [x] all tests and the smoke test pass
 
 ### Task 7: Verify
 - [ ] everything under "Agreed behaviour" works in the dev server

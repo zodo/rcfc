@@ -214,6 +214,15 @@ async function shot(s: Browser, name: string) {
   await s.screenshot(`.wrangler/smoke/${name}.png`);
 }
 
+/** The same screen on a wide window (screenshots only). */
+async function wideShot(s: Browser, name: string) {
+  if (!process.env.RCFC_SHOTS) return;
+  await s.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
+  await s.js(`await new Promise((r) => setTimeout(r, 200));`);
+  await shot(s, name);
+  await s.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+}
+
 async function answerUntilDone(s: Browser, max: number): Promise<number> {
   let n = 0;
   for (; n < max; n++) {
@@ -257,6 +266,7 @@ async function run(s: Browser, url: string) {
   await s.type("input[name=example]", "¡Adiós, amigo!"); // leaving the translation starts the drawing
   await s.until("picture on the card", `document.querySelector(".ed-pic .pic img")?.src.startsWith("blob:") && document.querySelector(".ed-pic .pic img").naturalWidth > 0`, 90_000);
   await shot(s, "add-picture");
+  await wideShot(s, "add-wide");
   await s.click("button.ed-add", "Add");
   await s.until("adiós added with its picture", `${addedRow("adiós")} && document.querySelector(".ed-added-row .pic img")`);
   await s.type("input[name=front]", "hola");

@@ -420,7 +420,15 @@ function open(note?: Note): void {
   // Pictures arriving (the queue, a drawing adopted after Add) redraw what shows them.
   const off = pictures.subscribe((id) => {
     if (!root.isConnected) return off();
-    if (note && id === note.id) renderPic();
+    if (note && id === note.id) {
+      // The queue's picture arrived while the card is open: show it, unless one was drawn here.
+      const now = store.col.liveNote(note.id)?.picture;
+      if (now && !drawn && !pending && !removed) {
+        drawn = { ...now };
+        drawnFor = picKey(front.value, back.value, details);
+      }
+      renderPic();
+    }
     if (added.includes(id)) renderAdded();
   });
   update();
