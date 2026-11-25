@@ -2034,6 +2034,8 @@ header.top.sub .back svg {
 }
 .ed-stickers .chip.new-sticker {
   background: var(--card);
+  color: var(--ink); /* muted, on card stock it read as disabled */
+  outline-color: color-mix(in srgb, var(--ink) 55%, transparent);
 }
 /* the picture space on the cream side */
 .ed-pic {
