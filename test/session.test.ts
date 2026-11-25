@@ -85,6 +85,32 @@ describe("piles", () => {
     expect((await sitting(d)).next()!.pick.card).toBe(top);
   });
 
+  it("a card left turned over for the editor comes back turned, the time looked at it kept", async () => {
+    const d = await Device.open();
+    await d.deck(5);
+    const s = await sitting(d);
+    const top = s.next()!.pick.card;
+    s.keepTurned(top, 4000);
+    const back = await sitting(d);
+    expect(back.next()!.pick.card).toBe(top);
+    expect(back.takeTurned(top)).toBe(4000);
+    expect(back.takeTurned(top)).toBeUndefined(); // once
+  });
+
+  it("a card that is no longer on top doesn't come back turned", async () => {
+    const d = await Device.open();
+    await d.deck(5);
+    const s = await sitting(d);
+    const n = s.next()!;
+    s.keepTurned(n.pick.card, 4000);
+    const card = d.store.col.cards.get(n.pick.card)!;
+    await d.store.append([d.store.factory.make("note_deleted", { note_id: card.note_id })]);
+    const back = await sitting(d);
+    const top = back.next()!.pick.card;
+    expect(top).not.toBe(n.pick.card);
+    expect(back.takeTurned(top)).toBeUndefined();
+  });
+
   it("5 more deals from the same words, beyond the new-word limit; the next day's pile is bigger", async () => {
     const clock = new Clock();
     const d = await Device.open(clock);

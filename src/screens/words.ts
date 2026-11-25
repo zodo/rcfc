@@ -9,7 +9,7 @@ import type { Note } from "../domain/collection";
 import type { EntityId } from "../domain/ids";
 import { labelPile, pileLabel } from "../domain/labels";
 import { KNOWN_HORIZON_MS, wordStatus } from "../domain/scheduler";
-import { append, clear, h, langName, toast } from "../ui/h";
+import { append, clear, h, ICON_PEN, langName, toast } from "../ui/h";
 import { editSticker, languageForm, languages, openChip, rememberLanguage, setOpenChip, takeEditNext } from "./languages";
 import { newStickerSheet, paint, pencilSheet, stickersSheet, wordsTarget } from "./stickers";
 
@@ -20,7 +20,6 @@ const weekAhead = new Map<EntityId, number>();
 
 const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
-const ICON_PEN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 2.5l2.5 2.5L6 12.5 2.5 13.5 3.5 10z"/></svg>';
 /** A pencil arrow from the note on an empty sticker up to Edit. */
 const ICON_ARROW = '<svg class="pencil-arrow" viewBox="0 0 78 72" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 66 C 30 64, 52 50, 57 10"/><path d="M50 19 L57 8 L63 19"/></svg>';
 

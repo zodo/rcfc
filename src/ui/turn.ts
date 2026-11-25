@@ -41,6 +41,14 @@ export class Turn {
     this.render();
   }
 
+  /** Lie at `a` degrees at once, without turning. */
+  set(a: number): void {
+    this.stop();
+    this.a = a;
+    this.v = 0;
+    this.render();
+  }
+
   stop(): void {
     cancelAnimationFrame(this.raf);
     this.raf = 0;

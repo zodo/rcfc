@@ -113,12 +113,12 @@ Mockups: https://claude.ai/artifact/2amCHokAgdXWZZynNPjzcV (layout A "Stacked"; 
 - [x] all tests and the smoke test pass
 
 ### Task 5: Study: own notes and the pencil
-- [ ] own notes shown in pencil on their sides
-- [ ] the pencil on a turned-over card opens the editor; back returns to the same card, still turned over, with the changes
-- [ ] the turned state belongs to that card only; editing time doesn't count toward the answer's time
-- [ ] tests: back from the editor returns to study (also after a reload); the top card and its turned state survive the round trip; a card replaced meanwhile doesn't come up turned; answer time excludes editing
-- [ ] smoke test: study, turn over, pencil, change, Save, back on the same card
-- [ ] all tests and the smoke test pass
+- [x] own notes shown in pencil on their sides
+- [x] the pencil on a turned-over card opens the editor; back returns to the same card, still turned over, with the changes
+- [x] the turned state belongs to that card only; editing time doesn't count toward the answer's time
+- [x] tests: back from the editor returns to study (also after a reload); the top card and its turned state survive the round trip; a card replaced meanwhile doesn't come up turned; answer time excludes editing (the session keeps the time looked at before; study offsets its clock by it)
+- [x] smoke test: study, turn over, pencil, change, Save, back on the same card
+- [x] all tests and the smoke test pass
 
 ### Task 6: Wide screens and final pass
 - [ ] side by side on wide screens

@@ -28,6 +28,8 @@ interface OnScreen {
   faces: CardTemplate[];
   /** A finished pile gathered to go through once more ("Go through these N again"): the cards left, top first, and the day it was gathered. */
   again: { day: number; cards: EntityId[] } | null;
+  /** The top card, left turned over for the card editor, and the time spent looking at it before. */
+  turned?: { card: EntityId; spentMs: number } | null;
 }
 const shown = new Map<string, OnScreen>();
 
@@ -208,6 +210,21 @@ export class StudySession {
       if (spot >= faces.length) faces.push(face(d.card)!);
     }
     return [face(under)!, ...faces].slice(0, count);
+  }
+
+  /**
+   * Leave the top card turned over for a while (the card editor): it comes
+   * back turned, and only the time spent looking at it counts toward the answer.
+   */
+  keepTurned(card: EntityId, spentMs: number): void {
+    this.screen.turned = { card, spentMs };
+  }
+
+  /** The time already spent on this card if it comes back turned over; once, and only for that card. */
+  takeTurned(card: EntityId): number | undefined {
+    const t = this.screen.turned;
+    this.screen.turned = null;
+    return t?.card === card ? t.spentMs : undefined;
   }
 
   /** Record an answer. If this throws, nothing was saved and the card can be rated again. */

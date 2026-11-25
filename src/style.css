@@ -1157,6 +1157,34 @@ header.top.sub .back svg {
   left: 0;
   right: 0;
 }
+/* the user's own note on a side, in pencil */
+.side .memo {
+  margin-top: 10px;
+  max-width: 90%;
+  font-size: 15px;
+  color: #6d756e;
+  text-align: center;
+  transform: rotate(-1deg);
+}
+/* a pencil in the corner of the turned card: edit it */
+.edit-card {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  padding: 10px;
+  line-height: 0;
+  color: #8f978f;
+  background: none;
+  visibility: hidden;
+}
+.edit-card svg {
+  width: 18px;
+  height: 18px;
+}
+.flashcard.turned .edit-card {
+  visibility: visible;
+}
 .flashcard.noted .note {
   opacity: 1;
 }

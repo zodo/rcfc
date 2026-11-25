@@ -18,7 +18,7 @@ import type { Draw } from "../domain/piles";
 import { AHEAD } from "../pictures";
 import { StudySession } from "../session";
 import { Body, type Pose } from "../ui/body";
-import { h, ICON_SPEAK, toast } from "../ui/h";
+import { h, ICON_PEN, ICON_SPEAK, toast } from "../ui/h";
 import { relight, startTilt, tiltNeedsTap } from "../ui/light";
 import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
@@ -109,11 +109,14 @@ function faces(card: Card, note: Note, picTilt: "l" | "r"): Faces {
     return b;
   };
   const example = note.fields.example?.trim();
+  /** The user's own note on a side, in pencil. */
+  const memo = (text: string | undefined, l: string) => (text?.trim() ? h("div", { class: "memo", lang: l }, text.trim()) : null);
   const target = [
     h("div", { class: "face", lang: lang.from }, note.fields.front, speakBtn("Pronounce", say, "speak inline")),
     example ? h("div", { class: "example", lang: lang.from }, example, speakBtn("Say the example", () => void app.speech.say(example, lang.from), "speak small")) : null,
+    memo(note.fields.memo_target, lang.from),
   ];
-  const known = [note.picture ? cutout(note.picture.key, picTilt) : null, h("div", { class: "face", lang: lang.to }, note.fields.back)];
+  const known = [note.picture ? cutout(note.picture.key, picTilt) : null, h("div", { class: "face", lang: lang.to }, note.fields.back), memo(note.fields.memo_known, lang.to)];
   const up = forward ? target : known;
   up.find((e) => e?.classList.contains("face"))!.classList.add("prompt");
   const answer = h("div", { class: "answer hidden" }, ...(forward ? known : target));
@@ -252,9 +255,29 @@ class Table {
     this.syncPile();
     this.showPeek();
 
-    const shownAt = performance.now();
+    // Back from the card editor: still turned over, the editing not counted.
+    const spent = s.takeTurned(card.id);
+    const shownAt = performance.now() - (spent ?? 0);
     let revealed = false;
     let busy = false;
+
+    // A pencil on the turned card opens it in the card editor; back comes here again.
+    const pencil = () => {
+      const b = h("button", {
+        class: "edit-card",
+        "aria-label": "Edit card",
+        title: "Edit card",
+        onclick: () => {
+          if (busy) return;
+          s.keepTurned(card.id, performance.now() - shownAt);
+          go.edit(note.id);
+        },
+      });
+      b.innerHTML = ICON_PEN;
+      return b;
+    };
+    f.front.append(pencil());
+    f.back.append(pencil());
 
     const reveal = h("button", { class: "secondary wide big", onclick: () => doReveal() }, "Show answer");
     const ratings = h("div", { class: "ratings two" }, h("button", { class: "rate r1", onclick: () => answer(-1) }, "Again"), h("button", { class: "rate r3", onclick: () => answer(1) }, "Got it"));
@@ -268,6 +291,7 @@ class Table {
       if (revealed || busy) return;
       revealed = true;
       haptic("tap");
+      el.classList.add("turned");
       f.answer.classList.remove("hidden");
       angle = side * 180;
       turn.to(angle, { done: () => el.classList.add("noted") });
@@ -469,6 +493,16 @@ class Table {
       }
     };
     setKeys(onKey);
+    if (spent !== undefined) {
+      // As it was left: turned over, the notes already read.
+      revealed = true;
+      el.classList.add("turned", "noted");
+      f.answer.classList.remove("hidden");
+      angle = 180;
+      turn.set(angle);
+      this.controls.replaceChildren(ratings);
+      return;
+    }
     if (f.forward) f.say(); // a card lying word side up says its word
   }
 }

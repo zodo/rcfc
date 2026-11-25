@@ -284,6 +284,14 @@ async function run(s: Browser, url: string) {
   await s.click(".flashcard:not(.leaving) .side.back");
   await s.until("front up again", `/rotateY\\(360/.test(document.querySelector(".flashcard:not(.leaving) .flipper")?.style.transform ?? "")`);
   await s.until("ratings still there", `document.querySelector("button.rate")`);
+  log("the pencil on the turned card opens it in the editor; back is the same card, still turned, changed");
+  await s.click(".flashcard:not(.leaving) .side.front .edit-card");
+  await s.until("Edit card", `document.querySelector("header.sub h1")?.textContent === "Edit card" && document.querySelector("input[name=front]")?.value === "hola"`);
+  await s.type("input[name=memo_known]", "a greeting");
+  await s.click("button.primary", "Save");
+  await s.until("hola again, turned", `document.querySelector(".flashcard.turned:not(.leaving) .face.prompt")?.textContent === "hola" && document.querySelector("button.rate")`);
+  await s.until("the note on it", `document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden) .memo")?.textContent === "a greeting"`);
+  await shot(s, "study-memo");
   await s.click("button.rate", "Got it");
   await s.until("next screen", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
   log("a card lying word side up says its word; the example has its own speak button");
