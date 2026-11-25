@@ -103,14 +103,14 @@ Mockups: https://claude.ai/artifact/2amCHokAgdXWZZynNPjzcV (layout A "Stacked"; 
 - [x] all tests and the smoke test pass
 
 ### Task 4: Edit on the same editor
-- [ ] Edit opens the card filled in, languages fixed, stickers and picture changeable on the card
-- [ ] the card shows the queue's picture states (waiting, failed with Try again); a removed picture is not redrawn by word edits
-- [ ] back, Save and Delete go one step back in history
-- [ ] Save writes only the changes; back writes nothing; Delete card
-- [ ] the old Edit form and the separate picture editor removed
-- [ ] tests: what Save writes (nothing changed, one field, picture, stickers, removed picture kept removed), back, delete; leaving the editor returns to where it was opened from
-- [ ] smoke test: open a word from Words, change it, Save
-- [ ] all tests and the smoke test pass
+- [x] Edit opens the card filled in, languages fixed, stickers and picture changeable on the card
+- [x] the card shows the queue's picture states (waiting, failed with Try again); a removed picture is not redrawn by word edits
+- [x] back, Save and Delete go one step back in history
+- [x] Save writes only the changes; back writes nothing; Delete card
+- [x] the old Edit form and the separate picture editor removed
+- [x] tests: what Save writes (nothing changed, one field, picture, stickers, removed picture kept removed), back, delete; leaving the editor returns to where it was opened from
+- [x] smoke test: open a word from Words, change it, Save
+- [x] all tests and the smoke test pass
 
 ### Task 5: Study: own notes and the pencil
 - [ ] own notes shown in pencil on their sides

@@ -189,12 +189,6 @@ details.card-box > form {
   gap: 10px;
 }
 details.stack > summary,
-.pic-adjust > summary {
-  cursor: pointer;
-  text-decoration: underline dotted 1.5px;
-  text-underline-offset: 4px;
-  width: max-content;
-}
 
 /* ---------- forms: slots cut into the paper ---------- */
 label {
@@ -1329,57 +1323,10 @@ header.top.sub .back svg {
 .pic.cut img {
   clip-path: polygon(0.6% 1.8%, 22% 0.4%, 47% 1.4%, 71% 0%, 99.2% 1.2%, 100% 34%, 99.1% 68%, 99.7% 98.6%, 74% 99.6%, 51% 98.4%, 26% 100%, 0.4% 98.9%, 1.2% 66%, 0% 33%);
 }
-.picture-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.pic-media {
-  display: flex;
-  justify-content: center;
-}
-.pic-empty {
-  width: 100%;
-  aspect-ratio: 3 / 2;
-  max-width: 420px;
-  border: 2px dashed rgb(var(--shadow) / 0.25);
-  border-radius: 4px;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  font-size: 14px;
-}
-.pic-media.busy .pic-empty,
-.pic-media.busy .pic {
-  animation: pic-pulse 1.4s ease-in-out infinite;
-}
 @keyframes pic-pulse {
   50% {
     opacity: 0.45;
   }
-}
-.pic-status {
-  margin: 0;
-  text-align: center;
-}
-.pic-adjust {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.pic-adjust[open] > summary {
-  margin-bottom: 10px;
-}
-.pic-adjust > label,
-.pic-adjust > .chips {
-  margin-bottom: 10px;
-}
-.pic-adjust .row {
-  display: flex;
-  gap: 10px;
-}
-.pic-adjust .row > button {
-  flex: 1;
 }
 
 /* ---------- Words: a sheet of ruled paper ---------- */

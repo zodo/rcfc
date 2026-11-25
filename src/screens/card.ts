@@ -4,7 +4,7 @@
 // The picture draws itself once both words are in and typing pauses.
 // Nothing is written until Add or Save (src/domain/cards.ts turns the draft
 // into events); a picture still drawing then follows the card.
-import { app, go, sheet, subPage } from "../app";
+import { app, back as goBack, go, sheet, subPage } from "../app";
 import { addEvents, draftOf, duplicates, MEMO_KNOWN, MEMO_TARGET, saveEvents, type CardDraft, type DraftPicture } from "../domain/cards";
 import type { Note } from "../domain/collection";
 import type { NoteDeleted } from "../domain/events";
@@ -368,7 +368,7 @@ function open(note?: Note): void {
 
   const leave = () => {
     sketcher.cancel();
-    go.words();
+    goBack();
   };
 
   // ---- cards added this sitting ----

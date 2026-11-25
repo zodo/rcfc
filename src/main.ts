@@ -3,7 +3,7 @@
 import "@fontsource/balsamiq-sans/400.css";
 import "@fontsource/balsamiq-sans/700.css";
 import "./style.css";
-import { app, go, reloadWhenSafe, requestPersistence, setHold, type Screens } from "./app";
+import { app, go, reloadWhenSafe, requestPersistence, setBack, setHold, type Screens } from "./app";
 import { router } from "./router";
 import { add } from "./screens/add";
 import { home } from "./screens/home";
@@ -55,6 +55,7 @@ async function boot() {
     const nav = router(screens);
     Object.assign(go, nav.go);
     setHold(nav.hold);
+    setBack(nav.back);
     app.sync.start();
     app.pictures.start();
   } catch (e) {

@@ -42,11 +42,14 @@ function isRoute(s: unknown): s is Route {
 /** Hold the back gesture: `onBack` runs on back instead of leaving the screen. Returns release, for closing it by other means. */
 export type Hold = (onBack: () => void) => () => void;
 
+/** One step back, to whatever is under this screen (also after a reload), as the back gesture does. */
+export type Back = () => void;
+
 /**
  * Wraps the screens into navigation that keeps history in step. Renders the
  * current entry's screen at start: home, or what a reload left in history.
  */
-export function router(screens: Screens, hist: HistoryLike = history, win: PopTarget = window): { go: Screens; hold: Hold } {
+export function router(screens: Screens, hist: HistoryLike = history, win: PopTarget = window): { go: Screens; hold: Hold; back: Back } {
   let current: Route = { name: "home", args: [] };
   /** Where to land once a history move we started arrives. */
   let pending: Route | null = null;
@@ -55,6 +58,8 @@ export function router(screens: Screens, hist: HistoryLike = history, win: PopTa
   /** Our own steps back over held entries still to arrive, and where to go after them. */
   let releasing = 0;
   let queued: Route | null = null;
+  /** A step back asked for while held entries were being stepped over. */
+  let backQueued = false;
 
   const render = (r: Route) => {
     current = r;
@@ -63,7 +68,10 @@ export function router(screens: Screens, hist: HistoryLike = history, win: PopTa
 
   win.addEventListener("popstate", (e) => {
     if (releasing > 0) {
-      if (--releasing === 0 && queued) {
+      if (--releasing === 0 && backQueued) {
+        backQueued = false;
+        back();
+      } else if (releasing === 0 && queued) {
         const to = queued;
         queued = null;
         navigate(to);
@@ -131,8 +139,21 @@ export function router(screens: Screens, hist: HistoryLike = history, win: PopTa
     };
   };
 
+  // Off the held entries too: what is open on the screen closes with it.
+  const back: Back = () => {
+    if (releasing > 0) {
+      queued = null;
+      backQueued = true;
+      return;
+    }
+    const n = holds.length;
+    holds = [];
+    pending = null;
+    hist.go(-(n + 1));
+  };
+
   // Start: the current entry if a reload left one, else home at the bottom.
   if (!isRoute(hist.state)) hist.replaceState({ name: "home", args: [] }, "");
   render(isRoute(hist.state) ? (hist.state as Route) : { name: "home", args: [] });
-  return { go, hold };
+  return { go, hold, back };
 }

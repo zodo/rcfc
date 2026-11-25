@@ -52,6 +52,15 @@ export function setHold(h: Hold): void {
   holdBack = h;
 }
 
+let backOne: () => void = () => {};
+/** Leave this screen for the one under it in history: Edit opened in study goes back to study, from Words to Words. */
+export function back(): void {
+  backOne();
+}
+export function setBack(f: () => void): void {
+  backOne = f;
+}
+
 export const app = {
   root: document.getElementById("app")!,
   /** Set once at boot, before any screen renders. */

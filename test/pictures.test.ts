@@ -249,8 +249,8 @@ describe("Pictures (client)", () => {
     pics.stop();
   });
 
-  it("does not redraw automatically, but redraws on request with the user's meaning and details", async () => {
-    const { d, s, pics, add } = await client();
+  it("does not redraw automatically", async () => {
+    const { d, pics, add } = await client();
     const id = await add("el banco", "bank, bench");
     await pics.ensure(id);
     await pics.kick();
@@ -258,13 +258,6 @@ describe("Pictures (client)", () => {
     await pics.ensure(id);
     await pics.kick();
     expect(d.store.col.notes.get(id)!.picture!.key).toBe(first);
-    await pics.draw(id, { sense: "bench", details: " in a park " });
-    await pics.kick();
-    const p = d.store.col.notes.get(id)!.picture!;
-    expect(p.key).not.toBe(first);
-    expect(p).toMatchObject({ sense: "bench", details: "in a park" });
-    const lastScene = s.ai.calls.filter((c) => c.model.includes("granite")).at(-1)!.input as { messages: { content: string }[] };
-    expect(lastScene.messages[1].content).toBe("Word: el banco\nMeaning: bench\nDetails: in a park");
     pics.stop();
   });
 
@@ -273,7 +266,7 @@ describe("Pictures (client)", () => {
     const id = await add("la torre", "the tower");
     await pics.ensure(id);
     await pics.kick();
-    await pics.remove(id);
+    await d.store.append([d.store.factory.make<AssetAttached>("asset_attached", { note_id: id, kind: "image", r2_key: null })]);
     expect(d.store.col.notes.get(id)!.picture).toBeUndefined();
     const calls = s.ai.calls.length;
     await pics.ensure(id);
@@ -401,7 +394,7 @@ describe("Pictures (client)", () => {
     await d.store.append([d.store.factory.make<AssetAttached>("asset_attached", { note_id: id, kind: "image", r2_key: "pics/other.jpg" })]);
     await pics.adopt(id, pending, old.picture.key);
     expect(d.store.col.notes.get(id)!.picture!.key).toBe("pics/other.jpg");
-    await pics.remove(id);
+    await d.store.append([d.store.factory.make<AssetAttached>("asset_attached", { note_id: id, kind: "image", r2_key: null })]);
     await pics.adopt(id, pics.sketcher().draw({ word: "la torre", translation: "the tower" }));
     expect(d.store.col.notes.get(id)!.picture).toBeUndefined();
     expect(await d.store.picJobs()).toEqual([]);

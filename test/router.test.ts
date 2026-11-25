@@ -42,8 +42,8 @@ function setup(h = new FakeHistory()) {
   const shown: string[] = [];
   const screen = (name: string) => (...args: unknown[]) => void shown.push(args.length ? `${name}(${args.join(",")})` : name);
   const screens = { home: screen("home"), study: screen("study"), words: screen("words"), add: screen("add"), import: screen("import"), edit: screen("edit"), addLanguage: screen("addLanguage"), settings: screen("settings") } as Screens;
-  const { go, hold } = router(screens, h, h);
-  return { h, go, hold, shown, last: () => shown[shown.length - 1] };
+  const { go, hold, back } = router(screens, h, h);
+  return { h, go, hold, back, shown, last: () => shown[shown.length - 1] };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -107,6 +107,44 @@ describe("router", () => {
     const { h, go } = setup();
     go.add();
     expect(h.names()).toEqual(["home", "words", "add"]);
+  });
+
+  it("Edit opened in study sits on study, and leaving it goes back there", async () => {
+    const { h, go, back, last } = setup();
+    go.study("es");
+    go.edit(5);
+    expect(h.names()).toEqual(["home", "study", "edit"]);
+    back();
+    await tick();
+    expect(last()).toBe("study(es)");
+    expect(h.names()).toEqual(["home", "study"]);
+  });
+
+  it("leaving Edit opened in Words goes back to Words; after a reload too", async () => {
+    const { go, back, last } = setup();
+    go.words();
+    go.edit(5);
+    back();
+    await tick();
+    expect(last()).toBe("words");
+    const h = new FakeHistory();
+    h.entries = [{ name: "home", args: [] }, { name: "study", args: ["es"] }, { name: "edit", args: [5] }];
+    h.i = 2;
+    const again = setup(h);
+    again.back();
+    await tick();
+    expect(again.last()).toBe("study(es)");
+  });
+
+  it("leaving a screen with something held open steps over it too", async () => {
+    const { h, go, hold, back, last } = setup();
+    go.study("es");
+    go.edit(5);
+    hold(() => {});
+    back();
+    await tick();
+    expect(last()).toBe("study(es)");
+    expect(h.names()).toEqual(["home", "study"]);
   });
 
   it("a reload shows the screen history was on", () => {

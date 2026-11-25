@@ -6,7 +6,8 @@
 // - a typed word: right after it is added (the add screen shows it arriving);
 // - any other word without one (imports, words from other devices): the first
 //   time it is shown in study, so pictures fill in gradually as you practice;
-// - a redraw the user asked for, with their meaning and details.
+// - a redraw on a card that already exists is the card editor's (sketcher/adopt);
+//   jobs marked force (older versions' redraws) are still drawn.
 // A word whose picture the user removed is never drawn automatically.
 import type { DraftPicture } from "./domain/cards";
 import type { AssetAttached } from "./domain/events";
@@ -31,11 +32,6 @@ export interface PictureView {
   url: string;
   /** White paper background: blend into the card instead of framing it. */
   flat: boolean;
-}
-
-export interface DrawOptions {
-  sense?: string;
-  details?: string;
 }
 
 /** What the card editor asks to be drawn: its words as typed, and the user's details. */
@@ -159,13 +155,6 @@ export class Pictures {
     }
   }
 
-  /** Draw (or redraw) a note's picture with the user's meaning and details. */
-  async draw(noteId: EntityId, o: DrawOptions = {}): Promise<void> {
-    const sense = o.sense?.trim() || undefined;
-    const details = o.details?.trim() || undefined;
-    await this.enqueue({ note_id: noteId, sense, details, force: true, tries: 0, not_before: 0, created: this.now() });
-  }
-
   /**
    * Drawing for a card that is still being filled in (the card editor). Each
    * card gets its own sketcher; a new drawing on it supersedes the one before.
@@ -232,14 +221,6 @@ export class Pictures {
     if (!this.jobs.has(noteId)) return;
     this.jobs.delete(noteId);
     void this.store.deletePicJob(noteId);
-    this.setState(noteId, undefined);
-  }
-
-  /** Remove a note's picture; it will not be drawn again automatically. */
-  async remove(noteId: EntityId): Promise<void> {
-    this.jobs.delete(noteId);
-    await this.store.deletePicJob(noteId);
-    await this.store.append([this.store.factory.make<AssetAttached>("asset_attached", { note_id: noteId, kind: "image", r2_key: null })]);
     this.setState(noteId, undefined);
   }
 

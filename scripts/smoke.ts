@@ -315,9 +315,17 @@ async function run(s: Browser, url: string) {
   await s.click("nav .nav-item", "Words");
   await s.until("2 words", `document.querySelectorAll(".list button.word").length === 2`);
   await s.click("button.word", "adiós");
-  await s.type("textarea", "¡Adiós, amigo!");
-  await s.click("button", "Save");
-  await s.until("back to list", `document.querySelectorAll(".list button.word").length === 2`);
+  await s.until("the card filled in", `document.querySelector("header.sub h1")?.textContent === "Edit card" && document.querySelector("input[name=back]")?.value === "goodbye" && ${noteText(".ed-note-word")} === "Spanish" && !document.querySelector(".ed-note-word select")`);
+  await s.until("its picture", `document.querySelector(".ed-pic .pic img")`);
+  await shot(s, "edit");
+  await s.type("input[name=back]", "bye");
+  await s.type("input[name=memo_known]", "said when leaving");
+  await s.click("button.primary", "Save");
+  await s.until("back to the list, changed", `[...document.querySelectorAll(".list button.word")].some((b) => b.textContent.includes("bye")) && document.querySelectorAll(".list button.word").length === 2`);
+  await s.click("button.word", "adiós");
+  await s.until("saved", `document.querySelector("input[name=memo_known]")?.value === "said when leaving"`);
+  await s.click("button[aria-label=Back]");
+  await s.until("list", `document.querySelectorAll(".list button.word").length === 2 && !document.querySelector("header.sub")`);
 
   log("the back gesture walks back: word → list → Study");
   await s.click("button.word", "adiós");

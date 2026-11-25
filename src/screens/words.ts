@@ -6,14 +6,12 @@
 // there, rendered in chunks while scrolling.
 import { app, errorText, go, hold, page, subPage } from "../app";
 import type { Note } from "../domain/collection";
-import type { AppEvent } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import { labelPile, pileLabel } from "../domain/labels";
 import { KNOWN_HORIZON_MS, wordStatus } from "../domain/scheduler";
 import { append, clear, h, langName, toast } from "../ui/h";
-import { pictureEditor } from "../ui/picture";
 import { editSticker, languageForm, languages, openChip, rememberLanguage, setOpenChip, takeEditNext } from "./languages";
-import { newStickerSheet, paint, pencilSheet, stickersSheet, stickerTag, wordsTarget } from "./stickers";
+import { newStickerSheet, paint, pencilSheet, stickersSheet, wordsTarget } from "./stickers";
 
 /** Rows added at a time as the list scrolls into view. */
 const CHUNK = 150;
@@ -316,81 +314,8 @@ function svg(markup: string): Element {
   return t.content.firstElementChild!;
 }
 
-export function edit(noteId: EntityId): void {
-  const { store } = app;
-  const n = store.col.liveNote(noteId);
-  if (!n) return words();
-  const front = h("input", { value: n.fields.front });
-  const back = h("input", { value: n.fields.back });
-  const example = h("textarea", { rows: 2, value: n.fields.example ?? "" });
-  // Its stickers: × peels one off, + Sticker sticks one on; both at once.
-  const tags = h("div", { class: "edit-stickers" });
-  const renderTags = () =>
-    tags.replaceChildren(
-      ...store.col.labelsOf(n.id).map((l) =>
-        stickerTag(
-          l,
-          h(
-            "button",
-            {
-              class: "x",
-              type: "button",
-              "aria-label": `Peel off ${l.name}`,
-              onclick: async () => {
-                await store.stick(l.id, [n.id], false);
-                renderTags();
-              },
-            },
-            "×",
-          ),
-        ),
-      ),
-      h("button", { class: "chip new-sticker small", type: "button", onclick: () => stickersSheet(wordsTarget([n.id]), renderTags) }, "+ Sticker"),
-    );
-  renderTags();
-  subPage(
-    "words",
-    "Edit word",
-    () => go.words(),
-    h(
-      "form",
-      {
-        class: "card-box",
-        onsubmit: async (e: Event) => {
-          e.preventDefault();
-          const evs: AppEvent[] = [];
-          const set = (field: string, value: string) => {
-            if ((n.fields[field] ?? "") !== value) evs.push(store.factory.make("note_edited", { note_id: n.id, field, value }));
-          };
-          set("front", front.value.trim());
-          set("back", back.value.trim());
-          set("example", example.value.trim());
-          if (evs.length) await store.append(evs);
-          words();
-        },
-      },
-      h("label", {}, "Word", front),
-      h("label", {}, "Translation", back),
-      h("label", {}, "Example", example),
-      h("div", { class: "stickers-field" }, h("span", {}, "Stickers"), tags),
-      h("button", { class: "primary", type: "submit" }, "Save"),
-      h(
-        "button",
-        {
-          class: "danger",
-          type: "button",
-          onclick: async () => {
-            if (!confirm(`Delete "${n.fields.front}"? Its review history is kept for the model.`)) return;
-            await store.append([store.factory.make("note_deleted", { note_id: n.id })]);
-            words();
-          },
-        },
-        "Delete",
-      ),
-    ),
-    h("div", { class: "card-box" }, h("h2", {}, "Picture"), pictureEditor(n.id)),
-  );
-}
+/** Edit a word: the card editor, filled in (src/screens/card.ts). */
+export { editCard as edit } from "./card";
 
 export function addLanguage(): void {
   subPage("words", "Add a language", () => go.words(), languageForm(() => go.add(), "Add a word"));
