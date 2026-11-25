@@ -151,7 +151,7 @@ function open(note?: Note): void {
     const f = clean(front.value), b = clean(back.value);
     if (!f || !b || removed) return renderPic();
     const k = picKey(f, b, details);
-    if (!force && k === drawnFor) return renderPic();
+    if (!force && k === drawnFor) return; // nothing new: leave the picture space as it is, a tap on it may be under way
     drawnFor = k;
     problem = undefined;
     const p = sketcher.draw({ word: f, translation: b, example: clean(example.value), details });

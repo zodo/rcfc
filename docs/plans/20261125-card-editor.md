@@ -127,9 +127,9 @@ Mockups: https://claude.ai/artifact/2amCHokAgdXWZZynNPjzcV (layout A "Stacked"; 
 - [x] all tests and the smoke test pass
 
 ### Task 7: Verify
-- [ ] everything under "Agreed behaviour" works in the dev server
-- [ ] edge cases: offline add, limit reached, Add while the picture is still drawing, abandoned card, edit from study and back, two languages, a removed picture
-- [ ] build, tests and smoke test pass
+- [x] everything under "Agreed behaviour" works in the dev server
+- [x] edge cases: offline add, limit reached, Add while the picture is still drawing, abandoned card, edit from study and back, two languages, a removed picture
+- [x] build, tests and smoke test pass
 
 ### Task 8: Documentation
 - [ ] `docs/design.md`: a "Card editor" section; picture timing; own notes in the data model
