@@ -65,7 +65,18 @@ Spoken audio is not an event: it is made on demand from the text and cached by i
 
 The model takes the add-on's `RWKV_SRS_PROCESS_FIELDS`: `review_id, card_id, note_id, deck_id, preset_id, day_offset, elapsed_days, elapsed_seconds, rating, duration, state`. The event stores only raw facts: `card_id, note_id, deck_id, preset_id` as of the answer, `rating` 1 to 4, `duration_ms`, `tz_offset_min` (local day boundaries survive travel), `pile` (which pile it was answered from) and the envelope `ts`. `day_offset`, the elapsed values and `state` are derived at replay (`src/domain/rows.ts`, following RWKV4Anki `review_rows.py`), so a change of rollover hour needs no migration. Changing that derivation bumps `ROWS_VERSION`, which forces a full replay.
 
-**Imports.** A Duocards CSV importer is built: pure (text in, events out), dedups on normalized front + back so a re-import is safe, and sticks a "Duocards" sticker on what came in. Imported words don't queue pictures at import time; they get them when they come up. Anki import (map `revlog` rows to `review` events so RWKV starts warm) is not built.
+**Imports.** One way in for words from elsewhere: [Import from anything](#import-from-anything), through an AI chat. The Duocards importer it replaced is gone (`source.kind: "duocards"` stays readable in old logs). Anki review history (map `revlog` rows to `review` events so RWKV starts warm) is not imported.
+
+## Import from anything
+
+Words come from anywhere (another app's export, a tutor's notes, a topic) through the user's own AI chat. The app writes no importer per app: the AI converts.
+
+- **Screen** (`src/screens/import.ts`, from "Import from anything" under the card editor and in an empty Words): "Copy prompt for your AI chat", then a box to paste the AI's answer ("or pick a file" for a downloaded one). A preview shows as soon as text lands: how many words, per language pair (a language not studied yet says so), how many known / learning, the stickers, the first few words, what's skipped (already in your words, repeated) and rows that couldn't be read. Rows naming no language get pickers (defaults from the script: Cyrillic, kana…, else the last language). "Add N words" adds them and opens Words on their sticker (or language).
+- **Prompt** (`importPrompt` in `src/import/anything.ts`), tested on a focus group of fresh Haiku agents playing the AI (exports from Anki, Quizlet, Duolingo, Memrise, Excel; vague, lazy and non-English users). It says what the app and a card are; two ways to help (convert an export keeping tags and progress, or talk through what to learn, asking one or two questions when the request is vague); one CSV code block with a fixed header (`word,translation,example,lang,to,note,translation_note,picture,stickers,status`), no file; languages per row (the user's studied languages only as the usual default, never a constraint); tips a few words long in their side's language; `picture` only when another meaning could be drawn instead; stickers from the source's tags/lessons or on request, else empty, and offered afterwards; where to paste (Words → Add → Import from anything). Reply language: the prompt is English but the user may not speak it. "Reply in the language we usually talk in" sits at the very end, and the last line ("Here's my export, or what I'd like to learn:") is in the language the user's translations are mostly in. With the rule higher up, a German user pasting a bare table got English twice; with both at the end, German.
+- **Reader** (`readImport`): far more permissive than the prompt says, and never announced. The code blocks of a whole chat reply (a cut-off last fence too; several blocks joined; a header repeated inside skipped), else the first header line in plain text (the table ends at a blank line); comma, tab, semicolon or a markdown table; column names in other words and languages (`front/back/hint`, `Sort Field/Answer/Tags`, `Wort/Übersetzung/Gelernt?`) or named by language (`Japanese,Kana,English`); language codes, ISO 639-2, regional (`es-MX`) or names in any app language; progress as words in several languages, fractions (`4/4`), percentages, or a scheduler interval (≥ 3 weeks = known); dates in the usual shapes. The prompt itself pasted back is skipped (its header line). Unknown columns are ignored.
+- **Plan** (`planImport`): settles each row's pair, skips words already there (same word, translation and pair) or repeated, so pasting twice adds nothing; dated rows go oldest first.
+- **Progress** has three honest levels, no made-up history (the model learns from real answers): new; learning = learned before other new words (`notes_prioritized`, as "Don't know" on an unseen word); known = answered Easy once at import (as "I know"), scheduled far out and still checked.
+- **Writes** (`Store.importWords`): notes with both cards (`source.kind: "import"`, `created_at` when dated), `note` → `memo_target`, `translation_note` → `memo_known`, `picture` → note field `picture_details` (the queue draws with it when the word comes up, the editor shows it as "how it looks"; nothing is drawn or filled at import), stickers made when new and stuck on.
 
 ## Sync
 
@@ -260,7 +271,7 @@ What "needs the user most" means:
 - With a sticker open, Edit sits next to Select. Only the line above the list changes ("Tap words to stick on or peel off · Done"): the list becomes every word, a yellow dot sticker on those wearing it, a dotted ring on the others, and each tap sticks or peels at once. "+ Sticker" (or New pile on the table) names a sticker, makes it, opens it and starts Edit.
 - A sticker with no words: the ruled sheet says "No words yet." and a pencil note, "add words", has an arrow drawn up to Edit. No other buttons; deleting is in the pencil sheet.
 - Selecting words offers "Stickers" (with I know, Don't know, Delete): a sheet with every sticker as a box (on for all, some, none; a tap sticks it on all or peels it off all, at once) and a field for a new one. The card editor shows a card's stickers on its corner, a tap peels one off, "+ Sticker" opens the same sheet.
-- A card added while a sticker is open starts with it on its corner (a tap peels it off); an import sticks a sticker naming its source ("Duocards").
+- A card added while a sticker is open starts with it on its corner (a tap peels it off); an import sticks on the stickers its rows name.
 - The back gesture closes a sheet, Select or Edit before it leaves the screen.
 
 **The card editor (Add and Edit)**
@@ -331,7 +342,7 @@ RWKV goes first because it is the reason for the project and the biggest unknown
 3. **Sync.** Done: Worker + D1 push and pull, user code, QR pairing, full replay on late reviews.
 4. **Enrichment.** Filling in (the other word, an example, other meanings, the word's dictionary form), pictures and pronunciation done. The word summary not built.
 5. **Piles, stickers, no decks.** Done (see [Piles, labels and languages](#piles-labels-and-languages)).
-6. **Nice-to-haves.** Duocards import done. Not built: Anki import, stats and calibration charts, WebGPU.
+6. **Nice-to-haves.** Import from anything (through an AI chat) done. Not built: Anki import, stats and calibration charts, WebGPU.
 
 **Not built yet**, besides the above: iPhone haptics (Android vibrates; iOS needs the iOS 18 switch-checkbox trick); recurrent states on disk (see RWKV in Wasm, Known limit); the save-your-code prompt and the abuse guard (see Identity and pairing).
 

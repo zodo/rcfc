@@ -19,7 +19,7 @@ export interface LangPair {
 export interface NoteFields {
   front: string;
   back: string;
-  /** Example sentence (Duocards calls it "hint"). */
+  /** Example sentence. */
   example?: string;
   /** The user's own pencil note on the white side (studied language). */
   memo_target?: string;
@@ -30,7 +30,8 @@ export interface NoteFields {
 
 /** Where a note came from, when it was not typed in this app. */
 export interface NoteSource {
-  kind: "duocards";
+  /** "import": Import from anything; "duocards": the old Duocards importer (older logs). */
+  kind: "import" | "duocards";
   /** Original creation time in the source app, ISO 8601. */
   created_at?: string;
 }

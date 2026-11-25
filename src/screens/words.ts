@@ -255,7 +255,7 @@ export function words(): void {
         { class: "card-box center" },
         h("p", {}, "No words yet."),
         h("button", { class: "primary", onclick: () => go.add() }, "Add a word"),
-        h("button", { class: "secondary", onclick: () => go.import() }, "Import from Duocards"),
+        h("button", { class: "secondary", onclick: () => go.import() }, "Import from anything"),
       );
   // + adds to the open language, else to the last one used; with a sticker open, the word gets it.
   const addWord = () => (openLang && rememberLanguage(openLang), go.add());

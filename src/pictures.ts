@@ -335,7 +335,7 @@ export class Pictures {
         continue;
       }
       this.setState(j.note_id, "drawing");
-      const d = await this.request({ word: n.fields.front, translation: n.fields.back, example: n.fields.example, sense: j.sense, details: j.details }, (t) => {
+      const d = await this.request({ word: n.fields.front, translation: n.fields.back, example: n.fields.example, sense: j.sense, details: j.details ?? n.fields.picture_details }, (t) => {
         this.texts.set(j.note_id, t);
         this.emit(j.note_id);
       });
@@ -361,7 +361,7 @@ export class Pictures {
       // Edited away while drawing: drop the result.
       if (this.jobs.get(j.note_id) !== j) continue;
       if (this.store.col.liveNote(j.note_id)) {
-        await this.store.append([this.store.factory.make<AssetAttached>("asset_attached", { note_id: j.note_id, kind: "image", r2_key: key, sense, details: j.details, scene })]);
+        await this.store.append([this.store.factory.make<AssetAttached>("asset_attached", { note_id: j.note_id, kind: "image", r2_key: key, sense, details: j.details ?? n.fields.picture_details, scene })]);
       }
       await this.finish(j.note_id);
     }

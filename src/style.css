@@ -2328,3 +2328,22 @@ html.sum-zoom body {
 .sum-label {
   color: var(--muted);
 }
+
+/* ---------- Import from anything ---------- */
+.import-paste,
+.import-prompt {
+  font-size: 14px;
+  line-height: 1.4;
+}
+.import-groups,
+.import-sample {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.import-sample {
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}

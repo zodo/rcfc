@@ -7,7 +7,7 @@
 // Nothing is written until Add or Save (src/domain/cards.ts turns the draft
 // into events); a picture still drawing then follows the card.
 import { app, back as goBack, go, hold, sheet, subPage } from "../app";
-import { addEvents, draftOf, duplicates, MEMO_KNOWN, MEMO_TARGET, saveEvents, type CardDraft, type DraftPicture } from "../domain/cards";
+import { addEvents, draftOf, duplicates, MEMO_KNOWN, MEMO_TARGET, PICTURE_DETAILS, saveEvents, type CardDraft, type DraftPicture } from "../domain/cards";
 import type { Note } from "../domain/collection";
 import { applyOption, askKey, clean as cleanFill, clearAuto, fillAsk, filledPlace, type FillOption, type FillPlace, type FillRequest, type FillText } from "../domain/fill";
 import type { NoteDeleted } from "../domain/events";
@@ -74,7 +74,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   // ---- the picture: what it shows, what is drawing, and why there is none ----
   let sketcher = pictures.sketcher();
   let drawn: DraftPicture | undefined = note?.picture ? { ...note.picture } : undefined;
-  let details = note?.picture?.details ?? "";
+  let details = note?.picture?.details ?? note?.fields[PICTURE_DETAILS] ?? "";
   /** The words (+ details) the picture shows or is drawing; a pause with the same ones draws nothing. */
   let drawnFor = note ? picKey(note.fields.front, note.fields.back, details) : "";
   /** The words alone that the picture on the card shows: a redraw of the same words keeps it while drawing. */
@@ -675,7 +675,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
       ? h("div", { class: "ed-actions" }, h("button", { class: "primary", type: "button", onclick: saveIt }, "Save"), h("button", { class: "link danger-link", type: "button", onclick: deleteIt }, "Delete card"))
       : h("div", { class: "ed-actions" }, h("button", { class: "primary ed-add", type: "button", onclick: addIt }, "Add")),
     editing ? null : addedList,
-    editing ? null : h("p", { class: "muted small center" }, "Have a Duocards export? ", h("button", { class: "link", type: "button", onclick: () => go.import() }, "Import it")),
+    editing ? null : h("p", { class: "small center" }, h("button", { class: "link", type: "button", onclick: () => go.import() }, "Import from anything")),
   );
 
   // Pictures arriving (the queue, a drawing adopted after Add) redraw what shows them.

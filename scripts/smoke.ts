@@ -608,6 +608,38 @@ async function run(s: Browser, url: string) {
   await s.click("button[aria-label=Back]");
   await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
 
+  log("Import from anything: the prompt copies; an AI's reply previews; its words come in with their sticker and progress");
+  await s.click("button.add-btn");
+  await s.click("button.link", "Import from anything");
+  await s.until("Import screen", `document.querySelector("header.sub h1")?.textContent === "Import from anything"`);
+  await s.click("button.primary", "Copy prompt for your AI chat");
+  // Headless Chromium may refuse the clipboard: then the prompt is shown to copy by hand.
+  await s.until("copied", `document.querySelector("button.primary")?.textContent === "Copied" || document.querySelector("textarea.import-prompt")?.value.includes("word,translation,example")`);
+  const reply = [
+    "Here are your cards:",
+    "",
+    "```csv",
+    "word,translation,example,lang,to,note,translation_note,picture,stickers,status",
+    "il gatto,cat,Il gatto dorme.,it,en,,,,Smoke,known",
+    "la casa,house,\"La casa è grande, bella.\",it,en,,,,Smoke,learning",
+    "il cane,dog,Il cane corre.,it,en,,,,Smoke,new",
+    "```",
+    "",
+    "Copy the block, then paste it in the app under Words → Add → Import from anything.",
+  ].join("\n");
+  await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ${JSON.stringify(reply)}; t.dispatchEvent(new Event("input"));`);
+  await s.until("preview", `document.querySelector(".import-preview strong")?.textContent === "3 words" && document.querySelector(".import-groups")?.textContent.includes("Italian → English: 3 (new language)") && document.querySelector(".import-preview")?.textContent.includes("1 known, 1 learning")`);
+  await shot(s, "import-preview");
+  await s.click("button.primary", "Add 3 words");
+  await s.until("Words on the Smoke sticker, 3 words", `!document.querySelector("header.sub") && document.querySelector(".chip.on")?.textContent.includes("Smoke") && document.querySelectorAll(".list button.word").length === 3`);
+  log("the same reply again adds nothing");
+  await s.click("button.add-btn");
+  await s.click("button.link", "Import from anything");
+  await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ${JSON.stringify(reply)}; t.dispatchEvent(new Event("input"));`);
+  await s.until("nothing new", `document.querySelector(".import-preview")?.textContent.includes("3 already in your words") && document.querySelector(".import-preview button.primary")?.disabled`);
+  await s.click("button[aria-label=Back]");
+  await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
+
   log("no uncaught errors");
   const errors = [...s.errors, ...(await s.js<string[]>("return window.__rcfcErrors ?? [];"))];
   if (errors.length) throw new Error(`page errors:\n${errors.join("\n")}`);

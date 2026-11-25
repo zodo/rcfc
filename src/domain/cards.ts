@@ -4,11 +4,14 @@
 import type { EventFactory, Note } from "./collection";
 import type { AppEvent, AssetAttached, LangPair, NoteEdited, NoteFields, NotesLabeled } from "./events";
 import type { EntityId } from "./ids";
-import { noteKey } from "../import/duocards";
+import { noteKey } from "../import/anything";
 
 /** The user's own pencil notes, one per side: the studied language's (white) and the known language's (cream). */
 export const MEMO_TARGET = "memo_target";
 export const MEMO_KNOWN = "memo_known";
+
+/** What an imported card's picture should show, until one is drawn (the picture keeps its own `details` after). */
+export const PICTURE_DETAILS = "picture_details";
 
 /** The text places of a card, in the order they are saved. */
 export const TEXT_FIELDS = ["front", "back", "example", MEMO_TARGET, MEMO_KNOWN] as const;

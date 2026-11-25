@@ -1,5 +1,7 @@
-// Minimal RFC 4180 CSV parser: quoted fields, "" escapes, commas and newlines
+// Minimal RFC 4180 CSV parser: quoted fields, "" escapes, separators and newlines
 // inside quotes, CRLF or LF line endings, optional UTF-8 BOM, optional final newline.
+// Any one-character separator (comma by default; tab and semicolon for spreadsheet
+// copies). A quote inside an unquoted field is kept as text (`5" screen`).
 
 export interface CsvRecord {
   /** 1-based line number where the record starts (header is line 1). */
@@ -13,7 +15,7 @@ export class CsvError extends Error {
   }
 }
 
-export function parseCsv(text: string): CsvRecord[] {
+export function parseCsv(text: string, sep = ","): CsvRecord[] {
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   const records: CsvRecord[] = [];
   let values: string[] = [];
@@ -49,11 +51,10 @@ export function parseCsv(text: string): CsvRecord[] {
       }
       continue;
     }
-    if (c === '"') {
-      if (field !== "") throw new CsvError("quote in the middle of an unquoted field", line);
+    if (c === '"' && field === "") {
       inQuotes = true;
       fieldStarted = true;
-    } else if (c === ",") {
+    } else if (c === sep) {
       endField();
       fieldStarted = true;
     } else if (c === "\n" || c === "\r") {
