@@ -1,7 +1,11 @@
 // The picture's place while it draws: the pencil writes down what the picture
 // will show, the meaning first and then the scene as the server streams it in,
-// at a steady handwriting pace; with nothing left to write it doodles curls
-// after the last word, line after line, until the picture comes. Then the
+// at a steady handwriting pace. Written out, it rests, strikes the scene
+// through (a quick, untidy line through each line; the meaning stays) and,
+// thinking better of it, writes the scene once more right after it, again and
+// again, until the picture comes; a full box is rubbed out down to the meaning
+// and the next go starts under it. Waiting for the
+// scene after the meaning, it doodles curls. Then the
 // picture is brought in from past the top of the screen and laid down over
 // the note (`bringIn`); the note under it goes once it lies flat.
 //
@@ -10,7 +14,7 @@
 // goes on where it stopped.
 //
 // Per frame only the pencil's translate, the letters' opacity and the doodle's
-// stroke change; the glued picture moves by transform only.
+// and strikes' strokes change; the glued picture moves by transform only.
 import type { SceneText } from "../pictures";
 import { PENCIL } from "./ink";
 
@@ -76,6 +80,11 @@ async function bringIn(layer: HTMLElement, pic: HTMLElement, box: DOMRect): Prom
 
 /** Before the scene has come, the pencil rests this long after the meaning before it doodles (the scene is usually on its way). */
 const SCENE_GRACE_MS = 450;
+/** Written out, the pencil rests this long before striking it through. */
+const STRIKE_REST_MS = 600;
+/** Striking through: ms per px of line, and the move from one line to the next. */
+const STRIKE_MS_PER_PX = 1.5;
+const STRIKE_MOVE_MS = 120;
 /** One run of three curls. */
 const CURLS_MS = 1140;
 const LINE = 23;
@@ -99,6 +108,13 @@ function offsetIn(el: HTMLElement, ancestor: HTMLElement): { x: number; y: numbe
   return { x, y };
 }
 
+interface Strike {
+  p: SVGPathElement;
+  len: number;
+  start: number;
+  dur: number;
+}
+
 export class SketchNote {
   readonly el: HTMLElement;
   private note: HTMLElement;
@@ -117,6 +133,17 @@ export class SketchNote {
   /** When everything that had arrived was written. */
   private caughtUp = 0;
   private doodling: { stopped: boolean; anims: Animation[] } | undefined;
+  /** The lines struck through so far, drawn by the frame clock. */
+  private strikes: SVGSVGElement;
+  private strike: { from: number; total: number; penFrom: { x: number; y: number }; items: Strike[] } | undefined;
+  /** The block holding the meaning and the goes at the scene; the goes still showing. */
+  private block: HTMLElement;
+  private goes: HTMLElement[] = [];
+  /** Letters of the goes after the first. */
+  private again: HTMLElement[] = [];
+  /** Where the go being written starts in `all()`, and when its letters may come (clock). */
+  private blockStart = 0;
+  private againFrom = 0;
   private closed = false;
   private hurry = false;
 
@@ -133,22 +160,30 @@ export class SketchNote {
     this.sceneEl.className = "sk-scene";
     this.note = document.createElement("div");
     this.note.className = "sk-note";
-    this.note.append(this.senseEl, this.sceneEl);
+    this.block = document.createElement("div");
+    this.block.append(this.senseEl, this.sceneEl);
+    this.goes.push(this.sceneEl);
+    this.note.append(this.block);
     this.svg = document.createElementNS(SVG_NS, "svg");
     this.svg.setAttribute("class", "ink-doodle");
     this.svg.setAttribute("aria-hidden", "true");
+    this.strikes = document.createElementNS(SVG_NS, "svg");
+    this.strikes.setAttribute("class", "ink-doodle sk-strikes");
+    this.strikes.setAttribute("aria-hidden", "true");
     this.el = document.createElement("div");
     this.el.className = "sketch";
     this.el.setAttribute("role", "status");
     this.el.setAttribute("aria-label", "drawing the picture");
-    this.el.append(this.note, this.svg);
+    this.el.append(this.note, this.strikes, this.svg);
   }
 
   /** What the picture will show, so far. Text already written stays; new text is written on. */
   text(t: SceneText): void {
     if (this.closed) return;
     if (t.sense !== undefined && this.sense.length === 0) this.sense = this.fill(this.senseEl, t.sense, 0);
-    if (t.scene !== undefined && t.scene !== this.sceneText()) this.scene = this.fill(this.sceneEl, t.scene, this.sense.length);
+    // Once it's being struck through, the text is what was written (the stream is long done by then).
+    const settled = !!this.strike || this.again.length > 0;
+    if (!settled && t.scene !== undefined && t.scene !== this.sceneText()) this.scene = this.fill(this.sceneEl, t.scene, this.sense.length);
     if (reducedMotion()) {
       for (const s of this.all()) s.classList.add("on");
       this.written = this.all().length;
@@ -165,6 +200,7 @@ export class SketchNote {
     if (this.closed) return;
     this.hurry = true;
     this.stopDoodle();
+    this.strike = undefined;
     for (const s of this.all()) s.classList.add("on");
     this.written = this.all().length;
     this.closed = true;
@@ -193,7 +229,7 @@ export class SketchNote {
   }
 
   private all(): HTMLElement[] {
-    return [...this.sense, ...this.scene];
+    return [...this.sense, ...this.scene, ...this.again];
   }
 
   /** Letters for a place; the ones written already (`before` + `written`) show at once. */
@@ -237,7 +273,8 @@ export class SketchNote {
     this.started ||= now;
     const all = this.all();
     let target = Math.min(this.sense.length, Math.floor((now - this.started) / SENSE_LETTER_MS));
-    if (target >= this.sense.length && this.scene.length) {
+    if (this.againFrom) target = this.blockStart + Math.max(0, Math.floor((now - this.againFrom) / LETTER_MS));
+    else if (target >= this.sense.length && this.scene.length) {
       this.sceneFrom ||= now;
       target = this.sense.length + Math.floor((now - this.sceneFrom) / LETTER_MS);
     }
@@ -254,10 +291,126 @@ export class SketchNote {
       // Everything that has arrived is written: doodle after it until there's more.
       this.hand && (this.hand.className = "ink-hand");
       this.caughtUp ||= now;
-      if (!this.scene.length && now - this.caughtUp < SCENE_GRACE_MS) return;
-      const last = all[this.written - 1];
-      this.doodle(last ? this.tipOf(last) : { x: 18, y: 30 });
+      if (!this.scene.length) {
+        if (now - this.caughtUp < SCENE_GRACE_MS) return;
+        const last = all[this.written - 1];
+        this.doodle(last ? this.tipOf(last) : { x: 18, y: 30 });
+        return;
+      }
+      if (this.strike) return this.striking(now);
+      if (now - this.caughtUp >= STRIKE_REST_MS) this.startStrike(now);
     }
+  }
+
+  /** An untidy line through each line of the go just written, one after another. */
+  private startStrike(now: number): void {
+    this.stopDoodle();
+    const lines = new Map<number, { x0: number; x1: number; y: number; h: number }>();
+    for (const sp of this.all().slice(Math.max(this.blockStart, this.sense.length), this.written)) {
+      if (!sp.textContent?.trim()) continue;
+      const at = offsetIn(sp, this.el);
+      const key = Math.round(at.y / 6);
+      const l = lines.get(key);
+      if (l) {
+        l.x0 = Math.min(l.x0, at.x);
+        l.x1 = Math.max(l.x1, at.x + sp.offsetWidth);
+      } else lines.set(key, { x0: at.x, x1: at.x + sp.offsetWidth, y: at.y, h: sp.offsetHeight });
+    }
+    const items: Strike[] = [];
+    let t = STRIKE_MOVE_MS;
+    const jitter = (n: number) => (Math.random() * 2 - 1) * n;
+    [...lines.values()].forEach((l) => {
+      const y = l.y + l.h * 0.58;
+      const a = { x: l.x0 - 3 + jitter(2), y: y + jitter(1.5) };
+      const b = { x: l.x1 + 3 + jitter(3), y: y + jitter(3) };
+      // One wobbly stroke.
+      let d = `M${a.x} ${a.y}`;
+      const seg = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+        const n = Math.max(2, Math.round(Math.abs(to.x - from.x) / 40));
+        for (let k = 1; k <= n; k++) {
+          const x = from.x + ((to.x - from.x) * k) / n, yy = from.y + ((to.y - from.y) * k) / n;
+          d += ` Q${x - (to.x - from.x) / n / 2} ${yy + jitter(2.6)}, ${x} ${yy + jitter(1)}`;
+        }
+      };
+      seg(a, b);
+      const p = document.createElementNS(SVG_NS, "path");
+      p.setAttribute("d", d);
+      this.strikes.append(p);
+      const len = p.getTotalLength();
+      p.style.strokeDasharray = `${len}px`;
+      p.style.strokeDashoffset = `${len}px`;
+      const dur = Math.max(160, len * STRIKE_MS_PER_PX);
+      items.push({ p, len, start: t, dur });
+      t += dur + STRIKE_MOVE_MS;
+    });
+    const at = this.pen ? this.penAt() : items.length ? this.pointOf(items[0], 0) : { x: 18, y: 30 };
+    this.getPen(at);
+    this.strike = { from: now, total: t - STRIKE_MOVE_MS, penFrom: at, items };
+  }
+
+  /** One frame of striking through; done, the pencil writes it all again. */
+  private striking(now: number): void {
+    const st = this.strike!;
+    const t = now - st.from;
+    let prev = st.penFrom, prevEnd = 0, tip: { x: number; y: number } | undefined;
+    for (const it of st.items) {
+      const k = Math.max(0, Math.min(1, (t - it.start) / it.dur));
+      it.p.style.strokeDashoffset = `${it.len * (1 - k)}px`;
+      if (!tip && t < it.start) {
+        const q = (t - prevEnd) / Math.max(1, it.start - prevEnd);
+        const to = this.pointOf(it, 0);
+        tip = { x: prev.x + (to.x - prev.x) * q, y: prev.y + (to.y - prev.y) * q };
+      } else if (!tip && t < it.start + it.dur) tip = this.pointOf(it, k);
+      prev = this.pointOf(it, 1);
+      prevEnd = it.start + it.dur;
+    }
+    const pen = this.getPen(tip ?? prev);
+    pen.style.translate = `${(tip ?? prev).x}px ${(tip ?? prev).y}px`;
+    if (t >= st.total) {
+      this.strike = undefined;
+      this.writeAgain(now);
+    }
+  }
+
+  private pointOf(it: Strike, k: number): { x: number; y: number } {
+    const q = it.p.getPointAtLength(it.len * k);
+    return { x: q.x, y: q.y };
+  }
+
+  private penAt(): { x: number; y: number } {
+    const [x, y] = (this.pen?.style.translate ?? "18px 30px").split(" ").map(parseFloat);
+    return { x: x || 18, y: y || 30 };
+  }
+
+  /** Thinking better of it: the scene again, on from where it stopped; at the bottom of the box, the old goes are rubbed out first, down to the meaning. */
+  private writeAgain(now: number): void {
+    const go = (lead: string) => {
+      const el = document.createElement("span");
+      el.className = "sk-scene";
+      const spans = this.fill(el, lead + this.sceneText(), Infinity);
+      this.block.append(el);
+      return { el, spans };
+    };
+    let next = go(" ");
+    const last = next.spans.at(-1);
+    let wait = 0;
+    if (last && offsetIn(last, this.note).y + last.offsetHeight > this.note.clientHeight) {
+      next.el.remove();
+      wait = this.hurry ? 150 : 320;
+      for (const el of [...this.goes, ...this.strikes.children]) {
+        void el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: wait, fill: "forwards" }).finished.then(
+          () => (el instanceof HTMLElement ? (el.style.display = "none") : el.remove()),
+          () => {},
+        );
+      }
+      this.goes = [];
+      next = go("");
+    }
+    this.goes.push(next.el);
+    this.blockStart = this.written;
+    this.again.push(...next.spans);
+    this.againFrom = now + wait;
+    this.caughtUp = 0;
   }
 
   /** The pencil's tip at the bottom-right of a letter, in the note's coordinates. */

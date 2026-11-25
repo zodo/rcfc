@@ -1,7 +1,8 @@
 // Writing on a card in pencil. While the card waits for something to be
-// filled in, a short worn pencil doodles little curls on the line of the first
-// place being filled in, like someone thinking; when the answer comes the curls
-// rub away and the same pencil writes each place in turn, letter by letter, its
+// filled in, a short worn pencil draws three dots where the text of the first
+// place being filled in will begin, each a few tight circles, then turns over
+// and rubs them out with its eraser (a faint smudge stays), and again; when the
+// answer comes the smudges go and the same pencil writes each place in turn, letter by letter, its
 // tip moving along the line, travelling from one place to the next (across the
 // card's sides), then lifts off. The input holds the whole text at once
 // (everything reads it); only a layer over it shows the letters arriving.
@@ -24,9 +25,12 @@ const TRAVEL_MS = 220;
 const LETTER_MS = { min: 16, max: 55 };
 /** A whole text is written within this, however long. */
 const WRITE_MS = 950;
-/** One round of curls, then a pause, then they are rubbed away and it starts again. */
-const DOODLE_MS = 2000;
-const DOODLE_REST_MS = 450;
+/** Waiting: three dots, each a few tight circles; a pause; turned over, the eraser rubs them out (never quite: a smudge stays until the text comes); again. */
+const DOT_MS = 420;
+const DOT_TRAVEL_MS = 90;
+const DOTS_REST_MS = 520;
+const TURN_MS = 120;
+const ERASE_MS = 560;
 
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -53,14 +57,16 @@ function letters(text: string): string[] {
   return Array.from(text);
 }
 
-/** Four little curls along a line, starting at (x, y). */
-function curls(x: number, y: number): string {
-  let d = `M${x} ${y}`;
-  for (let i = 0; i < 4; i++) {
-    const cx = x + i * 9;
-    d += ` C${cx + 8} ${y - 2}, ${cx + 9} ${y - 13}, ${cx + 5} ${y - 12} S${cx + 3} ${y - 2}, ${cx + 9} ${y}`;
-  }
-  return d;
+const jitter = (n: number) => (Math.random() * 2 - 1) * n;
+
+/** A pencil dot: a few tight circles round (x, y), out a little and back in. */
+function dot(x: number, y: number): { x: number; y: number }[] {
+  const turns = 2.4 + Math.random() * 0.6, steps = 26, start = Math.random() * Math.PI * 2;
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const t = i / steps, a = start + t * turns * Math.PI * 2;
+    const r = 0.7 + 1.9 * Math.sin(Math.PI * Math.min(1, t * 1.25));
+    return { x: x + r * Math.cos(a), y: y + r * Math.sin(a) * 0.85 };
+  });
 }
 
 interface Pen {
@@ -199,7 +205,9 @@ export class Ink {
     const input = this.waiting;
     if (!input || !input.isConnected) return this.lift();
     const at = offsetIn(input, this.desk());
-    const start = { x: at.x + 10, y: at.y + input.offsetHeight - 3 };
+    // A centred place: a little left of its middle, where the text it's waiting for will begin.
+    const centred = getComputedStyle(input).textAlign === "center";
+    const start = { x: centred ? at.x + input.offsetWidth / 2 - 48 : at.x + 10, y: at.y + input.offsetHeight - 3 };
     const pen = this.getPen(start);
     pen.hand.className = "ink-hand";
     this.moveTo(start, TRAVEL_MS);
@@ -228,40 +236,73 @@ export class Ink {
         }
       }
       for (const a of running) a.cancel();
+      pen?.hand.classList.remove("erasing");
       void settled(svg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: "forwards" })).then(() => svg.remove());
     };
     this.doodling = { stop };
+    // The pencil's tip follows these points over ms; false once stopped.
+    const follow = async (pts: { x: number; y: number }[], ms: number, ink?: SVGPathElement, delay = 0) => {
+      const pen = this.pen;
+      if (!pen || stopped) return false;
+      const from = { x: pen.x, y: pen.y };
+      const total = delay + ms;
+      const frames: Keyframe[] = [{ translate: `${from.x}px ${from.y}px`, offset: 0 }];
+      pts.forEach((q, i) => frames.push({ translate: `${q.x}px ${q.y}px`, offset: (delay + (ms * i) / Math.max(1, pts.length - 1)) / total }));
+      const move = pen.el.animate(frames, { duration: total, easing: "linear", fill: "forwards" });
+      running = [move];
+      if (ink) {
+        const len = ink.getTotalLength();
+        ink.style.strokeDasharray = `${len}px`;
+        ink.style.strokeDashoffset = `${len}px`;
+        running.push(ink.animate([{ strokeDashoffset: `${len}px` }, { strokeDashoffset: "0px" }], { duration: ms, delay, easing: "linear", fill: "forwards" }));
+      }
+      if (!(await settled(move)) || stopped) return false;
+      const end = pts.at(-1) ?? from;
+      pen.x = end.x;
+      pen.y = end.y;
+      pen.el.style.translate = `${end.x}px ${end.y}px`;
+      move.cancel();
+      return true;
+    };
+    // Turned over, eraser end down (or back).
+    const turn = async (eraser: boolean) => {
+      const pen = this.pen;
+      if (!pen || stopped) return false;
+      const flat = pen.hand.animate([{ transform: "none" }, { transform: "scale(1, 0.15)" }], { duration: TURN_MS / 2, easing: "ease-in" });
+      running = [flat];
+      if (!(await settled(flat)) || stopped) return false;
+      pen.hand.classList.toggle("erasing", eraser);
+      const back = pen.hand.animate([{ transform: "scale(1, 0.15)" }, { transform: "none" }], { duration: TURN_MS / 2, easing: "ease-out" });
+      running = [back];
+      return (await settled(back)) && !stopped;
+    };
     void (async () => {
       await sleep(TRAVEL_MS);
       while (!stopped && this.pen) {
-        const pen = this.pen;
-        const path = document.createElementNS(SVG_NS, "path");
-        path.setAttribute("d", curls(start.x, start.y));
-        svg.replaceChildren(path);
-        const len = path.getTotalLength();
-        path.style.strokeDasharray = `${len}px`;
-        path.style.strokeDashoffset = `${len}px`;
-        const frames: Keyframe[] = [];
-        for (let i = 0; i <= 40; i++) {
-          const p = path.getPointAtLength((i / 40) * len);
-          frames.push({ translate: `${p.x}px ${p.y}px` });
+        this.pen.hand.className = "ink-hand";
+        const dots: SVGPathElement[] = [];
+        for (let i = 0; i < 3; i++) {
+          const pts = dot(start.x + 4 + i * 9 + jitter(1), start.y - 5 + jitter(0.8));
+          const path = document.createElementNS(SVG_NS, "path");
+          path.setAttribute("class", "ink-dot");
+          path.setAttribute("d", "M" + pts.map((q) => `${q.x.toFixed(2)} ${q.y.toFixed(2)}`).join(" L"));
+          svg.append(path);
+          dots.push(path);
+          if (!(await follow(pts, DOT_MS, path, DOT_TRAVEL_MS))) return;
         }
-        const draw = path.animate([{ strokeDashoffset: `${len}px` }, { strokeDashoffset: "0px" }], { duration: DOODLE_MS, easing: "linear", fill: "forwards" });
-        const move = pen.el.animate(frames, { duration: DOODLE_MS, easing: "linear", fill: "forwards" });
-        running = [draw, move];
-        if (!(await settled(move)) || stopped) return;
-        const end = path.getPointAtLength(len);
-        pen.x = end.x;
-        pen.y = end.y;
-        pen.el.style.translate = `${end.x}px ${end.y}px`;
-        move.cancel();
-        await sleep(DOODLE_REST_MS);
+        await sleep(DOTS_REST_MS);
+        if (!(await turn(true))) return;
+        // Rubbed out, back and forth over the dots: never quite clean.
+        const y = start.y - 5;
+        const rub = Array.from({ length: 9 }, (_, i) => ({ x: start.x + (i % 2 ? 26 : 1) + jitter(2), y: y + (i - 4) * 0.7 + jitter(1) }));
+        const fades = dots.map((d) => d.animate([{ opacity: 0.85 }, { opacity: 0.08 + Math.random() * 0.12 }], { duration: ERASE_MS, delay: 60, easing: "ease-in", fill: "forwards" }));
+        const rubbed = follow(rub, ERASE_MS);
+        running.push(...fades);
+        if (!(await rubbed)) return;
+        if (!(await turn(false))) return;
+        await sleep(200);
         if (stopped) return;
-        // Rubbed away, and back to the start of the line for another round.
-        const rub = path.animate([{ opacity: 0.75 }, { opacity: 0 }], { duration: 300, fill: "forwards" });
-        running = [rub];
-        this.moveTo(start, 300);
-        if (!(await settled(rub)) || stopped) return;
+        if (!(await follow([start], 160))) return;
       }
     })();
   }

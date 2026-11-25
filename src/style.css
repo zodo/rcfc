@@ -1915,6 +1915,15 @@ header.top.sub .back svg {
   stroke-linecap: round;
   opacity: 0.75;
 }
+/* turned over: the eraser end on the paper, the pencil the same way up */
+.ink-hand.erasing svg {
+  transform: rotate(-38deg) scaleX(-1) translateX(-31.5px);
+}
+/* a pencil dot: a few tight circles */
+.ink-doodle path.ink-dot {
+  stroke-width: 1.7;
+  opacity: 0.85;
+}
 /* writing: the small wobble of a hand moving along a line */
 .ink-hand.writing {
   animation: ink-wobble 120ms ease-in-out infinite alternate;
