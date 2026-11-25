@@ -5,7 +5,7 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
 ## Layout
 
 - `src/` PWA client (Vite + vite-plugin-pwa, Dexie, no UI framework)
-  - `ui/` DOM helpers and the paper look: `paper.ts` (textures, cut edges, haptics), `light.ts` (tilt light), `body.ts` (card physics), `turn.ts` (turning a card over), `picture.ts` (a card's pasted picture), `pencil.ts` (arrow notes, a language word that picks), `ink.ts` (a pencil that waits on an empty place and writes a fill in letter by letter)
+  - `ui/` DOM helpers and the paper look: `paper.ts` (textures, cut edges, haptics), `light.ts` (tilt light), `body.ts` (card physics), `turn.ts` (turning a card over), `picture.ts` (a card's pasted picture), `pencil.ts` (arrow notes, a language word that picks), `ink.ts` (one pencil: doodles on the first place a fill is awaited for, then writes each filled place in turn, letter by letter)
   - `domain/` pure logic: event fold, RWKV row derivation, piles (`piles.ts`: deals, draws, sizes), new-card daily limits (`newcards.ts`), stickers (`labels.ts`: names, ids, pile keys), cards (`cards.ts`: duplicates, the draft a card editor holds and the events Add / Save write)
   - `engine/` RWKV Web Worker + checkpoints; `EngineApi` is what the app uses (tests stub it)
   - `import/` Duocards CSV importer (`csv.ts`, `duocards.ts`): pure, text in, events out

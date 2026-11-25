@@ -256,8 +256,11 @@ function open(note?: Note, over?: { leave: () => void }): void {
   // ---- filling in ----
   const places: Record<FillPlace, HTMLInputElement> = { front, back, example };
   const textNow = (): FillText => ({ front: front.value, back: back.value, example: example.value });
-  /** Writes on the card in pencil: waits on an empty place, writes fills in letter by letter. */
-  const ink = new Ink((el) => el.closest<HTMLElement>(".ed-side")!);
+  /** Writes on the card in pencil: doodles on the first place while it waits, then writes each fill in turn. */
+  const ink = new Ink(
+    () => root,
+    (el) => el.closest<HTMLElement>(".ed-side")!,
+  );
   /**
    * The card with this text. Places a fill wrote are written in by the pencil,
    * `first` first, one after another; `then` runs once all of them show.
