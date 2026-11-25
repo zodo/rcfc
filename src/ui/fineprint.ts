@@ -120,6 +120,18 @@ function reveal(pg: HTMLElement, seen = SEEN): void {
 }
 
 /**
+ * Chrome keeps a `will-change: transform` layer rasterized at the largest
+ * scale it was drawn at, so after the zoom the pile's cards, shadows and
+ * buttons stay rasterized 1/K times over: on a phone that overruns the GPU's
+ * tile memory, and the card comes back laggy with tiles missing. Without
+ * will-change for a frame they are rasterized afresh at their real size.
+ */
+function relayer(screen: HTMLElement): void {
+  screen.classList.add("relayer");
+  requestAnimationFrame(() => requestAnimationFrame(() => screen.classList.remove("relayer")));
+}
+
+/**
  * Zoom into `fine` until it reads, then show the page. `screen` is the whole
  * study screen (the camera moves over it), `cardTilt` the card's rotation in
  * degrees (the camera turns with it, so the page comes out straight).
@@ -190,6 +202,7 @@ export function zoomInto(fine: HTMLElement, screen: HTMLElement, cardTilt: numbe
     const done = () => {
       document.documentElement.classList.remove("sum-zoom");
       open = false;
+      relayer(screen);
     };
     if (anim.playState === "running") {
       // Closed while still zooming in: back the way it came.

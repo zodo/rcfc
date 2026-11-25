@@ -2205,6 +2205,11 @@ html.sum-zoom body {
   overflow: hidden;
 }
 /* the tap target: the tiny print and paper around it */
+/* a frame without layer hints after zooming out, so they're rasterized at 1x again (fineprint.ts relayer) */
+.relayer,
+.relayer * {
+  will-change: auto !important;
+}
 .fine {
   flex-shrink: 0;
   margin-top: -6px;
