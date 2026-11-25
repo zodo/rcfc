@@ -8,6 +8,7 @@
 //   time it is shown in study, so pictures fill in gradually as you practice;
 // - a redraw the user asked for, with their meaning and details.
 // A word whose picture the user removed is never drawn automatically.
+import type { DraftPicture } from "./domain/cards";
 import type { AssetAttached } from "./domain/events";
 import type { EntityId } from "./domain/ids";
 import { flattenPaper } from "./domain/paper";
@@ -35,6 +36,23 @@ export interface PictureView {
 export interface DrawOptions {
   sense?: string;
   details?: string;
+}
+
+/** What the card editor asks to be drawn: its words as typed, and the user's details. */
+export interface SketchRequest {
+  word: string;
+  translation: string;
+  example?: string;
+  details?: string;
+}
+
+/** A drawing for the editor: the picture (stored on the device), or why there is none. `stale`: a newer drawing replaced it. */
+export type SketchResult = { ok: true; picture: DraftPicture } | { ok: false; reason: "offline" | "limit" | "failed" | "stale"; until?: number };
+
+export interface Sketcher {
+  draw(r: SketchRequest): Promise<SketchResult>;
+  /** Ignore whatever is drawing now (the words changed, or the card was abandoned). */
+  cancel(): void;
 }
 
 /** Cards per pile whose pictures are drawn ahead, so they are there when the card comes up (offline too). */
@@ -146,6 +164,77 @@ export class Pictures {
     const sense = o.sense?.trim() || undefined;
     const details = o.details?.trim() || undefined;
     await this.enqueue({ note_id: noteId, sense, details, force: true, tries: 0, not_before: 0, created: this.now() });
+  }
+
+  /**
+   * Drawing for a card that is still being filled in (the card editor). Each
+   * card gets its own sketcher; a new drawing on it supersedes the one before.
+   */
+  sketcher(): Sketcher {
+    let gen = 0;
+    return {
+      draw: (r) => {
+        const mine = ++gen;
+        return this.sketch(r).then((res) => (mine === gen ? res : { ok: false, reason: "stale" }));
+      },
+      cancel: () => void gen++,
+    };
+  }
+
+  private async sketch(r: SketchRequest): Promise<SketchResult> {
+    if (this.pausedUntil > this.now()) return { ok: false, reason: "limit", until: this.pausedUntil };
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return { ok: false, reason: "offline" };
+    let res: Response;
+    try {
+      res = await this.fetch("/api/pictures", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-code": this.code() },
+        body: JSON.stringify({ word: r.word, translation: r.translation, example: r.example || undefined, details: r.details?.trim() || undefined }),
+      });
+    } catch {
+      return { ok: false, reason: "offline" };
+    }
+    if (res.status === 429) {
+      const body = (await res.json().catch(() => ({}))) as { retry_after?: number };
+      this.pausedUntil = this.now() + (body.retry_after ?? 3600) * 1000;
+      return { ok: false, reason: "limit", until: this.pausedUntil };
+    }
+    if (!res.ok) return { ok: false, reason: "failed" };
+    const { key, sense, scene } = (await res.json()) as { key: string; sense: string; scene: string };
+    try {
+      await this.download(key); // on the device before it is shown, so it works offline
+    } catch {
+      return { ok: false, reason: "failed" };
+    }
+    return { ok: true, picture: { key, sense, scene, details: r.details?.trim() || undefined } };
+  }
+
+  /**
+   * A card was saved while its picture was still drawing: when the drawing
+   * arrives it becomes the card's picture, if the card's picture is still
+   * `was` (none on a new card) and wasn't removed. If drawing failed, the
+   * queue draws one as usual. Never draws twice.
+   */
+  async adopt(noteId: EntityId, pending: Promise<SketchResult>, was?: string): Promise<void> {
+    this.cancel(noteId);
+    this.setState(noteId, "drawing");
+    const r = await pending;
+    this.setState(noteId, undefined);
+    const n = this.store.col.liveNote(noteId);
+    if (!n || n.noPicture || n.picture?.key !== was) return;
+    if (r.ok) {
+      await this.store.append([this.store.factory.make<AssetAttached>("asset_attached", { note_id: noteId, kind: "image", r2_key: r.picture.key, sense: r.picture.sense, details: r.picture.details, scene: r.picture.scene })]);
+    } else if (!n.picture) {
+      await this.ensure(noteId);
+    }
+  }
+
+  /** The card's picture was decided elsewhere (the editor): drop any queued drawing, so it can't overwrite it. */
+  cancel(noteId: EntityId): void {
+    if (!this.jobs.has(noteId)) return;
+    this.jobs.delete(noteId);
+    void this.store.deletePicJob(noteId);
+    this.setState(noteId, undefined);
   }
 
   /** Remove a note's picture; it will not be drawn again automatically. */

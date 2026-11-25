@@ -85,12 +85,12 @@ Mockups: https://claude.ai/artifact/2amCHokAgdXWZZynNPjzcV (layout A "Stacked"; 
 - [x] all tests pass
 
 ### Task 2: Draft pictures
-- [ ] draw a picture for words that aren't a card yet, keep it on the device, hand it to Add/Save
-- [ ] a newer drawing supersedes an older one; offline, limit reached and failure are reported
-- [ ] a drawing that finishes after Add/Save becomes that card's picture (if it has none yet); the queue only takes over on offline/limit/failure
-- [ ] giving a card its picture cancels any queued drawing for that card
-- [ ] tests: success, a superseded drawing ignored, offline, limit, failure, finishing after Add, a queued drawing cancelled
-- [ ] all tests pass
+- [x] draw a picture for words that aren't a card yet, keep it on the device, hand it to Add/Save
+- [x] a newer drawing supersedes an older one; offline, limit reached and failure are reported
+- [x] a drawing that finishes after Add/Save becomes that card's picture (if it has none yet); the queue only takes over on offline/limit/failure
+- [x] giving a card its picture cancels any queued drawing for that card
+- [x] tests: success, a superseded drawing ignored, offline, limit, failure, finishing after Add, a queued drawing cancelled
+- [x] all tests pass
 
 ### Task 3: The card editor as the Add screen
 - [ ] the blank card: both sides stacked, arrow notes with the languages in them, stickers corner, own notes

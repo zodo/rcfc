@@ -311,6 +311,103 @@ describe("Pictures (client)", () => {
     pics.stop();
   });
 
+  it("draws for a card still being filled in: stored on the device, nothing written", async () => {
+    const { d, pics } = await client();
+    const r = await pics.sketcher().draw({ word: "la torre", translation: "the tower", details: " at night " });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.picture).toMatchObject({ sense: "the tower", details: "at night" });
+    expect(new Uint8Array((await d.store.getPicBlob(r.picture.key))!.data)).toEqual(JPEG);
+    expect((await d.store.allEvents()).filter((e) => e.type === "asset_attached")).toEqual([]);
+    pics.stop();
+  });
+
+  it("a newer drawing on the same card makes the older one's result be ignored; other cards are not affected", async () => {
+    const { pics } = await client();
+    const a = pics.sketcher(), b = pics.sketcher();
+    const first = a.draw({ word: "ben", translation: "ben" });
+    const other = b.draw({ word: "mesa", translation: "table" });
+    const second = a.draw({ word: "banco", translation: "bench" });
+    expect(await first).toEqual({ ok: false, reason: "stale" });
+    expect((await second).ok).toBe(true);
+    expect((await other).ok).toBe(true);
+    const c = pics.sketcher();
+    const cancelled = c.draw({ word: "silla", translation: "chair" });
+    c.cancel();
+    expect(await cancelled).toEqual({ ok: false, reason: "stale" });
+    pics.stop();
+  });
+
+  it("says why there is no drawing: offline, the daily limit (then no requests until the reset), failure", async () => {
+    const { s, pics } = await client({ budget: 70 });
+    const sk = pics.sketcher();
+    const fetch = pics.fetch;
+    pics.fetch = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    expect(await sk.draw({ word: "uno", translation: "one" })).toEqual({ ok: false, reason: "offline" });
+    pics.fetch = fetch;
+    expect((await sk.draw({ word: "uno", translation: "one" })).ok).toBe(true);
+    const limited = await sk.draw({ word: "dos", translation: "two" });
+    expect(limited).toMatchObject({ ok: false, reason: "limit" });
+    const calls = s.ai.calls.length;
+    let requests = 0;
+    pics.fetch = async (url, init) => (requests++, fetch(url, init));
+    expect(await sk.draw({ word: "tres", translation: "three" })).toMatchObject({ ok: false, reason: "limit" });
+    expect(requests).toBe(0);
+    expect(s.ai.calls.length).toBe(calls);
+    pics.stop();
+    const broken = await client();
+    broken.s.ai.fail = true;
+    expect(await broken.pics.sketcher().draw({ word: "uno", translation: "one" })).toEqual({ ok: false, reason: "failed" });
+    broken.pics.stop();
+  });
+
+  it("a card added while its picture is drawing gets that picture, and the queue never draws a second one", async () => {
+    const { d, s, pics, add } = await client();
+    const pending = pics.sketcher().draw({ word: "la torre", translation: "the tower" });
+    const id = await add("la torre", "the tower");
+    pics.pausedUntil = Infinity;
+    await pics.ensure(id, true); // queued ahead from the table meanwhile
+    pics.pausedUntil = 0;
+    await pics.adopt(id, pending);
+    const r = await pending;
+    if (!r.ok) throw new Error(r.reason);
+    expect(d.store.col.notes.get(id)!.picture!.key).toBe(r.picture.key);
+    expect(await d.store.picJobs()).toEqual([]);
+    const images = s.ai.calls.filter((c) => !c.model.includes("granite")).length;
+    await pics.kick();
+    expect(s.ai.calls.filter((c) => !c.model.includes("granite")).length).toBe(images);
+    pics.stop();
+  });
+
+  it("when that drawing fails, the queue draws the picture instead", async () => {
+    const { d, pics, add } = await client();
+    const id = await add("la torre", "the tower");
+    await pics.adopt(id, Promise.resolve({ ok: false, reason: "offline" }));
+    expect((await d.store.picJobs()).map((j) => j.note_id)).toEqual([id]);
+    await pics.kick();
+    expect(d.store.col.notes.get(id)!.picture).toBeDefined();
+    pics.stop();
+  });
+
+  it("a late drawing doesn't replace a picture changed or removed meanwhile", async () => {
+    const { d, pics, add } = await client();
+    const id = await add("la torre", "the tower");
+    const old = await pics.sketcher().draw({ word: "la torre", translation: "the tower" });
+    if (!old.ok) throw new Error(old.reason);
+    await d.store.append([d.store.factory.make<AssetAttached>("asset_attached", { note_id: id, kind: "image", r2_key: old.picture.key })]);
+    // Saved with a redraw of "old"; meanwhile the picture became "other".
+    const pending = pics.sketcher().draw({ word: "la torre", translation: "the tower", details: "at night" });
+    await d.store.append([d.store.factory.make<AssetAttached>("asset_attached", { note_id: id, kind: "image", r2_key: "pics/other.jpg" })]);
+    await pics.adopt(id, pending, old.picture.key);
+    expect(d.store.col.notes.get(id)!.picture!.key).toBe("pics/other.jpg");
+    await pics.remove(id);
+    await pics.adopt(id, pics.sketcher().draw({ word: "la torre", translation: "the tower" }));
+    expect(d.store.col.notes.get(id)!.picture).toBeUndefined();
+    expect(await d.store.picJobs()).toEqual([]);
+    pics.stop();
+  });
+
   it("downloads pictures drawn on other devices", async () => {
     const { d, s, pics, add } = await client();
     const id = await add("la torre", "the tower");
