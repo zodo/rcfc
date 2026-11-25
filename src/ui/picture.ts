@@ -1,6 +1,8 @@
 // A card's picture, pasted on: shared by study, the card editor and lists.
 import { app } from "../app";
+import type { EntityId } from "../domain/ids";
 import { h } from "./h";
+import { SketchNote } from "./sketch";
 
 /**
  * A card picture. With a white paper background it blends into the card, so
@@ -15,5 +17,59 @@ export function cutout(key: string, tilt: "l" | "r" = "l"): HTMLElement {
     el.classList.add(v.flat ? "flat" : "cut");
     img.src = v.url;
   });
+  return el;
+}
+
+/** A card picture once its image is ready to show (for gluing it on); null if it can't be had. */
+export async function cutoutReady(key: string, tilt: "l" | "r" = "l"): Promise<HTMLElement | null> {
+  const v = await app.pictures.view(key);
+  if (!v) return null;
+  const img = h("img", { alt: "", decoding: "async" });
+  img.src = v.url;
+  await img.decode().catch(() => {});
+  return h("div", { class: `pic tilt-${tilt} ${v.flat ? "flat" : "cut"}` }, img);
+}
+
+/**
+ * The picture of a card that has none yet (study): nothing until the queue
+ * draws it; then the pencil writes what it will show, and the picture is
+ * glued on when it comes.
+ */
+export function livePicture(noteId: EntityId, tilt: "l" | "r" = "l"): HTMLElement {
+  const el = h("div", { class: "pic-live" });
+  let sketch: SketchNote | undefined;
+  let seen = false;
+  let done = false;
+  const update = () => {
+    if (done) return;
+    const n = app.store.col.liveNote(noteId);
+    if (n?.picture) {
+      done = true;
+      off();
+      const key = n.picture.key;
+      void cutoutReady(key, tilt).then(async (pic) => {
+        if (!pic) return;
+        if (sketch && el.isConnected) await sketch.glue(pic);
+        sketch?.close();
+        el.replaceChildren(pic);
+      });
+      return;
+    }
+    if (app.pictures.state(noteId) !== "drawing") return;
+    if (!sketch) el.replaceChildren((sketch = new SketchNote()).el);
+    const t = app.pictures.text(noteId);
+    if (t) sketch.text(t);
+  };
+  const off = app.pictures.subscribe((id) => {
+    if (el.isConnected) seen = true;
+    else if (seen) {
+      // taken off the screen
+      off();
+      sketch?.close();
+      return;
+    }
+    if (id === noteId) update();
+  });
+  update();
   return el;
 }

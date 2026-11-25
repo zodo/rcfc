@@ -16,7 +16,8 @@ import type { PicState, SketchResult } from "../pictures";
 import { h, ICON_SPEAK, langName, langSelect } from "../ui/h";
 import { Ink } from "../ui/ink";
 import { arrowNote, pickWord } from "../ui/pencil";
-import { cutout } from "../ui/picture";
+import { cutout, cutoutReady } from "../ui/picture";
+import { SketchNote } from "../ui/sketch";
 import { deckFor, languageForm, languages, lastLanguage, openLabel, rememberLanguage, rememberTranslation, translationFor } from "./languages";
 import { stickersSheet, stickerTag, type StickerTarget } from "./stickers";
 
@@ -76,7 +77,17 @@ function open(note?: Note, over?: { leave: () => void }): void {
   let details = note?.picture?.details ?? "";
   /** The words (+ details) the picture shows or is drawing; a pause with the same ones draws nothing. */
   let drawnFor = note ? picKey(note.fields.front, note.fields.back, details) : "";
+  /** The words alone that the picture on the card shows: a redraw of the same words keeps it while drawing. */
+  let drawnWords = note ? picKey(note.fields.front, note.fields.back, "") : "";
   let pending: Promise<SketchResult> | undefined;
+  /** While it draws: the pencil writing down what it will show. */
+  let sketch: SketchNote | undefined;
+  /** The picture just glued on over the note: shown as it lies, not drawn again. */
+  let glued: { key: string; el: HTMLElement } | undefined;
+  const dropSketch = () => {
+    sketch?.close();
+    sketch = undefined;
+  };
   let problem: "offline" | "limit" | "failed" | undefined;
   let removed = !!note?.noPicture;
   let detailsOpen = false;
@@ -180,13 +191,31 @@ function open(note?: Note, over?: { leave: () => void }): void {
     if (!force && k === drawnFor) return; // nothing new: leave the picture space as it is, a tap on it may be under way
     drawnFor = k;
     problem = undefined;
-    const p = sketcher.draw({ word: f, translation: b, example: clean(example.value), details });
+    dropSketch();
+    const words = picKey(f, b, "");
+    // New words: the pencil notes what the picture will show. A redraw of the same words: the old picture stays until the new one comes.
+    const sk = drawn && drawnWords === words ? undefined : (sketch = new SketchNote());
+    const p = sketcher.draw({ word: f, translation: b, example: clean(example.value), details, onText: sk && ((t) => sk.text(t)) });
     pending = p;
     renderPic();
-    void p.then((r) => {
+    void p.then(async (r) => {
       if (pending !== p) return;
+      if (r.ok && sk?.el.isConnected) {
+        // Glued on over the note before the card takes it as its picture.
+        const el = await cutoutReady(r.picture.key);
+        if (pending !== p) return;
+        if (el) {
+          await sk.glue(el);
+          if (pending !== p) return;
+          glued = { key: r.picture.key, el };
+        }
+      }
       pending = undefined;
-      if (r.ok) drawn = r.picture;
+      if (sk && sketch === sk) dropSketch();
+      if (r.ok) {
+        drawn = r.picture;
+        drawnWords = words;
+      }
       else if (r.reason !== "stale") problem = r.reason;
       renderPic();
     });
@@ -206,8 +235,10 @@ function open(note?: Note, over?: { leave: () => void }): void {
     let body: (Node | string | null)[];
     if (removed) {
       body = [box(h("span", {}, "no picture")), h("button", { type: "button", class: "ed-caption", onclick: () => ((removed = false), draw(true)) }, "draw one")];
+    } else if (pending && sketch) {
+      body = [sketch.el, room()];
     } else if (drawn) {
-      body = [cutout(drawn.key), caption()];
+      body = [glued?.key === drawn.key ? glued.el : cutout(drawn.key), caption()];
     } else if (pending) {
       body = [box(mirror(), h("span", { class: "ed-pic-says" }, "drawing…")), room()];
     } else if (queued) {
@@ -241,6 +272,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
                 pending = undefined;
                 problem = undefined;
                 sketcher.cancel();
+                dropSketch();
                 detailsOpen = false;
                 renderPic();
               },
@@ -517,8 +549,9 @@ function open(note?: Note, over?: { leave: () => void }): void {
     for (const el of [front, back, example, memoTarget, memoKnown]) el.value = "";
     labels = openSticker();
     sketcher = pictures.sketcher();
-    drawn = pending = problem = undefined;
-    drawnFor = details = "";
+    dropSketch();
+    drawn = pending = problem = glued = undefined;
+    drawnFor = drawnWords = details = "";
     removed = detailsOpen = false;
     auto = new Set();
     asked = "";
@@ -559,6 +592,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   const leave = () => {
     ink.clear();
     sketcher.cancel();
+    dropSketch();
     fillGen++; // a fill still on its way writes nothing, and draws nothing
     if (over) over.leave();
     else goBack();
@@ -653,6 +687,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
       if (now && !drawn && !pending && !removed) {
         drawn = { ...now };
         drawnFor = picKey(front.value, back.value, details);
+        drawnWords = picKey(front.value, back.value, "");
       }
       renderPic();
     }

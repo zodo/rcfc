@@ -8,7 +8,7 @@
 // Per frame only the pencil's translate, the letters' opacity/transform and the
 // doodle's stroke change.
 
-const PENCIL = `<svg viewBox="0 0 36 12" aria-hidden="true">
+export const PENCIL = `<svg viewBox="0 0 36 12" aria-hidden="true">
 <path d="M0.5 6.3 11 1.5v9z" fill="#ecc99a"/>
 <path d="M0.5 6.3 3.6 5.2v2.4z" fill="#4a4f4a"/>
 <rect x="11" y="1.3" width="16" height="9.4" fill="#7c9a77"/>

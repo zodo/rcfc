@@ -21,7 +21,7 @@ import { Body, type Pose } from "../ui/body";
 import { h, ICON_PEN, ICON_SPEAK, toast } from "../ui/h";
 import { relight, startTilt, tiltNeedsTap } from "../ui/light";
 import { haptic, seeded } from "../ui/paper";
-import { cutout } from "../ui/picture";
+import { cutout, livePicture } from "../ui/picture";
 import { EDGE, Turn } from "../ui/turn";
 import { languages, lastLanguage, rememberLanguage } from "./languages";
 
@@ -116,7 +116,7 @@ function faces(card: Card, note: Note, picTilt: "l" | "r"): Faces {
     example ? h("div", { class: "example", lang: lang.from }, example, speakBtn("Say the example", () => void app.speech.say(example, lang.from), "speak small")) : null,
     memo(note.fields.memo_target, lang.from),
   ];
-  const known = [note.picture ? cutout(note.picture.key, picTilt) : null, h("div", { class: "face", lang: lang.to }, note.fields.back), memo(note.fields.memo_known, lang.to)];
+  const known = [note.picture ? cutout(note.picture.key, picTilt) : note.noPicture ? null : livePicture(note.id, picTilt), h("div", { class: "face", lang: lang.to }, note.fields.back), memo(note.fields.memo_known, lang.to)];
   const up = forward ? target : known;
   up.find((e) => e?.classList.contains("face"))!.classList.add("prompt");
   const answer = h("div", { class: "answer hidden" }, ...(forward ? known : target));

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AssetAttached, NoteCreatedPayload } from "../src/domain/events";
-import { budgetDay, imagePrompt, meanings, parseScene, parseSense, SCENE_MODEL, sceneMessages, secondsToReset, senseFor, senseMessages, withoutQuotes } from "../src/domain/pictures";
+import { budgetDay, imagePrompt, meanings, parseScene, parseSense, SCENE_MODEL, sceneMessages, sceneSoFar, secondsToReset, senseFor, senseMessages, takeLines, withoutQuotes, type PictureLine } from "../src/domain/pictures";
 import { Pictures } from "../src/pictures";
 import { handlePictures, type AiRunner, type BlobStore, type PictureEnv } from "../worker/pictures";
 import { sqliteD1 } from "./support/d1";
@@ -23,6 +23,19 @@ class MemoryBucket implements BlobStore {
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 1, 2, 3]);
 
+/** A streamed LLM reply as Workers AI sends it: server-sent events, a few characters each, split anywhere. */
+function sse(reply: string): ReadableStream<Uint8Array> {
+  const events = (reply.match(/.{1,4}/gs) ?? []).map((piece) => `data: ${JSON.stringify({ response: piece })}\n\n`).join("") + "data: [DONE]\n\n";
+  const bytes = new TextEncoder().encode(events);
+  let at = 0;
+  return new ReadableStream({
+    pull(c) {
+      if (at >= bytes.length) return c.close();
+      c.enqueue(bytes.slice(at, (at += 7)));
+    },
+  });
+}
+
 /** Scene LLM + image model stand-in. `flagged` = how many image calls fail with 3030 first. */
 class FakeAi implements AiRunner {
   calls: { model: string; input: unknown }[] = [];
@@ -34,7 +47,9 @@ class FakeAi implements AiRunner {
       const user = (input as { messages: { content: string }[] }).messages[1].content;
       if (user.includes("Meanings:")) return { response: JSON.stringify({ meaning: 2 }) };
       const word = /Word: (.*)/.exec(user)![1];
-      return { response: JSON.stringify({ scene: `A scene for ${word}.` }) };
+      const reply = JSON.stringify({ scene: `A scene for ${word}.` });
+      if ((input as { stream?: boolean }).stream) return sse(reply);
+      return { response: reply };
     }
     if (this.fail) throw new Error("5000: model down");
     if (this.flagged > 0) {
@@ -129,6 +144,29 @@ describe("asset_attached fold", () => {
   });
 });
 
+describe("the scene as it streams in", () => {
+  it("reads the scene out of a reply still arriving", () => {
+    expect(sceneSoFar("")).toBe("");
+    expect(sceneSoFar('```json\n{"sce')).toBe("");
+    expect(sceneSoFar('```json\n{"scene": "A person stan')).toBe("A person stan");
+    expect(sceneSoFar('{"scene": "A dog.\\nIt sits."}')).toBe("A dog. It sits.");
+    expect(sceneSoFar('{"scene": "A dog, it sits"}')).toBe("A dog, it sits");
+  });
+
+  it("stops before quoted words, which the final scene drops", () => {
+    expect(sceneSoFar('{"scene": "A sign saying \\"OPEN\\" on a door')).toBe("A sign saying ");
+    expect(sceneSoFar('{"scene": "A calendar showing “Monday” and')).toBe("A calendar showing ");
+    expect(sceneSoFar("{\"scene\": \"A sign saying 'open' on")).toBe("A sign saying ");
+    expect(sceneSoFar("{\"scene\": \"A man who doesn't sleep")).toBe("A man who doesn't sleep");
+    expect(sceneSoFar('{"scene": "A man \\')).toBe("A man ");
+  });
+
+  it("splits a stream into whole lines", () => {
+    expect(takeLines('{"a":1}\n{"b"')).toEqual({ lines: ['{"a":1}'], rest: '{"b"' });
+    expect(takeLines("\n\n")).toEqual({ lines: [], rest: "" });
+  });
+});
+
 describe("pictures API", () => {
   it("draws, stores and serves a picture", async () => {
     const s = server();
@@ -142,6 +180,38 @@ describe("pictures API", () => {
     expect(img.headers.get("content-type")).toBe("image/jpeg");
     expect(img.headers.get("cache-control")).toContain("immutable");
     expect(new Uint8Array(await img.arrayBuffer())).toEqual(JPEG);
+  });
+
+  it("streamed: the meaning, the scene as it is written, then the picture", async () => {
+    const s = server();
+    const res = await s.fetch("/api/pictures", post({ word: "el banco", translation: "bank, bench", sense: "bench", stream: true }));
+    expect(res.headers.get("content-type")).toContain("ndjson");
+    const lines = (await res.text()).trim().split("\n").map((l) => JSON.parse(l) as PictureLine);
+    expect(lines[0]).toEqual({ sense: "bench" });
+    const scenes = lines.filter((l): l is { scene: string } => "scene" in l && !("key" in l)).map((l) => l.scene);
+    expect(scenes.length).toBeGreaterThan(2);
+    scenes.forEach((t, i) => i && expect(t.startsWith(scenes[i - 1])).toBe(true)); // it only grows
+    expect(scenes.at(-1)).toBe("A scene for el banco.");
+    const last = lines.at(-1) as { key: string; sense: string; scene: string };
+    expect(last.key).toMatch(/^pics\/[0-9a-f-]{36}\.jpg$/);
+    expect(last).toMatchObject({ sense: "bench", scene: "A scene for el banco." });
+    expect(new Uint8Array(await (await s.fetch(`/api/media/${last.key}`)).arrayBuffer())).toEqual(JPEG);
+  });
+
+  it("streamed: a picture that fails ends with an error line", async () => {
+    const s = server();
+    s.ai.fail = true;
+    const lines = (await (await s.fetch("/api/pictures", post({ word: "la torre", translation: "the tower", stream: true }))).text()).trim().split("\n").map((l) => JSON.parse(l) as PictureLine);
+    expect(lines[0]).toEqual({ sense: "the tower" });
+    expect(lines.at(-1)).toMatchObject({ error: expect.stringContaining("model down") });
+  });
+
+  it("streamed without AI (local dev): the placeholder, its scene first", async () => {
+    const s = server({ AI: undefined });
+    const lines = (await (await s.fetch("/api/pictures", post({ word: "la torre", translation: "the tower", stream: true }))).text()).trim().split("\n").map((l) => JSON.parse(l) as PictureLine);
+    expect(lines[0]).toEqual({ sense: "the tower" });
+    expect(lines.at(-1)).toMatchObject({ key: expect.stringMatching(/\.svg$/), sense: "the tower" });
+    expect(lines.some((l) => "scene" in l && !("key" in l))).toBe(true);
   });
 
   it("asks which meaning the example uses, then writes the scene without the example", async () => {
@@ -228,6 +298,37 @@ describe("Pictures (client)", () => {
     expect(await d.store.picJobs()).toEqual([]);
     expect((await d.store.allEvents()).filter((e) => e.type === "asset_attached")).toHaveLength(1);
     pics.stop();
+  });
+
+  it("while the queue draws, the meaning and scene so far are there to show", async () => {
+    const { pics, add } = await client();
+    const id = await add("la torre", "the tower");
+    const texts: (string | undefined)[] = [];
+    pics.subscribe((n) => n === id && pics.state(id) === "drawing" && texts.push(pics.text(id)?.scene));
+    await pics.ensure(id);
+    await pics.kick();
+    expect(texts.filter(Boolean).at(-1)).toBe("A scene for la torre.");
+    expect(pics.text(id)).toBeUndefined(); // gone once drawn
+    pics.stop();
+  });
+
+  it("the card editor gets the meaning and the scene before the picture", async () => {
+    const { pics } = await client();
+    const seen: { sense?: string; scene?: string }[] = [];
+    const r = await pics.sketcher().draw({ word: "el banco", translation: "bank", onText: (t) => seen.push(t) });
+    expect(r.ok).toBe(true);
+    expect(seen[0]).toEqual({ sense: "bank" });
+    expect(seen.at(-1)).toEqual({ sense: "bank", scene: "A scene for el banco." });
+  });
+
+  it("a drawing replaced by a newer one says nothing more", async () => {
+    const { pics } = await client();
+    const sk = pics.sketcher();
+    const seen: string[] = [];
+    const first = sk.draw({ word: "uno", translation: "one", onText: () => seen.push("uno") });
+    sk.cancel();
+    expect(await first).toEqual({ ok: false, reason: "stale" });
+    expect(seen).toEqual([]);
   });
 
   it("draws pictures of cards coming up after the ones needed now, and nothing queued near the end is lost", async () => {

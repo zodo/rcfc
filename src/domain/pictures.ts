@@ -146,3 +146,47 @@ export function secondsToReset(now: number): number {
   const d = new Date(now);
   return Math.ceil((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) - now) / 1000);
 }
+
+// ---- the scene as it streams in ----
+//
+// POST /api/pictures with `stream: true` answers NDJSON, one object per line:
+// `{"sense"}` once the meaning is decided, `{"scene"}` (all of it so far) as
+// the scene LLM writes it, then `{"key","sense","scene"}` with the picture,
+// or `{"error"}`. The card shows the scene in pencil while the picture draws.
+
+export type PictureLine = { sense: string } | { scene: string } | { key: string; sense: string; scene: string } | { error: string };
+
+/**
+ * The scene so far from a reply still arriving (`{"scene": "a person stand`).
+ * It stops before any quote mark: quoted words are stripped from the final
+ * scene (`withoutQuotes`), so they never show, not even for a moment.
+ */
+export function sceneSoFar(reply: string): string {
+  const m = /"scene"\s*:\s*"/.exec(reply);
+  if (!m) return "";
+  let out = "";
+  for (let i = m.index + m[0].length; i < reply.length; i++) {
+    const c = reply[i];
+    if (c === '"') break; // its end, or a quote in it
+    if (c === "\\") {
+      const n = reply[i + 1];
+      if (n === undefined || n === '"' || n === "u") break; // cut mid-escape, or a quote / unicode escape: wait for the end
+      out += n === "n" ? " " : n === "t" ? " " : n;
+      i++;
+      continue;
+    }
+    if ("“”«»".includes(c)) break;
+    out += c;
+  }
+  // Single quotes are quotes too, unless inside a word (don't, l'eau).
+  const q = /(^|[^\p{L}\p{N}])['‘]/u.exec(out);
+  if (q) out = out.slice(0, q.index + q[1].length);
+  return out.replace(/\s+/g, " ").trimStart();
+}
+
+/** Splits streamed text into complete lines; returns them and what is left over. */
+export function takeLines(buf: string): { lines: string[]; rest: string } {
+  const parts = buf.split("\n");
+  const rest = parts.pop() ?? "";
+  return { lines: parts.map((l) => l.trim()).filter(Boolean), rest };
+}

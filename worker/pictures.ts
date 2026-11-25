@@ -1,11 +1,14 @@
 // Pictures API. POST /api/pictures draws one card picture (scene LLM →
 // FLUX.2 klein 4B), stores it in R2 and returns its key; the client records it
-// as an `asset_attached` event. GET /api/media/<key> serves stored pictures.
+// as an `asset_attached` event. With `stream: true` it answers NDJSON instead:
+// the meaning, the scene as it is written, then the picture (PictureLine), so
+// the card can show the scene while the picture draws.
+// GET /api/media/<key> serves stored pictures.
 //
 // Spending is capped per UTC day in D1 (ai_budget) below the free Workers AI
 // allocation: past the cap the API answers 429 with Retry-After, never a bill.
 // Without an AI binding (local dev) it draws a placeholder instead.
-import { budgetDay, DEFAULT_DAILY_NEURONS, IMAGE_MODEL, imagePrompt, MAX_DETAILS, meanings, NEURONS_PER_PICTURE, parseScene, parseSense, PICTURE_H, PICTURE_W, SCENE_MODEL, sceneMessages, secondsToReset, senseFor, senseMessages, type PictureRequest } from "../src/domain/pictures";
+import { budgetDay, DEFAULT_DAILY_NEURONS, IMAGE_MODEL, imagePrompt, MAX_DETAILS, meanings, NEURONS_PER_PICTURE, parseScene, parseSense, PICTURE_H, PICTURE_W, SCENE_MODEL, sceneMessages, sceneSoFar, secondsToReset, senseFor, senseMessages, takeLines, type PictureLine, type PictureRequest } from "../src/domain/pictures";
 import { isSyncCode } from "../src/domain/sync";
 import { json, type SqlDb } from "./sync";
 
@@ -24,6 +27,8 @@ export interface PictureEnv {
   budget?: number;
   /** Outside production a request may name another scene model and ask for the scene only (comparing models on preview). */
   production?: boolean;
+  /** Local dev: how long the placeholder takes to draw when streamed, like a real picture (ms). */
+  devDelay?: number;
   now?: () => number;
 }
 
@@ -55,10 +60,15 @@ export async function reserve(db: SqlDb, day: string, cost: number, cap: number)
   return (r.meta.changes ?? 0) > 0;
 }
 
-async function chat(ai: AiRunner, model: string, messages: { role: string; content: string }[], maxTokens: number): Promise<unknown> {
-  const input: Record<string, unknown> = { messages, response_format: { type: "json_object" }, max_tokens: maxTokens, temperature: 0.3 };
+function chatInput(model: string, messages: { role: string; content: string }[], maxTokens: number): Record<string, unknown> {
+  const input: Record<string, unknown> = { messages, max_tokens: maxTokens, temperature: 0.3 };
   // Gemma 4 thinks by default: slower, and no better at one short scene.
   if (model.includes("gemma-4")) input.chat_template_kwargs = { enable_thinking: false };
+  return input;
+}
+
+async function chat(ai: AiRunner, model: string, messages: { role: string; content: string }[], maxTokens: number): Promise<unknown> {
+  const input = { ...chatInput(model, messages, maxTokens), response_format: { type: "json_object" } };
   const res = (await ai.run(model, input)) as {
     response?: unknown;
     choices?: { message?: { content?: unknown } }[];
@@ -70,6 +80,33 @@ async function chat(ai: AiRunner, model: string, messages: { role: string; conte
 async function drawScene(ai: AiRunner, r: PictureRequest, model = SCENE_MODEL): Promise<{ sense: string; scene: string }> {
   const sense = senseFor(r) ?? parseSense(await chat(ai, model, senseMessages(r), 20), r);
   return { sense, scene: parseScene(await chat(ai, model, sceneMessages(r, sense), 400), sense) };
+}
+
+/** The scene LLM's reply streamed: `onText` gets all of it so far after each piece. Returns the whole reply. */
+async function chatStream(ai: AiRunner, messages: { role: string; content: string }[], maxTokens: number, onText: (text: string) => void): Promise<string> {
+  // No json_object here: with it the reply comes whole. The system prompt still asks for JSON.
+  const stream = (await ai.run(SCENE_MODEL, { ...chatInput(SCENE_MODEL, messages, maxTokens), stream: true })) as ReadableStream<Uint8Array>;
+  const reader = stream.getReader();
+  const dec = new TextDecoder();
+  let buf = "", text = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buf += dec.decode(value, { stream: !done });
+    const { lines, rest } = takeLines(done ? buf + "\n" : buf);
+    buf = rest;
+    for (const line of lines) {
+      const data = line.replace(/^data:\s*/, "");
+      if (data === "[DONE]") continue;
+      try {
+        const j = JSON.parse(data) as { response?: string; choices?: { delta?: { content?: string } }[] };
+        const piece = j.response ?? j.choices?.[0]?.delta?.content ?? "";
+        if (piece) onText((text += piece));
+      } catch {
+        // not a data line
+      }
+    }
+    if (done) return text;
+  }
 }
 
 async function drawImage(ai: AiRunner, prompt: string): Promise<Uint8Array> {
@@ -99,6 +136,53 @@ function placeholder(word: string, sense: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${PICTURE_W}" height="${PICTURE_H}" viewBox="0 0 ${PICTURE_W} ${PICTURE_H}"><rect width="100%" height="100%" fill="#fdfcf8"/><circle cx="560" cy="170" r="110" fill="#e2a93a"/><path d="M0 380 Q200 300 400 370 T768 340 V512 H0Z" fill="#6f9470"/><path d="M0 440 Q260 390 520 450 T768 430 V512 H0Z" fill="#d0603f"/><text x="40" y="90" font-family="sans-serif" font-size="44" fill="#253126">${esc(word)}</text><text x="40" y="140" font-family="sans-serif" font-size="28" fill="#5f6d5f">${esc(sense)} (dev placeholder)</text></svg>`;
 }
 
+/** NDJSON answer: `run` writes lines with `send`; whatever it throws ends the answer with an error line. */
+function ndjson(run: (send: (line: PictureLine) => Promise<void>) => Promise<void>): Response {
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = writable.getWriter();
+  const enc = new TextEncoder();
+  const send = (line: PictureLine) => writer.write(enc.encode(JSON.stringify(line) + "\n"));
+  void (async () => {
+    try {
+      await run(send);
+    } catch (e) {
+      await send({ error: `picture failed: ${e instanceof Error ? e.message : String(e)}` }).catch(() => {});
+    } finally {
+      await writer.close().catch(() => {});
+    }
+  })();
+  return new Response(readable, { headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" } });
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** The streamed pipeline: meaning, the scene as it is written, the picture. */
+function streamed(ai: AiRunner, r: PictureRequest, env: PictureEnv): Response {
+  return ndjson(async (send) => {
+    const sense = senseFor(r) ?? parseSense(await chat(ai, SCENE_MODEL, senseMessages(r), 20), r);
+    await send({ sense });
+    let shown = "";
+    const reply = await chatStream(ai, sceneMessages(r, sense), 400, (text) => {
+      const s = sceneSoFar(text);
+      if (s.length > shown.length) void send({ scene: (shown = s) });
+    });
+    const scene = parseScene(reply, sense);
+    if (scene !== shown) await send({ scene });
+    const jpeg = await drawImage(ai, imagePrompt(scene));
+    const key = `pics/${crypto.randomUUID()}.jpg`;
+    await env.MEDIA.put(key, jpeg, { httpMetadata: { contentType: "image/jpeg" } });
+    await send({ key, sense, scene });
+  });
+}
+
+async function placeholderPicture(r: PictureRequest, env: PictureEnv): Promise<{ key: string; sense: string; scene: string }> {
+  const sense = senseFor(r) ?? meanings(r.translation)[0] ?? r.translation;
+  const scene = parseScene(null, sense);
+  const key = `pics/${crypto.randomUUID()}.svg`;
+  await env.MEDIA.put(key, placeholder(r.word, sense), { httpMetadata: { contentType: "image/svg+xml" } });
+  return { key, sense, scene };
+}
+
 async function create(request: Request, env: PictureEnv): Promise<Response> {
   const body = await request.json().catch(() => null);
   const r = parseRequest(body);
@@ -113,12 +197,22 @@ async function create(request: Request, env: PictureEnv): Promise<Response> {
       return json({ error: `scene failed: ${e instanceof Error ? e.message : String(e)}` }, 502);
     }
   }
+  const stream = (body as { stream?: unknown }).stream === true;
   if (!env.AI) {
-    const sense = senseFor(r) ?? meanings(r.translation)[0] ?? r.translation;
-    const scene = parseScene(null, sense);
-    const key = `pics/${crypto.randomUUID()}.svg`;
-    await env.MEDIA.put(key, placeholder(r.word, sense), { httpMetadata: { contentType: "image/svg+xml" } });
-    return json({ key, sense, scene });
+    if (!stream) return json(await placeholderPicture(r, env));
+    // Streamed like a real picture: the scene word by word, the picture a while later.
+    return ndjson(async (send) => {
+      const p = await placeholderPicture(r, env);
+      await send({ sense: p.sense });
+      const delay = env.devDelay ?? 0;
+      const words = p.scene.split(" ");
+      for (let i = 1; i <= words.length; i++) {
+        if (delay) await sleep(40);
+        await send({ scene: words.slice(0, i).join(" ") });
+      }
+      if (delay) await sleep(delay);
+      await send(p);
+    });
   }
   if (!(await reserve(env.DB, budgetDay(now), NEURONS_PER_PICTURE, env.budget ?? DEFAULT_DAILY_NEURONS))) {
     const wait = secondsToReset(now);
@@ -127,6 +221,7 @@ async function create(request: Request, env: PictureEnv): Promise<Response> {
       headers: { "content-type": "application/json", "cache-control": "no-store", "retry-after": String(wait) },
     });
   }
+  if (stream) return streamed(env.AI, r, env);
   try {
     const { sense, scene } = await drawScene(env.AI, r);
     const jpeg = await drawImage(env.AI, imagePrompt(scene));

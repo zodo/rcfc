@@ -38,7 +38,7 @@ export default {
     const budget = Number(env.PICTURE_NEURONS_PER_DAY) || undefined;
     return (
       (await handleSync(request, env.DB)) ??
-      (await handlePictures(request, { DB: env.DB, MEDIA: env.MEDIA, AI: env.AI as AiRunner | undefined, budget, production: env.APP_ENV === "production" })) ??
+      (await handlePictures(request, { DB: env.DB, MEDIA: env.MEDIA, AI: env.AI as AiRunner | undefined, budget, production: env.APP_ENV === "production", devDelay: env.APP_ENV === "dev" ? 900 : 0 })) ??
       (await handleFill(request, { DB: env.DB, MEDIA: env.MEDIA, AI: env.AI as AiRunner | undefined, budget, production: env.APP_ENV === "production", devDelay: env.APP_ENV === "dev" ? 900 : 0 })) ??
       (await handleTts(request, { DB: env.DB, MEDIA: env.MEDIA, AZURE_SPEECH_KEY: (env as { AZURE_SPEECH_KEY?: string }).AZURE_SPEECH_KEY, AZURE_SPEECH_REGION: env.AZURE_SPEECH_REGION, budget: Number(env.TTS_CHARS_PER_MONTH) || undefined })) ??
       json({ error: "not found" }, 404)

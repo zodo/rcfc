@@ -1979,6 +1979,68 @@ header.top.sub .back svg {
   transform: rotate(-2deg);
   overflow-wrap: anywhere;
 }
+/* a study card's picture still to come: nothing until it draws */
+.pic-live {
+  display: contents;
+}
+.flashcard .sketch,
+.under .sketch {
+  max-width: min(100%, 300px, 30dvh * 1.5);
+}
+/* the picture's place while it draws (src/ui/sketch.ts): the pencil writes what it will show */
+.sketch {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  aspect-ratio: 3 / 2;
+}
+.sketch::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px dashed rgb(var(--shadow) / 0.2);
+  border-radius: 4px;
+  transition: opacity 0.25s 0.35s;
+}
+.sketch.glued::before {
+  opacity: 0;
+}
+.sk-note {
+  position: absolute;
+  inset: 12px 14px;
+  overflow: hidden;
+  color: #6d756e;
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: left;
+}
+.sk-sense {
+  display: block;
+  min-height: 1.5em;
+  font-weight: 700;
+  font-size: 16px;
+}
+.sk-scene {
+  font-style: italic;
+}
+.sk-note span span {
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+.sk-note span span.on {
+  opacity: 1;
+}
+.sk-pen {
+  transition: translate 50ms linear;
+}
+.sk-glued {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+}
+.sk-glued .pic {
+  max-width: none;
+}
 .ed-pic.busy .ed-pic-box,
 .ed-pic.busy .pic {
   animation: pic-pulse 1.4s ease-in-out infinite;

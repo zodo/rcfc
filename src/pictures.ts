@@ -13,6 +13,7 @@ import type { DraftPicture } from "./domain/cards";
 import type { AssetAttached } from "./domain/events";
 import type { EntityId } from "./domain/ids";
 import { flattenPaper } from "./domain/paper";
+import { takeLines, type PictureLine } from "./domain/pictures";
 import type { PicBlob, PicJob, Store } from "./store";
 
 export type PicState = "queued" | "drawing" | "waiting" | "failed";
@@ -34,13 +35,23 @@ export interface PictureView {
   flat: boolean;
 }
 
+/** What a picture shows, known before the picture comes: the meaning, then the scene as it is written. */
+export interface SceneText {
+  sense?: string;
+  scene?: string;
+}
+
 /** What the card editor asks to be drawn: its words as typed, and the user's details. */
 export interface SketchRequest {
   word: string;
   translation: string;
   example?: string;
   details?: string;
+  /** Called as the meaning and the scene arrive, before the picture. */
+  onText?: (t: SceneText) => void;
 }
+
+type Drawn = { ok: true; key: string; sense: string; scene: string } | { ok: false; reason: "offline" | "limit" | "failed" };
 
 /** A drawing for the editor: the picture (stored on the device), or why there is none. `stale`: a newer drawing replaced it. */
 export type SketchResult = { ok: true; picture: DraftPicture } | { ok: false; reason: "offline" | "limit" | "failed" | "stale"; until?: number };
@@ -70,6 +81,7 @@ export class Pictures {
   private states = new Map<EntityId, PicState>();
   private listeners = new Set<(noteId: EntityId) => void>();
   private urls = new Map<string, PictureView>();
+  private texts = new Map<EntityId, SceneText>();
   private haveBlobs: Set<string> | null = null;
   private running: Promise<void> | null = null;
   private again = false;
@@ -127,6 +139,66 @@ export class Pictures {
     return this.states.get(noteId);
   }
 
+  /** While the queue draws a note's picture: its meaning and scene so far. */
+  text(noteId: EntityId): SceneText | undefined {
+    return this.texts.get(noteId);
+  }
+
+  /**
+   * One picture from POST /api/pictures, streamed: `onText` gets the meaning
+   * and the scene as they arrive. An older server's whole JSON answer works too.
+   */
+  private async request(body: Record<string, unknown>, onText?: (t: SceneText) => void): Promise<Drawn> {
+    let res: Response;
+    try {
+      res = await this.fetch("/api/pictures", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-code": this.code() },
+        body: JSON.stringify({ ...body, stream: true }),
+      });
+    } catch {
+      return { ok: false, reason: "offline" };
+    }
+    if (res.status === 429) {
+      const b = (await res.json().catch(() => ({}))) as { retry_after?: number };
+      this.pausedUntil = this.now() + (b.retry_after ?? 3600) * 1000;
+      return { ok: false, reason: "limit" };
+    }
+    if (!res.ok || !res.body) return { ok: false, reason: "failed" };
+    if (!(res.headers.get("content-type") ?? "").includes("ndjson")) {
+      const j = (await res.json().catch(() => null)) as { key?: string; sense?: string; scene?: string } | null;
+      return j?.key ? { ok: true, key: j.key, sense: j.sense ?? "", scene: j.scene ?? "" } : { ok: false, reason: "failed" };
+    }
+    const text: SceneText = {};
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (value) buf += dec.decode(value, { stream: !done });
+        const { lines, rest } = takeLines(done ? buf + "\n" : buf);
+        buf = rest;
+        for (const line of lines) {
+          let l: PictureLine;
+          try {
+            l = JSON.parse(line) as PictureLine;
+          } catch {
+            continue;
+          }
+          if ("error" in l) return { ok: false, reason: "failed" };
+          if ("key" in l) return { ok: true, key: l.key, sense: l.sense, scene: l.scene };
+          if ("sense" in l) text.sense = l.sense;
+          else text.scene = l.scene;
+          onText?.({ ...text });
+        }
+        if (done) return { ok: false, reason: "failed" }; // cut off before the picture
+      }
+    } catch {
+      return { ok: false, reason: "offline" };
+    }
+  }
+
   /**
    * Queue a picture for a note that has none (no-op if it has one or was
    * removed). `ahead`: for a card coming up, drawn after pictures needed now;
@@ -164,7 +236,8 @@ export class Pictures {
     return {
       draw: (r) => {
         const mine = ++gen;
-        return this.sketch(r).then((res) => (mine === gen ? res : { ok: false, reason: "stale" }));
+        const onText = r.onText;
+        return this.sketch({ ...r, onText: onText && ((t) => mine === gen && onText(t)) }).then((res) => (mine === gen ? res : { ok: false, reason: "stale" }));
       },
       cancel: () => void gen++,
     };
@@ -173,23 +246,9 @@ export class Pictures {
   private async sketch(r: SketchRequest): Promise<SketchResult> {
     if (this.pausedUntil > this.now()) return { ok: false, reason: "limit", until: this.pausedUntil };
     if (typeof navigator !== "undefined" && navigator.onLine === false) return { ok: false, reason: "offline" };
-    let res: Response;
-    try {
-      res = await this.fetch("/api/pictures", {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-user-code": this.code() },
-        body: JSON.stringify({ word: r.word, translation: r.translation, example: r.example || undefined, details: r.details?.trim() || undefined }),
-      });
-    } catch {
-      return { ok: false, reason: "offline" };
-    }
-    if (res.status === 429) {
-      const body = (await res.json().catch(() => ({}))) as { retry_after?: number };
-      this.pausedUntil = this.now() + (body.retry_after ?? 3600) * 1000;
-      return { ok: false, reason: "limit", until: this.pausedUntil };
-    }
-    if (!res.ok) return { ok: false, reason: "failed" };
-    const { key, sense, scene } = (await res.json()) as { key: string; sense: string; scene: string };
+    const d = await this.request({ word: r.word, translation: r.translation, example: r.example || undefined, details: r.details?.trim() || undefined }, r.onText);
+    if (!d.ok) return d.reason === "limit" ? { ok: false, reason: "limit", until: this.pausedUntil } : d;
+    const { key, sense, scene } = d;
     try {
       await this.download(key); // on the device before it is shown, so it works offline
     } catch {
@@ -276,31 +335,27 @@ export class Pictures {
         continue;
       }
       this.setState(j.note_id, "drawing");
-      let res: Response;
-      try {
-        res = await this.fetch("/api/pictures", {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-user-code": this.code() },
-          body: JSON.stringify({ word: n.fields.front, translation: n.fields.back, example: n.fields.example, sense: j.sense, details: j.details }),
-        });
-      } catch {
+      const d = await this.request({ word: n.fields.front, translation: n.fields.back, example: n.fields.example, sense: j.sense, details: j.details }, (t) => {
+        this.texts.set(j.note_id, t);
+        this.emit(j.note_id);
+      });
+      this.texts.delete(j.note_id);
+      if (!d.ok && d.reason === "offline") {
         this.setState(j.note_id, "queued"); // offline: retried on reconnect
         return this.retryAt(this.now() + 60_000);
       }
-      if (res.status === 429) {
-        const body = (await res.json().catch(() => ({}))) as { retry_after?: number };
-        this.pausedUntil = this.now() + (body.retry_after ?? 3600) * 1000;
+      if (!d.ok && d.reason === "limit") {
         for (const id of this.jobs.keys()) this.setState(id, "waiting");
         continue;
       }
-      if (!res.ok) {
+      if (!d.ok) {
         j.tries++;
         j.not_before = this.now() + 60_000 * 2 ** j.tries;
         await this.store.putPicJob(j);
         this.setState(j.note_id, j.tries >= MAX_TRIES ? "failed" : "queued");
         continue;
       }
-      const { key, sense, scene } = (await res.json()) as { key: string; sense: string; scene: string };
+      const { key, sense, scene } = d;
       // Keep the picture for offline use before it appears anywhere.
       await this.download(key).catch(() => {});
       // Edited away while drawing: drop the result.
