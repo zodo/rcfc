@@ -119,6 +119,8 @@ export class Ink {
     side.append(layer);
     this.place(layer, input, side);
     input.classList.add("inked");
+    // Typed into (or pasted into) while being written: it is the user's text now, shown at once.
+    input.addEventListener("input", () => this.finish(input), { once: true });
     let end = () => {};
     const w: Writing = { input, layer, anims: [], over: false, end: () => end(), after };
     const done = new Promise<void>((r) => (end = r));

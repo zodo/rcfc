@@ -196,7 +196,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
     const b = clean(back.value);
     const both = !!clean(front.value) && !!b;
     const box = (...c: (Node | string | null)[]) => h("div", { class: "ed-pic-box" }, ...c);
-    const mirror = () => h("span", { class: "ed-mirror", lang: to }, b);
+    // The translation shows here once the pencil has written it, not before.
+    const mirror = () => h("span", { class: "ed-mirror", lang: to }, ink.isWriting(back) ? "" : b);
     const caption = () =>
       h("button", { type: "button", class: "ed-caption", onclick: () => ((detailsOpen = true), renderPic(), detailsInput.focus()) }, details ? `how it looks: ${details}` : "+ how it looks");
     const queued = note && !drawn && !pending && !removed ? pictures.state(note.id) : undefined;
@@ -272,7 +273,11 @@ function open(note?: Note, over?: { leave: () => void }): void {
     }
     let left = written.length;
     if (!left) return then?.();
-    for (const p of written) ink.write(places[p], t[p], () => --left === 0 && then?.());
+    for (const p of written)
+      ink.write(places[p], t[p], () => {
+        if (p === "back" && !drawn) renderPic(); // its mirror in the picture space
+        if (--left === 0) then?.();
+      });
   };
   const askNow = () => fillAsk(textNow(), auto, { from: from!, to });
   const wordFill = h("p", { class: "ed-fill", role: "status" });
