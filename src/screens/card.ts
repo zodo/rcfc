@@ -14,6 +14,7 @@ import type { NoteDeleted } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import type { PicState, SketchResult } from "../pictures";
 import { h, ICON_SPEAK, langName, langSelect } from "../ui/h";
+import { Ink } from "../ui/ink";
 import { arrowNote, pickWord } from "../ui/pencil";
 import { cutout } from "../ui/picture";
 import { deckFor, languageForm, languages, lastLanguage, openLabel, rememberLanguage, rememberTranslation, translationFor } from "./languages";
@@ -199,22 +200,24 @@ function open(note?: Note, over?: { leave: () => void }): void {
     const caption = () =>
       h("button", { type: "button", class: "ed-caption", onclick: () => ((detailsOpen = true), renderPic(), detailsInput.focus()) }, details ? `how it looks: ${details}` : "+ how it looks");
     const queued = note && !drawn && !pending && !removed ? pictures.state(note.id) : undefined;
+    /** Keeps the caption's line while there is no picture yet, so nothing under it moves when one comes. */
+    const room = () => h("span", { class: "ed-caption room", "aria-hidden": "true" }, "+ how it looks");
     let body: (Node | string | null)[];
     if (removed) {
       body = [box(h("span", {}, "no picture")), h("button", { type: "button", class: "ed-caption", onclick: () => ((removed = false), draw(true)) }, "draw one")];
     } else if (drawn) {
       body = [cutout(drawn.key), caption()];
     } else if (pending) {
-      body = [box(mirror(), h("span", { class: "ed-pic-says" }, "drawing…"))];
+      body = [box(mirror(), h("span", { class: "ed-pic-says" }, "drawing…")), room()];
     } else if (queued) {
       body = [box(h("span", { class: "ed-pic-says" }, QUEUE_TEXT[queued])), queued === "failed" ? h("button", { type: "button", class: "ed-caption", onclick: () => void pictures.retry(note!.id) }, "try again") : null];
     } else if (problem) {
       const says = problem === "offline" ? "it draws itself once you're online" : problem === "limit" ? "today's free pictures are used up; it comes tomorrow" : "it couldn't be drawn";
-      body = [box(mirror(), h("span", { class: "ed-pic-says" }, says)), problem === "failed" ? h("button", { type: "button", class: "ed-caption", onclick: () => draw(true) }, "try again") : null];
+      body = [box(mirror(), h("span", { class: "ed-pic-says" }, says)), problem === "failed" ? h("button", { type: "button", class: "ed-caption", onclick: () => draw(true) }, "try again") : room()];
     } else if (both) {
-      body = [box(mirror(), h("span", { class: "ed-pic-says" }, "draws when you stop typing"))];
+      body = [box(mirror(), h("span", { class: "ed-pic-says" }, "draws when you stop typing")), room()];
     } else {
-      body = [box(h("span", { class: "ed-pic-says" }, "the picture draws itself from the two words"))];
+      body = [box(h("span", { class: "ed-pic-says" }, "the picture draws itself from the two words")), room()];
     }
     pic.classList.toggle("busy", !!pending || queued === "drawing" || queued === "queued");
     if (detailsOpen && !removed) {
@@ -252,17 +255,31 @@ function open(note?: Note, over?: { leave: () => void }): void {
   // ---- filling in ----
   const places: Record<FillPlace, HTMLInputElement> = { front, back, example };
   const textNow = (): FillText => ({ front: front.value, back: back.value, example: example.value });
-  const setText = (t: FillText) => {
-    for (const p of ["front", "back", "example"] as const) {
-      if (places[p].value === t[p]) continue;
-      places[p].value = t[p];
-      // Filled in under the cursor: typing replaces it instead of adding to it.
-      if (document.activeElement === places[p] && auto.has(p)) places[p].select();
+  /** Writes on the card in pencil: waits on an empty place, writes fills in letter by letter. */
+  const ink = new Ink((el) => el.closest<HTMLElement>(".ed-side")!);
+  /**
+   * The card with this text. Places a fill wrote are written in by the pencil,
+   * `first` first, one after another; `then` runs once all of them show.
+   * Emptied places empty at once.
+   */
+  const setText = (t: FillText, first?: FillPlace, then?: () => void) => {
+    const order: FillPlace[] = first ? [first, ...(["front", "back", "example"] as const).filter((p) => p !== first)] : ["front", "back", "example"];
+    const changed = order.filter((p) => places[p].value !== t[p]);
+    const written = changed.filter((p) => t[p] && auto.has(p));
+    for (const p of changed) {
+      if (written.includes(p)) continue;
+      ink.write(places[p], t[p]);
     }
+    let left = written.length;
+    if (!left) return then?.();
+    for (const p of written) ink.write(places[p], t[p], () => --left === 0 && then?.());
   };
   const askNow = () => fillAsk(textNow(), auto, { from: from!, to });
   const wordFill = h("p", { class: "ed-fill", role: "status" });
   const transFill = h("p", { class: "ed-fill", role: "status" });
+
+  /** The question on its way. */
+  let asking: FillRequest | undefined;
 
   /** Ask for what is missing, unless that was asked already. True while a fill on its way may change the words (the picture waits for it). */
   const fill = (): boolean => {
@@ -271,21 +288,26 @@ function open(note?: Note, over?: { leave: () => void }): void {
     if (k === asked) return !!filling && !!r && !!filledPlace(r);
     asked = k;
     const mine = ++fillGen;
-    filling = undefined;
+    filling = asking = undefined;
     if (!r) return renderFill(), false;
     const p = app.filler.fill(r).then((res) => {
       if (mine !== fillGen) return;
-      filling = undefined;
+      filling = asking = undefined;
       // The card changed meanwhile (the user typed what was asked for): this answer is for another question.
       if (askKey(askNow()) !== k) return renderFill();
       if (res.ok && res.fill.options.length) {
-        shown = r;
-        options = res.fill.options;
-        chosen = 0;
-        suggestion = res.fill.suggest ?? "";
-        const a = applyOption(textNow(), auto, r, options[0]);
+        const a = applyOption(textNow(), auto, r, res.fill.options[0]);
         auto = a.auto;
-        setText(a.text);
+        // What else it offers shows once the pencil has written the answer in.
+        shown = undefined;
+        setText(a.text, filledPlace(r) ?? "example", () => {
+          if (askKey(askNow()) !== k) return;
+          shown = r;
+          options = res.fill.options;
+          chosen = 0;
+          suggestion = res.fill.suggest ?? "";
+          renderFill();
+        });
       }
       update();
       renderFill();
@@ -293,6 +315,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
       draw(false);
     });
     filling = p;
+    asking = r;
     renderFill();
     return !!filledPlace(r);
   };
@@ -303,7 +326,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     chosen = i;
     const a = applyOption(textNow(), auto, shown, options[i]);
     auto = a.auto;
-    setText(a.text);
+    setText(a.text, filledPlace(shown));
     asked = askKey(askNow());
     update();
     renderFill();
@@ -315,7 +338,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   const takeSuggestion = () => {
     if (!suggestion || busy) return;
     const was = picKey(front.value, back.value, details);
-    front.value = suggestion;
+    ink.write(front, suggestion);
     suggestion = "";
     if (shown) shown = { ...shown, word: front.value };
     asked = askKey(askNow());
@@ -353,8 +376,9 @@ function open(note?: Note, over?: { leave: () => void }): void {
       ...(typedWord ? ["did you mean ", h("button", { type: "button", class: "link", lang: from!, onclick: takeSuggestion }, suggestion), "?"] : place === "front" && auto.has("front") ? or("word", from!) : []),
     );
     transFill.replaceChildren(...(place === "back" && auto.has("back") ? or("translation", to) : []));
-    // Looking it up: the empty places say so.
-    for (const p of ["front", "back", "example"] as const) places[p].placeholder = filling && !cleanFill(places[p].value) ? "looking it up…" : "";
+    // Looking it up: the pencil waits on the place being filled in.
+    const waitOn = asking ? places[filledPlace(asking) ?? "example"] : null;
+    ink.waitAt(filling && waitOn && !cleanFill(waitOn.value) ? waitOn : null);
   };
 
   // ---- duplicates: told as soon as typing pauses ----
@@ -379,7 +403,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     toWord.text.textContent = langName(to);
     wordNote.text.replaceChildren(...(clean(front.value) ? [word] : ["the ", word, " word goes here"]));
     transNote.text.replaceChildren(...(clean(back.value) ? [trans] : ["its ", trans, " translation goes here"]));
-    exampleNote.el.hidden = !!clean(example.value);
+    exampleNote.el.classList.toggle("gone", !!clean(example.value));
     front.lang = from!;
     example.lang = from!;
     back.lang = to;
@@ -481,6 +505,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     else if (d.picture === undefined) void pictures.ensure(noteId);
     added.unshift(noteId);
     // A fresh blank card, same languages and open sticker.
+    ink.clear();
     for (const el of [front, back, example, memoTarget, memoKnown]) el.value = "";
     labels = openSticker();
     sketcher = pictures.sketcher();
@@ -524,6 +549,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   });
 
   const leave = () => {
+    ink.clear();
     sketcher.cancel();
     fillGen++; // a fill still on its way writes nothing, and draws nothing
     if (over) over.leave();
@@ -537,6 +563,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     const n = store.col.liveNote(id);
     if (!n || busy) return;
     clearTimeout(timer);
+    ink.finishAll();
     const saved = [...app.root.childNodes];
     const scroll = window.scrollY;
     parked = true;
@@ -585,15 +612,16 @@ function open(note?: Note, over?: { leave: () => void }): void {
     { class: "ed-side target", "aria-label": "White side" },
     stickers,
     h("div", { class: "ed-word-line" }, front, speak),
-    wordNote.el,
-    wordFill,
+    h("div", { class: "ed-note-row" }, wordNote.el, wordFill),
     dupNote,
     example,
     exampleNote.el,
     h("label", { class: "ed-memo-line" }, h("span", { "aria-hidden": "true" }, "✎"), memoTarget),
   );
-  const cream = h("section", { class: "ed-side known", "aria-label": "Cream side" }, back, transNote.el, transFill, pic, h("label", { class: "ed-memo-line" }, h("span", { "aria-hidden": "true" }, "✎"), memoKnown));
+  const cream = h("section", { class: "ed-side known", "aria-label": "Cream side" }, back, h("div", { class: "ed-note-row" }, transNote.el, transFill), pic, h("label", { class: "ed-memo-line" }, h("span", { "aria-hidden": "true" }, "✎"), memoKnown));
   const root = h("div", { class: "editor" }, white, cream);
+  // Reaching for the card while the pencil writes: everything shows written at once.
+  for (const type of ["pointerdown", "keydown"]) root.addEventListener(type, () => ink.finishAll(), true);
   subPage(
     "words",
     editing ? "Edit card" : "Add a card",

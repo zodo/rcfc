@@ -5,7 +5,7 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
 ## Layout
 
 - `src/` PWA client (Vite + vite-plugin-pwa, Dexie, no UI framework)
-  - `ui/` DOM helpers and the paper look: `paper.ts` (textures, cut edges, haptics), `light.ts` (tilt light), `body.ts` (card physics), `turn.ts` (turning a card over), `picture.ts` (a card's pasted picture), `pencil.ts` (arrow notes, a language word that picks)
+  - `ui/` DOM helpers and the paper look: `paper.ts` (textures, cut edges, haptics), `light.ts` (tilt light), `body.ts` (card physics), `turn.ts` (turning a card over), `picture.ts` (a card's pasted picture), `pencil.ts` (arrow notes, a language word that picks), `ink.ts` (a pencil that waits on an empty place and writes a fill in letter by letter)
   - `domain/` pure logic: event fold, RWKV row derivation, piles (`piles.ts`: deals, draws, sizes), new-card daily limits (`newcards.ts`), stickers (`labels.ts`: names, ids, pile keys), cards (`cards.ts`: duplicates, the draft a card editor holds and the events Add / Save write)
   - `engine/` RWKV Web Worker + checkpoints; `EngineApi` is what the app uses (tests stub it)
   - `import/` Duocards CSV importer (`csv.ts`, `duocards.ts`): pure, text in, events out
@@ -89,8 +89,8 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 
 ## Fill notes
 
-- The card editor fills in what wasn't typed at the typing pause (`src/domain/fill.ts`: prompt, parsing, and the editor rules `fillAsk` / `applyOption` / `clearAuto`): word typed → translation + example + other meanings ("or:", a tap swaps); translation typed → the word (article where nouns take one) + example; both → example. "did you mean X?" offers the dictionary form / spelling / article; never applied without a tap. Fills never write over typed text (`auto` = places a fill wrote, untouched since). The picture waits for a fill that may change the words. Add/Save wait for one on its way (≤ 8 s).
-- `POST /api/fill` (`worker/fill.ts`): Gemma 4 26B A4B (`FILL_MODEL`, thinking off, json_schema), ~15 neurons from the pictures' `ai_budget`; replies kept in R2 `fill/<sha256>.json` keyed by `FILL_VERSION` + model + pair + text: bump `FILL_VERSION` when the prompt changes. Outside production a request may pass `model` to compare models. Local dev (no AI): `devFill` placeholders ("banco (en)").
+- The card editor fills in what wasn't typed at the typing pause (`src/domain/fill.ts`: prompt, parsing, and the editor rules `fillAsk` / `applyOption` / `clearAuto`): word typed → translation + example + other meanings ("or:", a tap swaps); translation typed → the word (article where nouns take one) + example; both → example. "did you mean X?" offers the dictionary form / spelling / article; never applied without a tap. Fills never write over typed text (`auto` = places a fill wrote, untouched since). The picture waits for a fill that may change the words. Add/Save wait for one on its way (≤ 8 s). The pencil (`src/ui/ink.ts`) only animates: the input holds the whole text at once, a layer over it shows the letters; no layout shift when a fill lands (notes share the arrow note's line, empty notes keep their room).
+- `POST /api/fill` (`worker/fill.ts`): Gemma 4 26B A4B (`FILL_MODEL`, thinking off, json_schema), ~15 neurons from the pictures' `ai_budget`; replies kept in R2 `fill/<sha256>.json` keyed by `FILL_VERSION` + model + pair + text: bump `FILL_VERSION` when the prompt changes. Outside production a request may pass `model` to compare models. Local dev (no AI): `devFill` placeholders ("banco (en)"), answered after 0.9 s like a real fill.
 
 ## Speech notes
 

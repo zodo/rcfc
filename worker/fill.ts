@@ -18,6 +18,8 @@ export interface FillEnv {
   budget?: number;
   /** Outside production a request may name another model (comparing models on preview). */
   production?: boolean;
+  /** Local dev: how long the placeholder takes, like a real fill (ms). */
+  devDelay?: number;
   now?: () => number;
 }
 
@@ -57,7 +59,10 @@ export async function handleFill(request: Request, env: FillEnv): Promise<Respon
   const body = await request.json().catch(() => null);
   const r = parseRequest(body);
   if (!r) return json({ error: "from, to and a word or translation (≤120 characters) are required" }, 400);
-  if (!env.AI) return json(devFill(r));
+  if (!env.AI) {
+    if (env.devDelay) await new Promise((res) => setTimeout(res, env.devDelay));
+    return json(devFill(r));
+  }
 
   const asked = (body as { model?: unknown }).model;
   const model = !env.production && typeof asked === "string" && asked.startsWith("@cf/") ? asked : FILL_MODEL;

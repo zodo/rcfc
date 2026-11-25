@@ -1825,21 +1825,108 @@ header.top.sub .back svg {
 .ed-dup:empty {
   display: none;
 }
-/* what the fill offers: other meanings, a better form of the word */
+/* an arrow note and, on its line, what the fill offers: other meanings, a better form of the word */
+.ed-note-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 12px;
+}
 .ed-fill {
-  margin: 2px 0 0;
+  margin: 0 0 0 auto;
+  padding-top: 11px;
   font-size: 14.5px;
   color: #6d756e;
-  text-align: center;
+  text-align: right;
 }
 .ed-fill:empty {
   display: none;
 }
-.ed-word::placeholder,
-.ed-trans::placeholder,
-.ed-example::placeholder {
-  color: #9ca39c;
-  font-size: 17px;
+/* a filled place keeps its note's room, so nothing under it moves */
+.arrow-note.gone {
+  visibility: hidden;
+}
+.ed-caption.room {
+  visibility: hidden;
+}
+/* pencil writing on the card (src/ui/ink.ts) */
+.ed-side input.inked {
+  color: transparent;
+  caret-color: transparent;
+}
+.ink-layer {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: pre;
+  pointer-events: none;
+}
+/* letters not written yet: they show as the pencil passes */
+.ink-layer span {
+  display: inline-block;
+  white-space: pre;
+  opacity: 0;
+}
+.ink-pen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  will-change: translate;
+}
+.ink-hand {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+.ink-hand svg {
+  position: absolute;
+  top: -5px;
+  left: 0;
+  width: 56px;
+  height: 10.5px;
+  transform: rotate(-38deg);
+  transform-origin: 0 50%;
+  filter: drop-shadow(1px 3px 1.5px rgb(var(--shadow) / 0.28));
+}
+/* waiting: two taps on the paper, then a pause, like someone thinking */
+.ink-hand.tapping {
+  animation: ink-tap 1.4s ease-in-out infinite;
+}
+@keyframes ink-tap {
+  0%,
+  45%,
+  100% {
+    transform: none;
+  }
+  10% {
+    transform: translate(3px, -8px);
+  }
+  20% {
+    transform: none;
+  }
+  30% {
+    transform: translate(2px, -6px);
+  }
+}
+/* writing: the small wobble of a hand moving along a line */
+.ink-hand.writing {
+  animation: ink-wobble 120ms ease-in-out infinite alternate;
+}
+@keyframes ink-wobble {
+  from {
+    transform: translate(0, -1.5px) rotate(-3deg);
+  }
+  to {
+    transform: translate(0, 1px) rotate(2deg);
+  }
 }
 /* stickers stuck over the white side's top edge */
 .ed-stickers {
@@ -1983,8 +2070,9 @@ header.top.sub .back svg {
 @media (prefers-reduced-motion: reduce) {
   .ed-pic.busy .ed-pic-box,
   .ed-pic.busy .pic,
-  .ed-added-pic.busy {
-    animation: none;
+  .ed-added-pic.busy,
+  .ink-hand {
+    animation: none !important;
   }
 }
 /* wide screens: the two sides side by side, like a card opened flat */
