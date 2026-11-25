@@ -8,6 +8,7 @@ Offline-first spaced-repetition PWA with an RWKV scheduler in Wasm. Design: `doc
   - `ui/` DOM helpers and the paper look: `paper.ts` (textures, cut edges, haptics), `light.ts` (tilt light), `body.ts` (card physics), `turn.ts` (turning a card over), `picture.ts`
   - `domain/` pure logic: event fold, RWKV row derivation, piles (`piles.ts`: deals, draws, sizes), new-card daily limits (`newcards.ts`), stickers (`labels.ts`: names, ids, pile keys)
   - `engine/` RWKV Web Worker + checkpoints; `EngineApi` is what the app uses (tests stub it)
+  - `import/` Duocards CSV importer (`csv.ts`, `duocards.ts`): pure, text in, events out
   - `store.ts` ties log + engine. No UI side effects: writes return `{ replay }` / set `stale`, the app decides when to reload
   - `session.ts` one sitting at a pile (UI-free; the cards on screen); `sync.ts` sync loop; `pictures.ts` picture queue + offline picture store; `speech.ts` spoken audio: downloaded ahead, offline store, browser voice fallback
   - `app.ts` shell shared by screens: `app` (store, sync, current screen), `go.*` navigation, `page()` / `fullScreen()`, `setKeys()`

@@ -1,6 +1,6 @@
 # RWKV SRS PWA design doc
 
-Nov 23, 2026 · @Egor
+Nov 23, 2026 · @Egor · updated Nov 25, 2026 to match what is built
 
 ## Overview
 
@@ -19,13 +19,13 @@ An offline-first spaced repetition PWA, Duocards style, whose scheduler is the R
 - Shared or subscribed decks, collaboration, accounts with passwords or email
 - Scale. Expect about 3 users; choose the simplest thing that works at that size
 
-**Stack in one line.** Vite PWA + IndexedDB (Dexie) on the client, rwkv-srs compiled to wasm32, a Cloudflare Worker with D1 and R2 for sync and media, Workers AI for enrichment, the Web Speech API for pronunciation.
+**Stack in one line.** Vite PWA + IndexedDB (Dexie) on the client, an RWKV-SRS V1 engine in Rust compiled to wasm32, a Cloudflare Worker with D1 and R2 for sync and media, Workers AI for pictures, Azure neural voices for pronunciation (the browser voice as fallback).
 
 ## Architecture
 
 &#91;embedded content: system architecture, device and Cloudflare\]
 
-The device does everything a review needs: UI, storage, scheduling and pronunciation, so the app works with no network. RWKV predictions flow back to the UI after each answer. Cloudflare is touched only to sync events, store images and run enrichment, and the app degrades to "pending" for those when offline.
+The device does everything a review needs: UI, storage, scheduling and playing pronunciation, so the app works with no network. RWKV predictions flow back to the UI after each answer. Cloudflare is touched only to sync events, draw pictures and make spoken audio. Pictures and audio for the cards coming up are downloaded ahead and kept on the device, so study works offline; without them a card shows no picture and the browser voice speaks.
 
 ## Data model
 
@@ -41,31 +41,31 @@ Everything is an immutable event; current state is a fold over the log. Each dev
 | `device_id` | UUID | Tie-breaker for equal `ts` |
 | `payload` | JSON | Type-specific |
 
-Entity ids (`note_id`, `card_id`, `deck_id`, `preset_id`) are random 64-bit integers, never counters, so two offline devices cannot collide. Integers because rwkv-srs takes integer ids.
+Entity ids (`note_id`, `card_id`, `deck_id`, `preset_id`, `label_id`) are random positive integers below 2^53, never counters, so two offline devices cannot collide. Integers because the model takes integer ids (`i64`); below 2^53 so they stay exact in JS and JSON. Two kinds are derived instead of random, so offline devices agree: a studied language's hidden deck (from the language) and a new sticker (from its name).
 
 **Event types**
 
 | Type | Payload | Notes |
 | --- | --- | --- |
-| `deck_created` | `deck_id, name, preset_id` | One preset per deck is fine to start |
-| `deck_renamed` | `deck_id, name` | Last write wins |
-| `preset_updated` | `preset_id, desired_retention, day_rollover_hour` | Rollover drives `day_offset` |
-| `note_created` | `note_id, deck_id, fields{front, back, ...}, lang_pair` | Emits its cards in the same batch |
-| `card_created` | `card_id, note_id, template` | E.g. forward and reverse card per note |
+| `deck_created` | `deck_id, name, preset_id, lang_pair` | Decks are hidden: one per studied language, only to give the model a group (see [Piles, labels and languages](#piles-labels-and-languages)) |
+| `deck_renamed` | `deck_id, name` | Last write wins; nothing emits it now |
+| `preset_updated` | `preset_id, desired_retention, day_rollover_hour, new_per_day` | Rollover (4) drives `day_offset`; new words a day (10) per studied language; `desired_retention` is no longer read (target recall is fixed at 0.9). No UI sets them |
+| `note_created` | `note_id, deck_id, fields{front, back, example?}, lang_pair{from, to}, source?` | Emits its forward and reverse cards in the same batch; `source` marks an import |
+| `card_created` | `card_id, note_id, template` | `forward` or `reverse` |
 | `note_edited` | `note_id, field, value` | One event per field; last write wins per field |
-| `card_moved` | `card_id, deck_id` |  |
-| `card_deleted` / `note_deleted` | id | Tombstone only; history stays usable by RWKV |
-| `notes_prioritized` | `note_ids` | "I don't know these" on unseen words: learn them before other new words, latest first |
-| `asset_attached` | `note_id, kind (image or audio), r2_key` | Media lives in R2, not in events |
+| `note_deleted` | `note_id` | Tombstone only; history stays usable by RWKV |
+| `notes_prioritized` | `note_ids` | "Don't know" on unseen words: learn them before other new words, latest first |
+| `asset_attached` | `note_id, kind: image, r2_key, sense?, details?, scene?` | The picture lives in R2; `r2_key` null = removed (never redrawn automatically); last write wins per note |
 | `review` | see below | Append-only, never edited |
+| `pile_dealt`, `label_created`, `label_renamed`, `label_deleted`, `label_colored`, `notes_labeled` | see [Events and sync](#piles-labels-and-languages) under Piles | Piles and stickers |
 
-Since then: `pile_dealt`, the sticker events (`label_created`, `label_renamed`, `label_deleted`, `notes_labeled`) and a `pile` field on `review`; decks became a hidden group per studied language (see [Piles, labels and languages](#piles-labels-and-languages)).
+Spoken audio is not an event: it is made on demand from the text and cached by its hash (see Pronunciation).
 
 **Review payload (fields rwkv-srs needs)**
 
-Taken from the add-on's `RWKV_SRS_PROCESS_FIELDS`: `review_id, card_id, note_id, deck_id, preset_id, day_offset, elapsed_days, elapsed_seconds, rating, duration, state`. Store raw facts (`card_id`, `rating` 1 to 4, `duration_ms`, `state` new, learning, review or relearn, `ts`) and derive `day_offset` and the elapsed values at replay time, so a change of rollover hour needs no migration.
+The model takes the add-on's `RWKV_SRS_PROCESS_FIELDS`: `review_id, card_id, note_id, deck_id, preset_id, day_offset, elapsed_days, elapsed_seconds, rating, duration, state`. The event stores only raw facts: `card_id, note_id, deck_id, preset_id` as of the answer, `rating` 1 to 4, `duration_ms`, `tz_offset_min` (local day boundaries survive travel), `pile` (which pile it was answered from) and the envelope `ts`. `day_offset`, the elapsed values and `state` are derived at replay (`src/domain/rows.ts`, following RWKV4Anki `review_rows.py`), so a change of rollover hour needs no migration. Changing that derivation bumps `ROWS_VERSION`, which forces a full replay.
 
-Anki import (optional, later). Map Anki `revlog` rows to `review` events and notes or cards to the creation events. RWKV then starts warm on years of history.
+**Imports.** A Duocards CSV importer is built: pure (text in, events out), dedups on normalized front + back so a re-import is safe, and sticks a "Duocards" sticker on what came in. Imported words don't queue pictures at import time; they get them when they come up. Anki import (map `revlog` rows to `review` events so RWKV starts warm) is not built.
 
 ## Sync
 
@@ -89,102 +89,95 @@ CREATE INDEX events_user_seq ON events (user_code, seq);
 
 | Route | Request | Response |
 | --- | --- | --- |
-| `POST /sync/push` | `{events: [...]}`, header `X-User-Code` | `{accepted: n}`; duplicates ignored via `INSERT OR IGNORE` |
-| `GET /sync/pull?after=<seq>` | header `X-User-Code` | `{events: [...], next: <seq>, more: bool}`, pages of 500 |
-| `PUT /media/<key>` | image or audio bytes | `{r2_key}` |
-| `GET /media/<key>` |  | the bytes, long cache headers |
+| `POST /api/sync/push` | `{events: [...]}` (at most 500), header `X-User-Code` | `{accepted: n}`; duplicates ignored via `INSERT OR IGNORE` |
+| `GET /api/sync/pull?after=<seq>` | header `X-User-Code` | `{events: [...], next: <seq>, more: bool}`, pages of 500 |
+| `POST /api/pictures` | `{word, translation, example?, sense?, details?}`, header `X-User-Code` | `{key, sense, scene}`; 429 with `retry_after` past the daily budget |
+| `GET /api/media/<key>` |  | the picture bytes, immutable cache headers |
+| `GET /api/tts?lang=&text=` | header `X-User-Code` | MP3; 429 past the monthly budget, 404 without a voice service |
+| `GET /api/health` |  | D1, R2, AI binding and voice key status, deployed version |
+
+The server never reads event payloads. D1 also holds two budget counters: `ai_budget` (neurons per UTC day) and `tts_budget` (characters per UTC month).
 
 **Client loop**
 
-1. Every local write goes to the local log and an outbox.
-2. On app start, on reconnect, and every 30 s while online: push the outbox, then pull after the stored cursor until `more` is false.
-3. Apply pulled events to the local tables; store the new cursor.
+1. Every local write goes to the local log (Dexie); the push cursor is the local sequence number, so the log is the outbox.
+2. On app start, on reconnect, when the app comes back to the foreground, every 30 s while visible and 2 s after a local write: push, then pull after the stored cursor until `more` is false.
+3. Pulled events are stored marked remote (never pushed back) and folded into the local state; the new cursor is stored.
 
 The service worker does not need Background Sync; the loop above is enough at this scale.
 
 **Conflict rules**
 
 - Reviews, creations, tombstones: no conflicts, set union.
-- `note_edited`, `deck_renamed`, `card_moved`, `preset_updated`: last write wins, ordered by `(ts, device_id)`.
+- `note_edited`, `deck_renamed`, `preset_updated`, `asset_attached`, `label_renamed`, `label_colored`, `notes_labeled`: last write wins, ordered by `(ts, device_id)`.
+- Several presets can exist after pairing (each device makes a default one); the app picks deterministically: the lowest id among presets that decks use.
 - A deleted entity stays deleted; later edits to it are ignored.
 
 **RWKV replay on late events**
 
-RWKV state depends on review order. When a pull brings a `review` older than the newest review already processed, rewind to the newest checkpoint before it and replay from there (see RWKV in Wasm, checkpoints). Pulls that only contain newer reviews just process them incrementally.
+RWKV state depends on review order. Pulled reviews that sort after everything processed are fed to the model incrementally. A pulled review older than the newest one processed, or a changed rollover hour of a preset already used, marks the state stale; the app reloads at the next safe moment (the table) and replays the whole log. There is one checkpoint, not a history of them, so there is no partial rewind; at about 770 reviews a second on the phone this stays fast enough for months.
 
 ## RWKV in Wasm
 
-Port the Rust crate `rust/rwkv-srs-cpu` from [rwkv-srs v0.1.1](https://github.com/zaguk/rwkv-srs) to `wasm32-unknown-unknown`, starting with the scalar Oracle CPU path, single-threaded. Not yet build-tested; the list below comes from reading the source.
+Built. `rwkv/engine/` is a clean reimplementation of the V1 Oracle CPU path of [rwkv-srs v0.1.1](https://github.com/zaguk/rwkv-srs) (RWKV-P only), not a port of the crate: the only dependency is `serde_json` (plus `wasm-bindgen` on wasm32), no candle, PyO3, rayon or intrinsics. It is checked number by number against goldens produced by upstream (`rwkv/golden/`; `cargo test --release`). Scalar and single-threaded; `simd128` was not needed. Weights: one V1 model, about 11 MB (`rwkv/models/`, see `PROVENANCE.md`).
 
-**What helps**
-
-- Model weights are small: each `.safetensors` file is about 11 MB (two V1 models, one V5o-a).
-- Core deps are pure Rust and Wasm-friendly: `candle-core` 0.9, `safetensors`, `half`, `bytemuck`, `serde`, `sha2`.
-- Start with V1: it supports both RWKV-P (immediate) and forgetting curves; V5o-a is marked experimental.
-
-**What must change**
-
-| Blocker | Where | Plan |
-| --- | --- | --- |
-| PyO3 is a hard dependency | 26 of 100 `.rs` files | Put bindings behind a `python` cargo feature; add a `wasm` feature with wasm-bindgen exports |
-| x86 and ARM intrinsics, `pulp` with `x86-v3` | `ops.rs`, `model.rs`, `model/binary_cpu.rs` | `cfg`-gate them; use Oracle (scalar) on wasm first, add `simd128` later if needed |
-| `rayon` threads | crate-wide | Single-threaded on wasm (`cfg`), optional wasm-bindgen-rayon later |
-| `std::fs` checkpoints | 11 files | Serialize state to bytes; the JS side stores them in IndexedDB |
-| `wgpu` with blocking `pollster` | GPU path | Leave out of the first build; WebGPU needs an async rewrite |
-
-**Wasm API (proposed)**
+**Wasm API**
 
 ```ts
 class Rwkv {
-  static load(weights: Uint8Array): Rwkv
-  process(reviews: ReviewRow[]): void            // advance state in time order
-  predict(cards: PredictRow[]): Float32Array     // P(recall now) per card
-  saveState(): Uint8Array                        // checkpoint
-  loadState(bytes: Uint8Array): void
+  constructor(weights: Uint8Array)
+  process(rows: Float64Array): Float64Array   // apply answers in time order; P(recall) just before each
+  apply(rows: Float64Array): void             // the same without the predictions (half the work, for replay)
+  predict(rows: Float64Array): Float64Array   // P(recall) now per card; state unchanged
+  takeDirty(): Float64Array                   // (kind, id) of states changed since the last call
+  stateBytes(kind, id) / loadState(kind, id, bytes)
+  featuresBytes() / loadFeatures(bytes)
+  reset()
+  readonly memoryBytes: number
+  readonly reviewsProcessed: number
 }
 ```
 
-Run it in a dedicated Web Worker so the UI never blocks.
+Rows are flat `Float64Array`s, one fixed-width row per review or card. It runs in a dedicated Web Worker (`src/engine/worker.ts`); the app talks to it through `EngineApi` (tests stub it).
 
 **Checkpoints**
 
-- Save state every 500 reviews and at the end of each session; keep the last 5, keyed by the last processed `review_id`.
-- Late reviews from another device trigger a rewind to the newest checkpoint before them, then a replay.
-- First launch on a new device: replay the full log once. Speed on a phone is unknown; measure it in milestone 1.
+- One checkpoint in IndexedDB `rcfc-engine`: a meta row (feature state, reviews processed, last review id, model sha, rows config) and one row per recurrent state (card, note, deck, preset, global). Only changed states are written, in one transaction with the meta row, so the checkpoint is consistent whenever the tab dies.
+- Written about 1.5 s after activity, and every ~2000 reviews during a replay.
+- On launch the checkpoint is used when its model sha and rows config match and its last review is in the log; otherwise the log is replayed from the start.
+- Speed: about 770 reviews a second on the Android phone (Mac Safari about 1460). A year of daily use (~82k reviews) replays in under two minutes.
 
-**Live session (what the user feels)**
+**Live session**
 
-Mirror the add-on's engine (`live_review_engine.py`): after each answer, process that review, re-predict a hot set of candidate cards (add-on defaults: 50 hot, refresh limit 247), and show the card with the lowest predicted recall below desired retention. New cards are interleaved by a simple daily limit.
+The first plan mirrored the add-on's engine (`live_review_engine.py`): after each answer, re-predict a hot set of cards and show the one with the lowest predicted recall. Superseded by [Piles, labels and languages](#piles-labels-and-languages): the model's predictions are unreliable at the minute scale (a simulation with the real weights gave P(recall) of 0.5 to 0.8 seconds after a correct answer, and 8% of Got it cards came back in the same sitting), so the model decides which cards and on which days, and a dealt pile decides the order within a sitting. Each answer is still fed to the model at once, and the table refreshes all piles' predictions in one engine call.
 
-Superseded by [Piles, labels and languages](#piles-labels-and-languages): the model's predictions are unreliable at the minute scale (a simulation with the real weights gave P(recall) of 0.5 to 0.8 seconds after a correct answer, and 8% of Got it cards came back in the same sitting), so the model now decides which cards and on which days, and a dealt pile decides the order within a sitting.
+**Known limit.** All recurrent state is held in memory, about 70 KB per card: roughly 0.5 GB after a year of daily use. Fine for months; before then states need to live on disk and be loaded on demand, which matters most for iPhone memory limits.
 
 ## Card enrichment
 
-Adding a word creates the card immediately; enrichment fills it in afterwards as ordinary `note_edited` and `asset_attached` events, so it syncs and works offline like typed content.
+Adding a word creates the card immediately; anything the app adds to it later arrives as ordinary events (`asset_attached`), so it syncs and works offline like typed content. Built today: pictures and pronunciation. The user types the translation and the example.
 
-**Flow**
+**Text (not built)**
 
-1. User types a word in a studied language and picks its translation's language.
-2. Client emits `note_created` with just the word; the card is usable at once.
-3. Client queues an enrichment job (kept in IndexedDB, retried when online).
-4. Worker `POST /enrich {word, from, to}` calls Workers AI and returns JSON; the image is stored in R2.
-5. Client writes the results as events.
+The plan: one Workers AI chat call returns strict JSON (`translation, part_of_speech, gender_or_article, definition, examples[2]`), filling the field the user did not type. Responses cached in D1 by `(word, from, to)`, so a second user adding the same word pays nothing. A word summary (forms, usage) would sit behind the cream side, stored like pictures; on the white side it would give the answer away.
 
-**Text (one LLM call)**
+**Picture**
 
-A Workers AI chat model returns strict JSON: `translation, part_of_speech, gender_or_article, definition, examples[2]`. One call replaces a separate translation model and handles context and gender better. Cache responses in D1 by `(word, from, to)` so a second user adding the same word pays nothing.
+A small LLM (Granite 4.0 micro) writes one concrete scene for one meaning. The meaning is chosen first: the user's choice, else the only listed meaning, else a separate LLM call picks one of the listed meanings using the example, else the first. The scene is written from the word and the meaning only, never the example (given one, the LLM drew the sentence's situation instead of the word). FLUX.2 klein 4B draws it at 768×512 in one house style: one free-standing cut-paper cut-out with a hand-cut outline on white (the medium first in the prompt, or it drifts to photos). No writing: the picture is on the known side, so a drawn word gives the answer away; quotes and dialogue the LLM writes anyway are stripped in code.
 
-**Image**
-
-Built (see CLAUDE.md, "Picture notes"). A small LLM (Granite 4.0 micro) writes one concrete scene for one meaning, chosen in code: the user's choice, else the meaning the example uses, else the first listed meaning. FLUX.2 klein 4B draws it at 768×512 JPEG in one house style, layered cut paper on white, stored in R2 and referenced by `asset_attached` (with the meaning, the user's extra details and the scene). Typed words get a picture right away; other words get one the first time they are studied. The user can redraw with another meaning or details, or remove it. A daily neuron cap keeps it inside the free tier. Reverse cards show the picture as part of the cue, forward cards with the answer.
+- When: typed words right after adding; any other word when it comes up: the next 10 cards of each pile are queued from the table and after each card in study, behind pictures needed now, so they are on the device when the card shows, offline too.
+- The client keeps jobs in IndexedDB (per device, not synced; the result syncs as `asset_attached`), flattens the photographed paper to pure white so cards show through, and stores the picture for offline study.
+- The user can redraw with another meaning or extra details, or remove it; a removed picture is never redrawn automatically.
+- A forward card shows the picture with the answer (cream side); a reverse card shows it as part of the cue.
 
 **Pronunciation**
 
-Use the browser's Web Speech API (`speechSynthesis`) with the note's language tag. No download, no server, works offline where the OS has a local voice. Pick the best available voice per language and let the user override it in settings. Check Spanish and Russian voices on the target phones early.
+Azure neural voices, one per language (Spanish, English, Russian and about 15 more), 10% slower than normal. The Worker serves `tts/<voice>/<sha256 of the text>.mp3` from R2, making it once with Azure Speech when missing, so a word costs Azure characters only the first time for anyone. The client downloads the word and example of the cards coming up along with their pictures, keeps them in IndexedDB and plays them with Web Audio (iOS's silent switch doesn't mute it). Audio not on the device is fetched for up to 1.5 s, else the browser voice (Web Speech API) speaks. A forward card says its word when it comes up, a reverse card when turned to the word side; the example has its own speak button. No voice choice: one good voice per language.
 
 **Cost at this scale**
 
-Workers AI bills $0.011 per 1,000 neurons with 10,000 free per day ([pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)). FLUX.2 klein is listed at $0.015 per 1024 px image, so 100 illustrated words cost about $1.50; text calls cost cents per thousand words.
+- Pictures: Workers AI bills $0.011 per 1,000 neurons with 10,000 free per day ([pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)). A picture costs about 60 neurons; the Worker reserves them in D1 and answers 429 past the daily budget, and the client queue waits for the UTC reset. So about 160 pictures a day stay free.
+- Speech: the key belongs to another app's free Azure resource (F0, 500k characters a month shared between both apps). This app is capped at 100k characters a month in D1; past it, 429 and the browser voice.
 
 ## Piles, labels and languages
 
@@ -250,8 +243,12 @@ What "needs the user most" means:
 
 **Adding a word**
 
-- The studied language comes from context (the open language or label, a label's most common language), else the last one used. Recent languages are chips on the Add screen; a new one is one tap away. The translation's language sits above its field, remembered per studied language.
-- Two fields, one per language. The user types in either, and the other can be filled by the LLM: the field typed into is the side, so nothing needs detecting.
+Built for now: the studied language is the last one used (opening a language in Words or studying its pile counts as using it), switchable with a native picker whose last option, "Add a language…", picks a new one (made with its first word). The translation's language sits above its field, remembered per studied language. Front, back and an optional example are typed. With a sticker open in Words, the word gets it ("×" skips it for that word).
+
+Planned with the Add screen's rework:
+
+- The studied language from a sticker's most common language too. Recent languages as chips instead of the picker.
+- Two fields, one per language. The user types in either, and the other is filled by the LLM: the field typed into is the side, so nothing needs detecting.
 
 **Events and sync**
 
@@ -277,17 +274,17 @@ Done today, cards waiting under a pile, cards left in a pile and each pile's siz
 4. No decks: languages on the word, one pile and model group per studied language, the translation's language per word, language chips in Words. Built; hands-on review. The Add screen got only a language picker ("Add a language…" last) and the translation's language as its field's label; its chips and the two-way fields wait for its rework.
 5. Labels as stickers: events, the Words chips, Edit, the pencil and Stickers sheets, sticker piles on the table with "Deal all N", the New pile spot, the back gesture. Sticker colours. Built; hands-on review.
 
-Later: the LLM fills the other field when adding; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; editing words.
+Later: the Add screen's rework, with the LLM filling the other field; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; whether a word's text or language pair can change (today a word's pair is fixed: delete and add it again).
 
 ## Identity and pairing
 
 No sign-in. The user code is the account: whoever holds it can read and write that user's events.
 
-- **First launch.** Generate a random 16-character code (base32, about 80 bits) and store it locally.
-- **New device.** The settings screen shows a QR code of `https://<app>/#k=<code>` plus the code as text. Scanning the QR or opening the link stores the code and starts a full pull. The `#` fragment never reaches the server logs.
-- **Requests.** Every sync and enrichment call sends `X-User-Code`; the Worker uses it as the partition key.
-- **Lost code.** Data is unrecoverable if every device and the code are lost. Show the code once at first launch with a prompt to save it.
-- **Abuse guard.** Per-IP rate limit on code creation and on `/enrich`, plus a per-user storage cap in R2.
+- **First launch.** Generate a random 16-character code (base32, about 80 bits) and store it locally. Sync, and with it the server copy that serves as the backup, is on from the start.
+- **New device.** Settings shows a QR code of `https://<app>/#k=<code>` plus the code as text. Scanning the QR, opening the link or typing the code joins that account: this device's events are pushed to it and everything is pulled. The `#` fragment never reaches the server logs.
+- **Requests.** Every sync, picture and speech call sends `X-User-Code`; the Worker uses it as the partition key.
+- **Lost code.** Data is unrecoverable if every device and the code are lost. Not built: showing the code once at first launch with a prompt to save it.
+- **Abuse guard.** Only the shared daily picture budget and monthly speech budget exist. Not built: a per-IP rate limit on new codes and on the AI endpoints, and a per-user storage cap in R2.
 
 No encryption at rest beyond what Cloudflare provides; acceptable for about 3 users.
 
@@ -297,25 +294,31 @@ RWKV goes first because it is the reason for the project and the biggest unknown
 
 **Milestones**
 
-1. **RWKV runs in the browser.** Wasm build of the Oracle path; process an exported Anki revlog and match the add-on's predictions on a sample. Measure full-replay time on a phone.
-2. **Local app.** PWA shell, event log in Dexie, decks, notes, review screen, live session driven by RWKV. No network.
-3. **Sync.** Worker + D1 push and pull, user code, QR pairing, late-review rewind.
-4. **Enrichment.** `/enrich` with LLM text, image to R2, Web Speech pronunciation.
-5. **Nice-to-haves.** Anki import, SIMD or WebGPU speedups, stats and calibration charts.
+1. **RWKV runs in the browser.** Done: the V1 engine in Wasm matches upstream goldens; phone replay measured.
+2. **Local app.** Done: PWA shell, event log in Dexie, words, study driven by RWKV, no network needed.
+3. **Sync.** Done: Worker + D1 push and pull, user code, QR pairing, full replay on late reviews.
+4. **Enrichment.** Pictures and pronunciation done. Text (translation, definition, examples, word summary) not built.
+5. **Piles, stickers, no decks.** Done (see [Piles, labels and languages](#piles-labels-and-languages)).
+6. **Nice-to-haves.** Duocards import done. Not built: Anki import, stats and calibration charts, WebGPU.
+
+**Not built yet**, besides the above: the Add screen's rework; iPhone haptics (Android vibrates; iOS needs the iOS 18 switch-checkbox trick); recurrent states on disk (see RWKV in Wasm, Known limit); the save-your-code prompt and the abuse guard (see Identity and pairing).
 
 **Risks**
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Full replay too slow on a phone in scalar Wasm | First launch on a new device takes long | Upload a state checkpoint to R2 so new devices download it instead of replaying; or add `simd128` |
-| rwkv-srs API and checkpoint format are pre-1.0 | Upstream changes break the port | Pin to v0.1.1 and vendor the crate |
-| Mobile browser evicts IndexedDB storage | Local log lost | Server is the durable copy; call `navigator.storage.persist()` |
-| Weak or missing OS voices for a language | Poor pronunciation | Allow voice choice; Piper in Wasm or stored audio as a later fallback |
+| Full replay too slow on a phone in scalar Wasm | First launch on a new device takes long | Measured: ~770 reviews/s on Android, under two minutes for a year. If it grows: upload a checkpoint to R2 for new devices, or `simd128` |
+| Recurrent state grows ~70 KB per card in memory | iPhone tab killed after a year or so | States on disk, loaded on demand (not built) |
+| rwkv-srs API and checkpoint format are pre-1.0 | Upstream changes break the port | Own reimplementation of V1, checked against goldens from v0.1.1; our own checkpoint format |
+| Mobile browser evicts IndexedDB storage | Local log lost | Server is the durable copy; the app calls `navigator.storage.persist()` |
+| Weak or missing OS voices for a language | Poor pronunciation | Azure neural voices stored in R2; the browser voice only as fallback |
+| Free tiers run out (Workers AI neurons, Azure characters shared with another app) | No new pictures or audio that day/month | Budgets in D1 below the free tiers; the client waits for the reset or uses the browser voice |
 | Card content edits racing across devices | A field edit lost | Per-field last write wins is accepted at this scale |
 
 **Open questions**
 
 - Card templates beyond forward and reverse (typing answers, cloze).
+- Whether words can be edited beyond their fields (language pair, merging duplicates made on two offline devices).
 
 ## References
 
