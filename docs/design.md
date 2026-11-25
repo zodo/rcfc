@@ -91,6 +91,7 @@ CREATE INDEX events_user_seq ON events (user_code, seq);
 | --- | --- | --- |
 | `POST /api/sync/push` | `{events: [...]}` (at most 500), header `X-User-Code` | `{accepted: n}`; duplicates ignored via `INSERT OR IGNORE` |
 | `GET /api/sync/pull?after=<seq>` | header `X-User-Code` | `{events: [...], next: <seq>, more: bool}`, pages of 500 |
+| `POST /api/fill` | `{from, to, word?, translation?}`, header `X-User-Code` | `{options: [{word, translation, example}], suggest?}`; 429 with `retry_after` past the daily budget |
 | `POST /api/pictures` | `{word, translation, example?, sense?, details?}`, header `X-User-Code` | `{key, sense, scene}`; 429 with `retry_after` past the daily budget |
 | `GET /api/media/<key>` |  | the picture bytes, immutable cache headers |
 | `GET /api/tts?lang=&text=` | header `X-User-Code` | MP3; 429 past the monthly budget, 404 without a voice service |
@@ -155,11 +156,20 @@ The first plan mirrored the add-on's engine (`live_review_engine.py`): after eac
 
 ## Card enrichment
 
-Adding a word creates the card immediately; anything the app adds to it later arrives as ordinary events (`asset_attached`), so it syncs and works offline like typed content. Built today: pictures and pronunciation. The user types the translation and the example.
+Adding a word creates the card immediately; anything the app adds to it later arrives as ordinary events (`asset_attached`), so it syncs and works offline like typed content. Built: filling in the card editor, pictures and pronunciation.
 
-**Text (not built)**
+**Filling in**
 
-The plan: one Workers AI chat call returns strict JSON (`translation, part_of_speech, gender_or_article, definition, examples[2]`), filling the field the user did not type. Responses cached in D1 by `(word, from, to)`, so a second user adding the same word pays nothing. A word summary (forms, usage) would sit behind the cream side, stored like pictures; on the white side it would give the answer away.
+The card editor fills in what the user didn't type, at the same typing pause that draws the picture. The side typed into says which language it is, so nothing is detected:
+- the word typed: its translation, an example and its other meanings ("or: bench", a tap swaps it in with its own example, and the picture follows);
+- the translation typed: the word (with its article where nouns take one), an example and other usual words for it;
+- both typed: an example, if the user hasn't written one.
+
+When the typed word isn't in dictionary form, is misspelled, or is a noun without its article, a pencil note asks "did you mean *el banco*?"; a tap takes it, nothing changes otherwise. A fill never writes over what the user typed; typing in a filled-in place makes it the user's; emptying the words typed takes the fill back. Add waits for a fill still on its way (8 s at most).
+
+One Workers AI call (Gemma 4 26B A4B, thinking off, JSON schema) answers `{suggest, options: [{word, translation, example}]}`, most common meaning first, at most three. Chosen over Mistral Small 3.1 and Llama 4 Scout on 22 words across six languages (they mistranslated, answered in the wrong language, or missed inflected forms); about 1.5 to 4 s and ~15 neurons a fill, from the pictures' daily budget. Replies are kept in R2 by language pair and text (`fill/<sha256>.json`, versioned with the prompt), so the same words cost nothing again, for anyone. Offline, past the limit or on failure the places stay empty for the user to fill.
+
+A word summary (forms, usage) would sit behind the cream side, stored like pictures; on the white side it would give the answer away.
 
 **Picture**
 
@@ -254,7 +264,9 @@ Add ("Add a card") and Edit ("Edit card") are one screen that looks like the car
 - Edit: Save writes only what changed; "Delete card" under it. A removed picture is not redrawn by word edits, only by Redraw. Leaving the editor goes one step back in history, to where it was opened. A card opened from the editor itself (its "you already have" note, or the cards added this sitting) opens on top of the card being filled in: leaving it (back, the gesture, Save, Delete) puts that card back exactly as it was.
 - In study, a pencil in the corner of a turned card opens it in the editor; back returns to the same card, still turned over, with the changes, and the time spent editing doesn't count toward the answer.
 
-Planned: the LLM filling the other field (the user types in either, the field typed into is the side, so nothing needs detecting); the studied language from a sticker's most common language; later maybe drawing on the card and moving its blocks.
+- Filling in: see [Card enrichment](#card-enrichment).
+
+Planned: the studied language from a sticker's most common language; later maybe drawing on the card and moving its blocks.
 
 **Events and sync**
 
@@ -282,7 +294,7 @@ Done today, cards waiting under a pile, cards left in a pile and each pile's siz
 
 6. The card editor for Add and Edit, with the pencil from study. Built; hands-on review.
 
-Later: the LLM filling the other field on the card editor; an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; whether a card's language pair can change (today it is fixed: delete and add it again).
+Later: an LLM summary of the word (forms, usage) behind the cream side; the new-word count predicted by the model from future workload; whether a card's language pair can change (today it is fixed: delete and add it again).
 
 ## Identity and pairing
 
@@ -305,11 +317,11 @@ RWKV goes first because it is the reason for the project and the biggest unknown
 1. **RWKV runs in the browser.** Done: the V1 engine in Wasm matches upstream goldens; phone replay measured.
 2. **Local app.** Done: PWA shell, event log in Dexie, words, study driven by RWKV, no network needed.
 3. **Sync.** Done: Worker + D1 push and pull, user code, QR pairing, full replay on late reviews.
-4. **Enrichment.** Pictures and pronunciation done. Text (translation, definition, examples, word summary) not built.
+4. **Enrichment.** Filling in (the other word, an example, other meanings, the word's dictionary form), pictures and pronunciation done. The word summary not built.
 5. **Piles, stickers, no decks.** Done (see [Piles, labels and languages](#piles-labels-and-languages)).
 6. **Nice-to-haves.** Duocards import done. Not built: Anki import, stats and calibration charts, WebGPU.
 
-**Not built yet**, besides the above: the LLM filling a card's other field; iPhone haptics (Android vibrates; iOS needs the iOS 18 switch-checkbox trick); recurrent states on disk (see RWKV in Wasm, Known limit); the save-your-code prompt and the abuse guard (see Identity and pairing).
+**Not built yet**, besides the above: iPhone haptics (Android vibrates; iOS needs the iOS 18 switch-checkbox trick); recurrent states on disk (see RWKV in Wasm, Known limit); the save-your-code prompt and the abuse guard (see Identity and pairing).
 
 **Risks**
 

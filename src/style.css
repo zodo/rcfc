@@ -1825,6 +1825,22 @@ header.top.sub .back svg {
 .ed-dup:empty {
   display: none;
 }
+/* what the fill offers: other meanings, a better form of the word */
+.ed-fill {
+  margin: 2px 0 0;
+  font-size: 14.5px;
+  color: #6d756e;
+  text-align: center;
+}
+.ed-fill:empty {
+  display: none;
+}
+.ed-word::placeholder,
+.ed-trans::placeholder,
+.ed-example::placeholder {
+  color: #9ca39c;
+  font-size: 17px;
+}
 /* stickers stuck over the white side's top edge */
 .ed-stickers {
   position: absolute;

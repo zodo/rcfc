@@ -12,6 +12,7 @@ import { settings } from "./screens/settings";
 import { study } from "./screens/study";
 import { addLanguage, edit, words } from "./screens/words";
 import { joinFromLink } from "./screens/sync";
+import { Filler } from "./fill";
 import { Pictures } from "./pictures";
 import { Speech, webAudio } from "./speech";
 import { Store } from "./store";
@@ -44,6 +45,7 @@ async function boot() {
     if (store.col.reviews.length || store.col.notes.size) void requestPersistence();
     app.sync = await Sync.open(store);
     app.pictures = await Pictures.open(store, () => app.sync.code);
+    app.filler = new Filler(() => app.sync.code);
     app.speech = await Speech.open(store, () => app.sync.code, webAudio());
     if (await joinFromLink()) return;
     app.sync.onPulled = () => {

@@ -1,12 +1,15 @@
 // The card editor: Add and Edit as one card, both sides at once
 // (docs/plans/20261125-card-editor.md). A blank card has pencil notes with
 // arrows pointing at its places; the languages are words in those notes.
-// The picture draws itself once both words are in and typing pauses.
+// When typing pauses, the AI fills in what is missing (the other word, an
+// example; src/domain/fill.ts), and the picture draws itself once both words
+// are in.
 // Nothing is written until Add or Save (src/domain/cards.ts turns the draft
 // into events); a picture still drawing then follows the card.
 import { app, back as goBack, go, hold, sheet, subPage } from "../app";
 import { addEvents, draftOf, duplicates, MEMO_KNOWN, MEMO_TARGET, saveEvents, type CardDraft, type DraftPicture } from "../domain/cards";
 import type { Note } from "../domain/collection";
+import { applyOption, askKey, clean as cleanFill, clearAuto, fillAsk, filledPlace, type FillOption, type FillPlace, type FillRequest, type FillText } from "../domain/fill";
 import type { NoteDeleted } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import type { PicState, SketchResult } from "../pictures";
@@ -16,8 +19,10 @@ import { cutout } from "../ui/picture";
 import { deckFor, languageForm, languages, lastLanguage, openLabel, rememberLanguage, rememberTranslation, translationFor } from "./languages";
 import { stickersSheet, stickerTag, type StickerTarget } from "./stickers";
 
-/** How long typing must pause before the picture is drawn. */
+/** How long typing must pause before the card is filled in and its picture drawn. */
 export const PAUSE_MS = 1500;
+/** Add / Save wait this long at most for a fill still on its way. */
+const FILL_WAIT_MS = 8000;
 const NEW_LANG = "new";
 
 /** Cards added since the Add screen was opened, newest first. */
@@ -76,6 +81,19 @@ function open(note?: Note, over?: { leave: () => void }): void {
   let detailsOpen = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
+  // ---- filling in: what the AI wrote, and the meanings it offers ----
+  /** Places a fill wrote that the user hasn't typed in since. */
+  let auto = new Set<FillPlace>();
+  /** The question last asked (askKey): a pause with the same one asks nothing. */
+  let asked = "";
+  let filling: Promise<void> | undefined;
+  let fillGen = 0;
+  /** The question the offered meanings answer, the meanings, and a better form of the typed word. */
+  let shown: FillRequest | undefined;
+  let options: FillOption[] = [];
+  let chosen = 0;
+  let suggestion = "";
+
   // ---- the places ----
   const input = (name: string, attrs: Record<string, unknown> = {}) => h("input", { name, autocomplete: "off", enterkeyhint: "done", ...attrs });
   const front = input("front", { class: "ed-word", value: note?.fields.front ?? "", autocapitalize: "off", spellcheck: false, enterkeyhint: "next", "aria-label": "Word" });
@@ -101,6 +119,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     toSel.value = to;
     fillFrom();
     update();
+    pause();
   };
   fromSel.addEventListener("change", () => {
     if (fromSel.value !== NEW_LANG) return setFrom(fromSel.value);
@@ -118,6 +137,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   toSel.addEventListener("change", () => {
     to = toSel.value;
     update();
+    pause();
   });
 
   const wordNote = arrowNote("ed-note-word");
@@ -229,6 +249,114 @@ function open(note?: Note, over?: { leave: () => void }): void {
     pic.replaceChildren(...body.filter((x): x is Node | string => x !== null));
   };
 
+  // ---- filling in ----
+  const places: Record<FillPlace, HTMLInputElement> = { front, back, example };
+  const textNow = (): FillText => ({ front: front.value, back: back.value, example: example.value });
+  const setText = (t: FillText) => {
+    for (const p of ["front", "back", "example"] as const) {
+      if (places[p].value === t[p]) continue;
+      places[p].value = t[p];
+      // Filled in under the cursor: typing replaces it instead of adding to it.
+      if (document.activeElement === places[p] && auto.has(p)) places[p].select();
+    }
+  };
+  const askNow = () => fillAsk(textNow(), auto, { from: from!, to });
+  const wordFill = h("p", { class: "ed-fill", role: "status" });
+  const transFill = h("p", { class: "ed-fill", role: "status" });
+
+  /** Ask for what is missing, unless that was asked already. True while a fill on its way may change the words (the picture waits for it). */
+  const fill = (): boolean => {
+    const r = askNow();
+    const k = askKey(r);
+    if (k === asked) return !!filling && !!r && !!filledPlace(r);
+    asked = k;
+    const mine = ++fillGen;
+    filling = undefined;
+    if (!r) return renderFill(), false;
+    const p = app.filler.fill(r).then((res) => {
+      if (mine !== fillGen) return;
+      filling = undefined;
+      // The card changed meanwhile (the user typed what was asked for): this answer is for another question.
+      if (askKey(askNow()) !== k) return renderFill();
+      if (res.ok && res.fill.options.length) {
+        shown = r;
+        options = res.fill.options;
+        chosen = 0;
+        suggestion = res.fill.suggest ?? "";
+        const a = applyOption(textNow(), auto, r, options[0]);
+        auto = a.auto;
+        setText(a.text);
+      }
+      update();
+      renderFill();
+      checkDup();
+      draw(false);
+    });
+    filling = p;
+    renderFill();
+    return !!filledPlace(r);
+  };
+
+  /** Swap in another meaning the fill offered; the picture follows it. */
+  const choose = (i: number) => {
+    if (!shown || busy) return;
+    chosen = i;
+    const a = applyOption(textNow(), auto, shown, options[i]);
+    auto = a.auto;
+    setText(a.text);
+    asked = askKey(askNow());
+    update();
+    renderFill();
+    checkDup();
+    draw(false);
+  };
+
+  /** Take the suggested form of the word ("el banco" for "banco"); the translation and picture stay. */
+  const takeSuggestion = () => {
+    if (!suggestion || busy) return;
+    const was = picKey(front.value, back.value, details);
+    front.value = suggestion;
+    suggestion = "";
+    if (shown) shown = { ...shown, word: front.value };
+    asked = askKey(askNow());
+    // Same meaning: the picture drawn (or drawing) for the old form is this word's picture.
+    if (drawnFor === was) drawnFor = picKey(front.value, back.value, details);
+    update();
+    renderFill();
+    checkDup();
+  };
+
+  /** The user typed in a place: it is theirs now. Emptying every word typed takes back what the fill wrote. */
+  const typed = (p: FillPlace) => {
+    auto.delete(p);
+    const mine = (q: FillPlace) => !auto.has(q) && !!cleanFill(places[q].value);
+    if (!mine("front") && !mine("back") && auto.size) {
+      setText(clearAuto(textNow(), auto));
+      auto.clear();
+    }
+    // Meanings offered for another word than the one there now are put away.
+    if (shown && askKey(askNow()) !== askKey(shown)) {
+      shown = undefined;
+      options = [];
+      suggestion = "";
+    }
+    renderFill();
+  };
+
+  const renderFill = () => {
+    const place = shown && filledPlace(shown);
+    const others = (field: "word" | "translation", lang: string) =>
+      options.flatMap((o, i) => (i === chosen ? [] : [" · ", h("button", { type: "button", class: "link", lang, onclick: () => choose(i) }, o[field])])).slice(1);
+    const or = (field: "word" | "translation", lang: string): (Node | string)[] => (options.length > 1 ? ["or: ", ...others(field, lang)] : []);
+    const typedWord = !auto.has("front") && suggestion && cleanFill(front.value) !== cleanFill(suggestion);
+    wordFill.replaceChildren(
+      ...(typedWord ? ["did you mean ", h("button", { type: "button", class: "link", lang: from!, onclick: takeSuggestion }, suggestion), "?"] : place === "front" && auto.has("front") ? or("word", from!) : []),
+    );
+    transFill.replaceChildren(...(place === "back" && auto.has("back") ? or("translation", to) : []));
+    // Looking it up: the empty places say so.
+    for (const p of ["front", "back", "example"] as const) places[p].placeholder = filling && !cleanFill(places[p].value) ? "looking it up…" : "";
+  };
+
   // ---- duplicates: told as soon as typing pauses ----
   const checkDup = () => {
     const d = duplicates(store.col.liveNotes(), { front: front.value, back: back.value, lang_pair: { from: from!, to } }, note?.id);
@@ -262,22 +390,26 @@ function open(note?: Note, over?: { leave: () => void }): void {
   speak.innerHTML = ICON_SPEAK;
 
   // Typing restarts the pause; Enter or leaving the field ends it at once.
+  // At the pause what is missing is filled in, and the picture draws (after the fill, when one may change the words).
+  const pause = () => {
+    clearTimeout(timer);
+    checkDup();
+    if (!fill()) draw(false);
+  };
   for (const el of [front, back]) {
     el.addEventListener("input", () => {
+      typed(el === front ? "front" : "back");
       update();
       clearTimeout(timer);
       renderPic();
-      timer = setTimeout(() => {
-        checkDup();
-        draw(false);
-      }, PAUSE_MS);
+      timer = setTimeout(pause, PAUSE_MS);
     });
-    el.addEventListener("blur", () => {
-      checkDup();
-      draw(false);
-    });
+    el.addEventListener("blur", pause);
   }
-  example.addEventListener("input", update);
+  example.addEventListener("input", () => {
+    typed("example");
+    update();
+  });
   front.addEventListener("keydown", (e) => e.key === "Enter" && (e.preventDefault(), back.focus()));
   for (const el of [back, example, memoTarget, memoKnown]) el.addEventListener("keydown", (e) => e.key === "Enter" && (e.preventDefault(), el.blur()));
   detailsInput.addEventListener("keydown", (e) => {
@@ -328,8 +460,16 @@ function open(note?: Note, over?: { leave: () => void }): void {
     }
   };
 
+  /** The words just typed: what is missing is filled in (waited for, a while) and drawing starts now if it hadn't. */
+  const settle = async () => {
+    clearTimeout(timer);
+    fill();
+    if (filling) await Promise.race([filling, new Promise((r) => setTimeout(r, FILL_WAIT_MS))]);
+    draw(false);
+  };
+
   const addIt = once(async () => {
-    draw(false); // the words just typed: drawing starts now if it hadn't
+    await settle();
     if (!ready()) return;
     const d = draft();
     const wait = d.picture === undefined ? pending : undefined;
@@ -347,6 +487,13 @@ function open(note?: Note, over?: { leave: () => void }): void {
     drawn = pending = problem = undefined;
     drawnFor = details = "";
     removed = detailsOpen = false;
+    auto = new Set();
+    asked = "";
+    fillGen++;
+    filling = shown = undefined;
+    options = [];
+    suggestion = "";
+    renderFill();
     dupNote.replaceChildren();
     dupSaid = "";
     update();
@@ -357,7 +504,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   });
 
   const saveIt = once(async () => {
-    draw(false);
+    await settle();
     if (!note || !ready()) return;
     const d = draft();
     const wait = d.picture === undefined ? pending : undefined;
@@ -378,6 +525,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
 
   const leave = () => {
     sketcher.cancel();
+    fillGen++; // a fill still on its way writes nothing, and draws nothing
     if (over) over.leave();
     else goBack();
   };
@@ -438,12 +586,13 @@ function open(note?: Note, over?: { leave: () => void }): void {
     stickers,
     h("div", { class: "ed-word-line" }, front, speak),
     wordNote.el,
+    wordFill,
     dupNote,
     example,
     exampleNote.el,
     h("label", { class: "ed-memo-line" }, h("span", { "aria-hidden": "true" }, "✎"), memoTarget),
   );
-  const cream = h("section", { class: "ed-side known", "aria-label": "Cream side" }, back, transNote.el, pic, h("label", { class: "ed-memo-line" }, h("span", { "aria-hidden": "true" }, "✎"), memoKnown));
+  const cream = h("section", { class: "ed-side known", "aria-label": "Cream side" }, back, transNote.el, transFill, pic, h("label", { class: "ed-memo-line" }, h("span", { "aria-hidden": "true" }, "✎"), memoKnown));
   const root = h("div", { class: "editor" }, white, cream);
   subPage(
     "words",

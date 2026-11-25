@@ -562,7 +562,8 @@ async function run(s: Browser, url: string) {
   await s.until("a blank card", `document.querySelector("input[name=front]")?.value === ""`);
   await s.type("input[name=front]", "la casa");
   await s.type("input[name=back]", "home");
-  await s.until("its picture, loaded", `document.querySelector(".ed-pic .pic img")?.naturalWidth > 0 && document.querySelector(".ed-caption")`, 90_000);
+  await s.js(`document.activeElement.blur();`); // typing done: the picture for these words, not the filled-in translation's
+  await s.until("its picture, loaded", `document.querySelector(".ed-pic .pic img")?.naturalWidth > 0 && document.querySelector(".ed-caption") && !document.querySelector(".ed-pic.busy")`, 90_000);
   await s.js(`await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));`);
   await s.click(".ed-caption");
   await s.click(".ed-pic-actions button", "No picture");
@@ -585,6 +586,27 @@ async function run(s: Browser, url: string) {
   await s.click("button[aria-label=Back]");
   await s.until("Words", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
   if (await s.js<boolean>(`return [...document.querySelectorAll(".list button.word")].some((b) => b.textContent.includes("el sol"));`)) throw new Error("a card left unsaved was added");
+
+  log("the card fills itself in: the translation and an example; another meaning swaps in; a typed translation brings the word");
+  await s.click("button[aria-label='Add a word']");
+  await s.until("a blank card", `document.querySelector("input[name=front]")?.value === ""`);
+  await s.type("input[name=front]", "el perro");
+  await s.js(`document.activeElement.blur();`);
+  await s.until("translation and example filled in", `document.querySelector("input[name=back]").value === "el perro (en)" && document.querySelector("input[name=example]").value === "el perro, el perro: dev example."`);
+  await s.until("another meaning offered", `document.querySelector(".ed-side.known .ed-fill")?.textContent === "or: el perro (en) 2"`);
+  await shot(s, "add-filled");
+  await s.click(".ed-side.known .ed-fill button");
+  await s.until("swapped in", `document.querySelector("input[name=back]").value === "el perro (en) 2" && document.querySelector("input[name=example]").value === "el perro, el perro: dev example. 2" && document.querySelector(".ed-side.known .ed-fill")?.textContent === "or: el perro (en)"`);
+  await s.click("button.ed-add", "Add");
+  await s.until("el perro added as filled in", `[...document.querySelectorAll(".ed-added-row")].some((r) => r.textContent.includes("el perro (en) 2"))`);
+  await s.type("input[name=back]", "dog");
+  await s.js(`document.activeElement.blur();`);
+  await s.until("the word filled in", `document.querySelector("input[name=front]").value === "dog (es)" && document.querySelector("input[name=example]").value !== ""`);
+  log("emptying what was typed takes back what was filled in");
+  await s.js(`const b = document.querySelector("input[name=back]"); b.value = ""; b.dispatchEvent(new Event("input"));`);
+  await s.until("a blank card again", `document.querySelector("input[name=front]").value === "" && document.querySelector("input[name=example]").value === ""`);
+  await s.click("button[aria-label=Back]");
+  await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
 
   log("no uncaught errors");
   const errors = [...s.errors, ...(await s.js<string[]>("return window.__rcfcErrors ?? [];"))];
