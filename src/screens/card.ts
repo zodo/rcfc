@@ -183,7 +183,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   const pic = h("div", { class: "ed-pic" });
   const detailsInput = input("details", { class: "ed-details-input", placeholder: "how it looks, e.g. in a park in autumn", maxLength: 300, "aria-label": "How it looks" });
 
-  const draw = (force: boolean) => {
+  const draw = (force: boolean, via = sketcher) => {
     clearTimeout(timer);
     const f = clean(front.value), b = clean(back.value);
     if (!f || !b || removed) return renderPic();
@@ -195,7 +195,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     const words = picKey(f, b, "");
     // New words: the pencil notes what the picture will show. A redraw of the same words: the old picture stays until the new one comes.
     const sk = drawn && drawnWords === words ? undefined : (sketch = new SketchNote(() => ink.busy()));
-    const p = sketcher.draw({ word: f, translation: b, example: clean(example.value), details, onText: sk && ((t) => sk.text(t)) });
+    const p = via.draw({ word: f, translation: b, example: clean(example.value), details, onText: sk && ((t) => sk.text(t)) });
     pending = p;
     renderPic();
     void p.then(async (r) => {
@@ -699,4 +699,13 @@ function open(note?: Note, over?: { leave: () => void }): void {
   renderPic();
   renderAdded();
   if (!editing) front.focus();
+  // A card without a picture (an imported word, say) draws one as soon as it is opened.
+  if (note && !note.picture && !note.noPicture) {
+    if (pictures.state(note.id)) void pictures.ensure(note.id); // the queue has it: needed now
+    else {
+      // Its own drawer, so typing here can't make it stale; it becomes the card's however the card is left.
+      draw(true, pictures.sketcher());
+      if (pending) void pictures.adopt(note.id, pending);
+    }
+  }
 }

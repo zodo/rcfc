@@ -632,6 +632,16 @@ async function run(s: Browser, url: string) {
   await shot(s, "import-preview");
   await s.click("button.primary", "Add 3 words");
   await s.until("Words on the Smoke sticker, 3 words", `!document.querySelector("header.sub") && document.querySelector(".chip.on")?.textContent.includes("Smoke") && document.querySelectorAll(".list button.word").length === 3`);
+  log("an imported word opened draws its picture at once; it stays the card's when left unsaved, by the back gesture too");
+  await s.click("button.word", "il cane");
+  await s.until("its picture on the card", `document.querySelector("header.sub h1")?.textContent === "Edit card" && document.querySelector(".ed-pic .pic img")?.naturalWidth > 0`, 90_000);
+  await s.js(`history.back();`);
+  await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
+  await s.click("button.word", "il cane");
+  // Kept, not drawn again: there at once (a drawing takes 0.9 s in dev).
+  await s.until("the picture kept", `document.querySelector("header.sub h1")?.textContent === "Edit card" && document.querySelector(".ed-pic .pic img") && !document.querySelector(".ed-pic.busy")`, 600);
+  await s.js(`history.back();`);
+  await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
   log("the same reply again adds nothing");
   await s.click("button.add-btn");
   await s.click("button.link", "Import from anything");
