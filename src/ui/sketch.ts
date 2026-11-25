@@ -3,7 +3,7 @@
 // at a steady handwriting pace; with nothing left to write it doodles curls
 // after the last word, line after line, until the picture comes. Then the
 // picture is glued on over the note: held a little above the card, brought
-// down and pressed flat.
+// down and pressed flat; the note under it goes once it lies flat.
 //
 // One pencil on a card: given `yieldTo`, the note pauses while that other
 // pencil (the card editor's fills) is busy, with no pencil of its own, and
@@ -119,22 +119,21 @@ export class SketchNote {
     layer.className = "sk-glued";
     layer.append(pic);
     this.el.append(layer);
-    if (reducedMotion()) {
-      this.el.classList.add("glued");
-      return;
+    if (!reducedMotion()) {
+      await layer
+        .animate(
+          [
+            { transform: "translate(10px, -26px) rotate(3deg) scale(1.06)", offset: 0 },
+            { transform: "translate(4px, -12px) rotate(1.2deg) scale(1.04)", offset: 0.25 },
+            { transform: "translate(0, 0) rotate(0) scale(0.985)", offset: 0.62, easing: "ease-out" },
+            { transform: "none", offset: 1 },
+          ],
+          { duration: 700, easing: "cubic-bezier(.4,0,.6,1)" },
+        )
+        .finished.catch(() => {});
     }
-    const press = layer.animate(
-      [
-        { opacity: 0, transform: "translate(10px, -26px) rotate(3deg) scale(1.06)", offset: 0 },
-        { opacity: 1, transform: "translate(4px, -12px) rotate(1.2deg) scale(1.04)", offset: 0.25 },
-        { opacity: 1, transform: "translate(0, 0) rotate(0) scale(0.985)", offset: 0.62, easing: "ease-out" },
-        { opacity: 1, transform: "none", offset: 1 },
-      ],
-      { duration: 700, easing: "cubic-bezier(.4,0,.6,1)" },
-    );
-    for (const e of [this.note, this.svg]) e.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, delay: 350, fill: "forwards" });
+    // Only now, under the picture lying flat, the note and the outline go.
     this.el.classList.add("glued");
-    await press.finished.catch(() => {});
   }
 
   /** Stop everything (the note is taken off the card). */

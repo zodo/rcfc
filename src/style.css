@@ -2000,10 +2000,11 @@ header.top.sub .back svg {
   inset: 0;
   border: 2px dashed rgb(var(--shadow) / 0.2);
   border-radius: 4px;
-  transition: opacity 0.25s 0.35s;
 }
-.sketch.glued::before {
-  opacity: 0;
+.sketch.glued::before,
+.sketch.glued .sk-note,
+.sketch.glued .ink-doodle {
+  visibility: hidden;
 }
 .sk-note {
   position: absolute;
