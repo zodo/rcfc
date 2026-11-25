@@ -1054,9 +1054,15 @@ header.top.sub .back svg {
   position: absolute;
   inset: 0;
   overflow: hidden;
+  border-radius: inherit;
+  box-shadow:
+    0 var(--thick) 0 var(--edge),
+    0 calc(var(--thick) + 0.6px) 0 rgb(var(--shadow) / 0.25);
+  --edge: color-mix(in srgb, var(--card) 90%, rgb(var(--shadow)));
 }
 .under > .sheet.known {
   background-color: var(--card-known);
+  --edge: var(--edge-known);
 }
 .flashcard {
   touch-action: none;
@@ -1124,6 +1130,29 @@ header.top.sub .back svg {
   inset: 0;
   transform-style: preserve-3d;
 }
+/* Card stock has thickness: the faces lie --thick apart (as much as each card adds to a pile on
+   the table), joined by rims that show while the card turns side-on; at rest its bottom edge
+   shows under it, as the pile's edges do on the table. */
+.flashcard,
+.under {
+  --thick: 1.5px;
+  --rim: color-mix(in srgb, var(--card-known) 80%, rgb(var(--shadow)));
+}
+.rim {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: var(--thick);
+  background: var(--rim);
+  pointer-events: none;
+  transform: rotateY(90deg);
+}
+.rim.l {
+  left: calc(var(--thick) / -2);
+}
+.rim.r {
+  right: calc(var(--thick) / -2);
+}
 .side {
   position: absolute;
   inset: 0;
@@ -1141,14 +1170,20 @@ header.top.sub .back svg {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   overflow: hidden;
+  transform: translateZ(calc(var(--thick) / 2));
+  box-shadow:
+    0 var(--thick) 0 var(--edge),
+    0 calc(var(--thick) + 0.6px) 0 rgb(var(--shadow) / 0.25);
+  --edge: color-mix(in srgb, var(--card) 90%, rgb(var(--shadow)));
 }
 .side.back {
-  transform: rotateY(180deg);
+  transform: rotateY(180deg) translateZ(calc(var(--thick) / 2));
   padding-left: 32px;
   padding-right: 32px;
 }
 .side.known {
   background-color: var(--card-known);
+  --edge: var(--edge-known);
 }
 /* pencil notes at the edges of the back, until the throws are learnt (study.ts LEARN) */
 .note {

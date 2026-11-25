@@ -246,7 +246,7 @@ class Table {
     const shRest = h("div", { class: "sh rest", "data-light": "0.6" });
     const shLift = h("div", { class: "sh lift", "data-light": "1.7" });
     const shadow = h("div", { class: "shs" }, shRest, shLift);
-    const flipper = h("div", { class: "flipper" }, f.front, f.back);
+    const flipper = h("div", { class: "flipper" }, f.front, f.back, h("div", { class: "rim l" }), h("div", { class: "rim r" }));
     const stamps = { good: h("div", { class: "stamp good" }, "got it"), again: h("div", { class: "stamp again" }, "again"), easy: h("div", { class: "stamp easy" }, "easy") };
     const el = h("div", { class: "flashcard" }, shadow, flipper, stamps.good, stamps.again, stamps.easy);
     el.style.zIndex = "20";
