@@ -111,6 +111,8 @@ export class Browser {
     await b.send("Page.enable");
     // Speech goes through the OS text-to-speech, which --mute-audio does not
     // silence: keep the API (the speak buttons still render) but only count calls.
+    // A deployed origin is installable: its install banner would cover the tab bar. Snoozed, as "Not now" does.
+    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: "try { localStorage.setItem('rcfc.install-dismissed-at', String(Date.now())); } catch {}" });
     await b.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.__rcfcSpoken = []; if (window.speechSynthesis) speechSynthesis.speak = () => {}; addEventListener('rcfc-said', (e) => void window.__rcfcSpoken.push(e.detail.text));" });
     // iPhone 14-sized viewport.
     await b.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
