@@ -165,6 +165,11 @@ export class Ink {
     return this.writings.has(input);
   }
 
+  /** The pencil is on the card: writing, or waiting on a place. */
+  busy(): boolean {
+    return this.writings.size > 0 || this.waiting !== null;
+  }
+
   private finish(input: HTMLInputElement): void {
     const w = this.writings.get(input);
     if (!w) return;

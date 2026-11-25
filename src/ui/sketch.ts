@@ -5,6 +5,10 @@
 // picture is glued on over the note: held a little above the card, brought
 // down and pressed flat.
 //
+// One pencil on a card: given `yieldTo`, the note pauses while that other
+// pencil (the card editor's fills) is busy, with no pencil of its own, and
+// goes on where it stopped.
+//
 // Per frame only the pencil's translate, the letters' opacity and the doodle's
 // stroke change; the glued picture moves by transform only.
 import type { SceneText } from "../pictures";
@@ -61,7 +65,11 @@ export class SketchNote {
   private closed = false;
   private hurry = false;
 
-  constructor() {
+  /** Its own clock: runs only while it has the pencil. */
+  private clock = 0;
+  private lastFrame = 0;
+
+  constructor(private yieldTo?: () => boolean) {
     this.senseEl = document.createElement("span");
     this.senseEl.className = "sk-sense";
     this.sceneEl = document.createElement("span");
@@ -170,7 +178,16 @@ export class SketchNote {
 
   /** One frame: write as far as the pace allows, else doodle. */
   private step(): void {
-    const now = performance.now();
+    const real = performance.now();
+    const dt = this.lastFrame ? Math.min(100, real - this.lastFrame) : 0;
+    this.lastFrame = real;
+    if (this.yieldTo?.()) {
+      // The other pencil is on the card: this one waits off it.
+      this.stopDoodle();
+      if (this.pen) this.lift();
+      return;
+    }
+    const now = (this.clock += dt) + 1;
     this.started ||= now;
     const all = this.all();
     let target = Math.min(this.sense.length, Math.floor((now - this.started) / SENSE_LETTER_MS));

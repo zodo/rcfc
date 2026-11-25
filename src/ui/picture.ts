@@ -7,27 +7,27 @@ import { SketchNote } from "./sketch";
 /**
  * A card picture. With a white paper background it blends into the card, so
  * only the drawn paper cut-outs and their shadows show; otherwise (or in dark
- * mode) it is a scissor-cut piece glued onto the card.
+ * mode, or with `paper`: the card editor) it is a scissor-cut piece glued onto the card.
  */
-export function cutout(key: string, tilt: "l" | "r" = "l"): HTMLElement {
+export function cutout(key: string, tilt: "l" | "r" = "l", paper = false): HTMLElement {
   const img = h("img", { alt: "", decoding: "async" });
   const el = h("div", { class: `pic tilt-${tilt}` }, img);
   void app.pictures.view(key).then((v) => {
     if (!v) return el.remove(); // offline and never downloaded
-    el.classList.add(v.flat ? "flat" : "cut");
+    el.classList.add(v.flat && !paper ? "flat" : "cut");
     img.src = v.url;
   });
   return el;
 }
 
-/** A card picture once its image is ready to show (for gluing it on); null if it can't be had. */
-export async function cutoutReady(key: string, tilt: "l" | "r" = "l"): Promise<HTMLElement | null> {
+/** A card picture once its image is ready to show (for gluing it on); null if it can't be had. `paper`: always on its piece of paper. */
+export async function cutoutReady(key: string, tilt: "l" | "r" = "l", paper = false): Promise<HTMLElement | null> {
   const v = await app.pictures.view(key);
   if (!v) return null;
   const img = h("img", { alt: "", decoding: "async" });
   img.src = v.url;
   await img.decode().catch(() => {});
-  return h("div", { class: `pic tilt-${tilt} ${v.flat ? "flat" : "cut"}` }, img);
+  return h("div", { class: `pic tilt-${tilt} ${v.flat && !paper ? "flat" : "cut"}` }, img);
 }
 
 /**

@@ -194,7 +194,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     dropSketch();
     const words = picKey(f, b, "");
     // New words: the pencil notes what the picture will show. A redraw of the same words: the old picture stays until the new one comes.
-    const sk = drawn && drawnWords === words ? undefined : (sketch = new SketchNote());
+    const sk = drawn && drawnWords === words ? undefined : (sketch = new SketchNote(() => ink.busy()));
     const p = sketcher.draw({ word: f, translation: b, example: clean(example.value), details, onText: sk && ((t) => sk.text(t)) });
     pending = p;
     renderPic();
@@ -202,7 +202,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
       if (pending !== p) return;
       if (r.ok && sk?.el.isConnected) {
         // Glued on over the note before the card takes it as its picture.
-        const el = await cutoutReady(r.picture.key);
+        const el = await cutoutReady(r.picture.key, "l", true);
         if (pending !== p) return;
         if (el) {
           await sk.glue(el);
@@ -238,7 +238,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
     } else if (pending && sketch) {
       body = [sketch.el, room()];
     } else if (drawn) {
-      body = [glued?.key === drawn.key ? glued.el : cutout(drawn.key), caption()];
+      // On its piece of paper, glued on: the card being made.
+      body = [glued?.key === drawn.key ? glued.el : cutout(drawn.key, "l", true), caption()];
     } else if (pending) {
       body = [box(mirror(), h("span", { class: "ed-pic-says" }, "drawing…")), room()];
     } else if (queued) {
