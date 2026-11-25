@@ -16,6 +16,7 @@ import { Filler } from "./fill";
 import { Pictures } from "./pictures";
 import { Speech, webAudio } from "./speech";
 import { Store } from "./store";
+import { Summaries } from "./summaries";
 import { setupPaper } from "./ui/paper";
 import { Sync } from "./sync";
 import { clear, h } from "./ui/h";
@@ -47,6 +48,7 @@ async function boot() {
     app.pictures = await Pictures.open(store, () => app.sync.code);
     app.filler = new Filler(() => app.sync.code);
     app.speech = await Speech.open(store, () => app.sync.code, webAudio());
+    app.summaries = await Summaries.open(store, () => app.sync.code);
     if (await joinFromLink()) return;
     app.sync.onPulled = () => {
       void app.pictures.prefetch();

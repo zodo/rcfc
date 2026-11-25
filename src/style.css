@@ -2200,3 +2200,133 @@ header.top.sub .back svg {
     margin-inline: auto;
   }
 }
+
+/* ---------- a word's notes: tiny print on the card, and the page zoomed into (src/ui/fineprint.ts) ---------- */
+html.sum-zoom,
+html.sum-zoom body {
+  overflow: hidden;
+}
+/* the tap target: the tiny print and paper around it */
+.fine {
+  flex-shrink: 0;
+  margin-top: -6px;
+  padding: 14px 36px;
+  cursor: zoom-in;
+}
+.fine.empty {
+  pointer-events: none;
+  cursor: auto;
+}
+.fine.empty .fine-clip {
+  visibility: hidden;
+}
+.fine-clip {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+.fine-clip > .sum-page {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+.sum-view {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.sum-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.sum-sheet {
+  min-height: 100%;
+  padding: 72px 24px calc(48px + env(safe-area-inset-bottom));
+  background-color: var(--card-known);
+  background-image: var(--grain, none);
+  color: var(--ink);
+}
+.sum-sheet > .sum-page {
+  margin: 0 auto;
+}
+.sum-back {
+  position: absolute;
+  top: calc(14px + env(safe-area-inset-top));
+  left: 18px;
+  z-index: 1;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow:
+    0 1px 1px rgb(var(--shadow) / 0.3),
+    0 3px 5px rgb(var(--shadow) / 0.2);
+}
+.sum-lang {
+  position: absolute;
+  top: calc(14px + env(safe-area-inset-top));
+  right: 18px;
+  z-index: 1;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 19px;
+  font-size: 15px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow:
+    0 1px 1px rgb(var(--shadow) / 0.3),
+    0 3px 5px rgb(var(--shadow) / 0.2);
+}
+.sum-back svg {
+  width: 18px;
+  height: 18px;
+}
+/* the page, the same in tiny print and at reading size */
+.sum-page {
+  text-align: left;
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.sum-page p {
+  margin: 0 0 6px;
+}
+.sum-head {
+  margin-bottom: 18px;
+}
+.sum-word {
+  font-size: 28px;
+  font-weight: 700;
+}
+.sum-gist {
+  color: var(--muted);
+}
+.sum-sec {
+  margin-bottom: 18px;
+}
+.sum-title {
+  margin-bottom: 6px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sum-rows {
+  display: grid;
+  align-items: baseline;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+}
+.sum-label {
+  color: var(--muted);
+}

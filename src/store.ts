@@ -2,6 +2,7 @@
 // No UI side effects: when the in-memory model falls behind the log (late sync,
 // rollover change) writes report `replay` and set `stale`; the app decides when
 // to reload.
+import type { Summary } from "./domain/summary";
 import Dexie, { type DexieOptions, type Table } from "dexie";
 import { Collection, EventFactory, eventOrder, type Card, type Preset } from "./domain/collection";
 import type { AppEvent, LabelColored, LabelCreated, LabelDeleted, LabelRenamed, NotesLabeled, Review, ReviewPayload } from "./domain/events";
@@ -57,17 +58,25 @@ export interface TtsBlob {
   data: ArrayBuffer;
 }
 
+/** A word's notes, kept for offline study (src/summaries.ts); key = summaryText of the request. */
+export interface SumBlob {
+  key: string;
+  summary: Summary;
+}
+
 class AppDb extends Dexie {
   events!: Table<StoredEvent, number>;
   meta!: Table<{ key: string; value: unknown }, string>;
   pic_jobs!: Table<PicJob, EntityId>;
   pic_blobs!: Table<PicBlob, string>;
   tts_blobs!: Table<TtsBlob, string>;
+  sum_blobs!: Table<SumBlob, string>;
   constructor(name: string, options?: DexieOptions) {
     super(name, options);
     this.version(1).stores({ events: "++seq, &event_id, type", meta: "key" });
     this.version(2).stores({ pic_jobs: "note_id", pic_blobs: "key" });
     this.version(3).stores({ tts_blobs: "key" });
+    this.version(4).stores({ sum_blobs: "key" });
   }
 }
 
@@ -391,6 +400,19 @@ export class Store {
   /** Keys of every stored audio. */
   ttsKeys(): Promise<string[]> {
     return this.db.tts_blobs.toCollection().primaryKeys();
+  }
+
+  getSummary(key: string): Promise<SumBlob | undefined> {
+    return this.db.sum_blobs.get(key);
+  }
+
+  putSummary(b: SumBlob): Promise<unknown> {
+    return this.db.sum_blobs.put(b);
+  }
+
+  /** Keys of every stored summary. */
+  summaryKeys(): Promise<string[]> {
+    return this.db.sum_blobs.toCollection().primaryKeys();
   }
 
   // ---------- sync ----------

@@ -22,6 +22,7 @@ import { h, ICON_PEN, ICON_SPEAK, toast } from "../ui/h";
 import { relight, startTilt, tiltNeedsTap } from "../ui/light";
 import { haptic, seeded } from "../ui/paper";
 import { cutout, livePicture } from "../ui/picture";
+import { finePrint, zoomed, zoomInto } from "../ui/fineprint";
 import { EDGE, Turn } from "../ui/turn";
 import { languages, lastLanguage, rememberLanguage } from "./languages";
 
@@ -119,7 +120,9 @@ function faces(card: Card, note: Note, picTilt: "l" | "r"): Faces {
   const known = [note.picture ? cutout(note.picture.key, picTilt) : note.noPicture ? null : livePicture(note.id, picTilt), h("div", { class: "face", lang: lang.to }, note.fields.back), memo(note.fields.memo_known, lang.to)];
   const up = forward ? target : known;
   up.find((e) => e?.classList.contains("face"))!.classList.add("prompt");
-  const answer = h("div", { class: "answer hidden" }, ...(forward ? known : target));
+  // The word's notes are tiny print on the answer side, whichever side that is (not physical:
+  // on the question side they could give the answer away).
+  const answer = h("div", { class: "answer hidden" }, ...(forward ? known : target), finePrint(note));
   const side = (geom: "front" | "back", lng: "target" | "known") => `side ${geom} ${lng}`;
   const front = h("div", { class: side("front", forward ? "target" : "known") }, ...up, h("div", { class: "shade" }));
   const back = h("div", { class: side("back", forward ? "known" : "target") }, answer, h("div", { class: "shade" }));
@@ -229,6 +232,7 @@ class Table {
     const coming = s.upcoming(AHEAD);
     void app.pictures.ahead(coming); // and for the cards coming up
     void app.speech.ahead([card.id, ...coming]); // their word and example, so they speak at once
+    void app.summaries.ahead([card.id, ...coming]); // and their notes
     this.left = left;
     this.status.textContent = pick.kind === "new" ? "New word" : `${left} left`;
     this.recall.textContent = pick.p !== undefined ? `recall ${(pick.p * 100).toFixed(0)}%` : "";
@@ -392,7 +396,7 @@ class Table {
     };
 
     // Dragging: the card follows the finger, turning around the point held.
-    let down: { x: number; y: number; bx: number; by: number; br: number; moved: boolean; queued: boolean; zone: Dir | 0; turning: boolean } | null = null;
+    let down: { x: number; y: number; bx: number; by: number; br: number; moved: boolean; queued: boolean; zone: Dir | 0; turning: boolean; target: Element | null } | null = null;
     let samples: { x: number; y: number; t: number }[] = [];
     const velocity = (e: PointerEvent) => {
       const s0 = samples[0], dt = s0 ? Math.max(1, performance.now() - s0.t) : 1;
@@ -401,7 +405,7 @@ class Table {
     el.addEventListener("pointerdown", (e) => {
       if (busy || (e.target as HTMLElement).closest("button")) return;
       body.grab(e.clientX, e.clientY);
-      down = { x: e.clientX, y: e.clientY, bx: body.x, by: body.y, br: body.r, moved: false, queued: false, zone: 0, turning: false };
+      down = { x: e.clientX, y: e.clientY, bx: body.x, by: body.y, br: body.r, moved: false, queued: false, zone: 0, turning: false, target: e.target as Element };
       samples = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
       try {
         el.setPointerCapture(e.pointerId);
@@ -456,7 +460,18 @@ class Table {
       down = null;
       if (!d.moved && !cancelled) {
         settle();
-        if (revealed) turnAgain();
+        // A tap on the tiny print of the side lying up zooms into it.
+        const fine = revealed ? d.target?.closest<HTMLElement>(".fine:not(.empty)") : null;
+        const up = Math.round(angle / 180) % 2 === 0 ? f.front : f.back;
+        if (fine && up.contains(fine)) {
+          // Back in its spot at once, so the zoom aims at where the print rests.
+          body.stop();
+          body.unpivot();
+          Object.assign(body, body.home, { lift: 0, s: 1 });
+          body.render();
+          zoomInto(fine, this.el, body.home.r);
+        }
+        else if (revealed) turnAgain();
         else doReveal();
         return;
       }
@@ -480,7 +495,7 @@ class Table {
     el.addEventListener("pointercancel", (e) => end(e, true));
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
+      if (e.target instanceof HTMLInputElement || zoomed()) return;
       if ((e.key === " " || e.key === "Enter") && !(e.target instanceof HTMLButtonElement)) {
         e.preventDefault();
         if (revealed) turnAgain();

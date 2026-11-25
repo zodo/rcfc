@@ -2,6 +2,7 @@
 // only /api/* reaches this code (see run_worker_first in wrangler.jsonc).
 import { handleFill } from "./fill";
 import { handlePictures, type AiRunner } from "./pictures";
+import { handleSummary } from "./summary";
 import { handleSync, json } from "./sync";
 import { handleTts } from "./tts";
 
@@ -40,6 +41,7 @@ export default {
       (await handleSync(request, env.DB)) ??
       (await handlePictures(request, { DB: env.DB, MEDIA: env.MEDIA, AI: env.AI as AiRunner | undefined, budget, production: env.APP_ENV === "production", devDelay: env.APP_ENV === "dev" ? Number((env as { DEV_PICTURE_DELAY_MS?: string }).DEV_PICTURE_DELAY_MS ?? 900) : 0 })) ??
       (await handleFill(request, { DB: env.DB, MEDIA: env.MEDIA, AI: env.AI as AiRunner | undefined, budget, production: env.APP_ENV === "production", devDelay: env.APP_ENV === "dev" ? Number((env as { DEV_FILL_DELAY_MS?: string }).DEV_FILL_DELAY_MS ?? 900) : 0 })) ??
+      (await handleSummary(request, { DB: env.DB, MEDIA: env.MEDIA, AI: env.AI as AiRunner | undefined, budget, production: env.APP_ENV === "production", devDelay: env.APP_ENV === "dev" ? Number((env as { DEV_FILL_DELAY_MS?: string }).DEV_FILL_DELAY_MS ?? 900) : 0 })) ??
       (await handleTts(request, { DB: env.DB, MEDIA: env.MEDIA, AZURE_SPEECH_KEY: (env as { AZURE_SPEECH_KEY?: string }).AZURE_SPEECH_KEY, AZURE_SPEECH_REGION: env.AZURE_SPEECH_REGION, budget: Number(env.TTS_CHARS_PER_MONTH) || undefined })) ??
       json({ error: "not found" }, 404)
     );
