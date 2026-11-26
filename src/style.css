@@ -2446,6 +2446,20 @@ html.sum-zoom body {
   -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
   mask-image: linear-gradient(to bottom, #000 55%, transparent);
 }
+/* the rest of the page on the zooming copy (fineprint.ts zoomInto): over the tiny print, masked
+   to what its own mask leaves out (transparent where it is solid, solid where it fades), so the two add up */
+.fine-rest {
+  position: absolute;
+  pointer-events: none;
+}
+.fine-rest > .sum-page {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent calc(var(--shown) * 0.55), #000 var(--shown));
+  mask-image: linear-gradient(to bottom, transparent calc(var(--shown) * 0.55), #000 var(--shown));
+}
 .fine-clip > .sum-page {
   position: absolute;
   top: 0;

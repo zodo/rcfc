@@ -7,7 +7,9 @@
 //
 // The tiny print is the zoomed page itself, laid out at reading width and
 // scaled down by K, so zooming by 1/K lands exactly on the page and the swap
-// to real text is invisible. It is faint, and inks in while zooming.
+// to real text is invisible. It is faint, and inks in while zooming; the rest
+// of the page, below what the tiny print shows, fades in with it, so the
+// whole page is there when the zoom ends.
 import { app, hold } from "../app";
 import type { Note } from "../domain/collection";
 import type { Summary } from "../domain/summary";
@@ -58,7 +60,7 @@ function print(fine: HTMLElement, note: Note, summary: Summary, lang: string): v
 export function finePrint(note: Note): HTMLElement {
   const w = pageWidth();
   const clip = h("div", { class: "fine-clip" });
-  clip.style.width = `${(w * K).toFixed(1)}px`;
+  clip.style.width = `${Math.ceil(w * K) + 1}px`; // never narrower than the page: a full line keeps its last letter
   clip.style.height = `${(SHOWN * K).toFixed(1)}px`;
   clip.style.opacity = String(FAINT);
   const fine = h("div", { class: "fine empty", "aria-label": "Word notes" }, clip);
@@ -98,27 +100,6 @@ function onText(el: Element, x: number, y: number): boolean {
   return false;
 }
 
-/** Lines of the page the tiny print showed clearly (px at reading size): already on the paper when zoomed in. */
-const SEEN = SHOWN * 0.7;
-const LINE_MS = 55;
-
-/**
- * What the tiny print didn't show comes onto the page line by line, top to
- * bottom, as if written out now; what it showed is there at once.
- */
-function reveal(pg: HTMLElement, seen = SEEN): void {
-  const top = pg.getBoundingClientRect().top;
-  const lines = new Map<number, HTMLElement[]>();
-  for (const el of pg.querySelectorAll<HTMLElement>(".sum-title, .sum-rows > span, p")) {
-    const y = Math.round(el.getBoundingClientRect().top - top);
-    if (y < seen) continue;
-    lines.set(y, [...(lines.get(y) ?? []), el]); // a row's label and forms come together
-  }
-  [...lines.keys()].sort((a, b) => a - b).forEach((y, i) => {
-    for (const el of lines.get(y)!) el.animate([{ opacity: 0, translate: "0 3px" }, { opacity: 1, translate: "0 0" }], { duration: 200, delay: i * LINE_MS, easing: "ease-out", fill: "backwards" });
-  });
-}
-
 /**
  * Zoom into `fine` until it reads, then show the page. `cardTilt` is the
  * card's rotation in degrees (the camera turns with it, so the page comes out
@@ -144,6 +125,17 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   const stand = h("div", { class: "sum-stand", "aria-hidden": "true" }, copy);
   Object.assign(stand.style, { left: `${pb.left}px`, top: `${pb.top}px`, width: `${pb.width}px`, height: `${pb.height}px` });
   const clip = copyFine.querySelector<HTMLElement>(".fine-clip")!;
+  // The rest of the page, on the copy: lying exactly over the tiny print, shown only below the part it
+  // shows clearly (the masks add up), fading in while the camera comes down.
+  const rest = h("div", { class: "fine-rest" });
+  rest.style.setProperty("--shown", `${SHOWN}px`);
+  const restPage = (n: Note, sm: Summary, l: string) => {
+    const p = page(n, sm, l);
+    p.style.transform = `scale(${K})`;
+    rest.replaceChildren(p);
+  };
+  restPage(what.note, what.summary, what.lang);
+  copyFine.append(rest);
   const S = 1 / K;
   const r = fine.querySelector(".fine-clip")!.getBoundingClientRect();
   const c = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -156,8 +148,10 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   const atRest = step(0, 0, 0, 1);
   const zoomedIn = step(t.x - c.x, t.y - c.y, -cardTilt, S);
   document.body.append(stand);
+  Object.assign(rest.style, { top: `${clip.offsetTop}px`, left: `${clip.offsetLeft}px` }); // laid out now
   const anim = stand.animate([{ transform: atRest }, { transform: zoomedIn }], { ...ZOOM, fill: "forwards" });
   const ink = clip.animate([{ opacity: FAINT }, { opacity: 1 }], { ...ZOOM, fill: "forwards" });
+  const more = rest.animate([{ opacity: 0 }, { opacity: 1 }], { ...ZOOM, fill: "forwards" });
 
   const scroller = h("div", { class: "sum-scroll" });
   const view = h("div", { class: "sum-view", role: "dialog", "aria-label": "Word notes" }, scroller);
@@ -189,12 +183,13 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
       app.summaries.setLang(what.note, want);
       print(fine, what.note, s, want); // the card's tiny print too, and the copy's, for zooming out onto it
       print(copyFine, what.note, s, want);
+      restPage(what.note, s, want);
       Object.assign(what, { summary: s, lang: want });
       const fresh = page(what.note, s, want);
       pg.replaceWith(fresh);
       pg = fresh;
       scroller.scrollTop = 0;
-      reveal(pg, 0);
+      fresh.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: "ease-out" }); // all of it at once
       langBtn.textContent = ownName(other());
     });
     view.append(langBtn);
@@ -215,7 +210,8 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
       view.remove();
       anim.reverse();
       ink.reverse();
-      anim.onfinish = () => (anim.cancel(), ink.cancel(), done());
+      more.reverse();
+      anim.onfinish = () => (anim.cancel(), ink.cancel(), more.cancel(), done());
       return;
     }
     // Unscrolled, the page lies exactly on the zoomed card: swap back at once. Scrolled, fade it.
@@ -225,8 +221,10 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
     // off at once, settling softly onto the table. The copy stayed under the page, drawn.
     const back = stand.animate([{ transform: zoomedIn }, { transform: step(0, 0, 0, 1) }], ZOOM_OUT);
     clip.animate([{ opacity: 1 }, { opacity: FAINT }], ZOOM_OUT);
+    rest.animate([{ opacity: 1 }, { opacity: 0 }], { ...ZOOM_OUT, fill: "forwards" });
     anim.cancel();
     ink.cancel();
+    more.cancel();
     back.onfinish = done;
   };
   const leave = () => {
@@ -247,10 +245,8 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   });
   anim.onfinish = () => {
     if (closing) return;
-    // No fade: the page lies exactly where the zoomed tiny print was, so the swap doesn't show,
-    // and the lines below start coming at once.
+    // No fade: the page lies exactly where the zoomed tiny print and the rest were, so the swap doesn't show.
     document.body.append(view);
-    reveal(pg);
     for (const b of view.querySelectorAll("button")) b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, delay: 60, fill: "backwards" });
     document.addEventListener("keydown", onKey);
   };

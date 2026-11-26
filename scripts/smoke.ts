@@ -307,6 +307,12 @@ async function run(s: Browser, url: string) {
   await s.until("hola again, turned", `document.querySelector(".flashcard.turned:not(.leaving) .face.prompt")?.textContent === "hola" && document.querySelector("button.rate")`);
   await s.until("the note on it", `document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden) .memo")?.textContent === "a greeting"`);
   await shot(s, "study-memo");
+  log("the word's notes: a tap on the tiny print zooms in onto the whole page at once; back puts the card down");
+  await s.until("notes on the card", `document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden) .fine:not(.empty)")`, 20_000);
+  await s.click(".flashcard:not(.leaving) .answer .fine");
+  await s.until("the page, every line there", `document.querySelector(".sum-view .sum-page")?.textContent.includes("Dev placeholder") && !document.querySelector(".sum-view .sum-page *")?.getAnimations().length`);
+  await s.click(".sum-back");
+  await s.until("card down again", `!document.querySelector(".sum-view, .sum-stand") && document.querySelector("button.rate")`);
   await s.click("button.rate", "Got it");
   await s.until("next screen", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
   log("a card lying word side up says its word; the example has its own speak button");
