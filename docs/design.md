@@ -263,7 +263,7 @@ What "needs the user most" means:
 - "10 more" (a handful in study, or from the spot) raises the new-word limit of a language's pile by what it deals.
 - Size: starts at 20; +5 for the next deal when the user took "10 more" that day, however many times ("All N" is a one-off and doesn't count); -5 when a pile was left unfinished at the rollover; between 10 and 50.
 - When a pile is empty, study shows its finish with a handful of 10 more (from the same words); back on the table its spot offers "Go through these N again" (exactly the same cards once more) and "10 more".
-- Words marked known in the list need no rule: "I know" answers both faces Easy, so they no longer need the user and are not drawn until the model finds them due, far out. (Marking only the face the user had seen left the other one unseen: drawn as a new card, first among new words and not counted against the limit, so a batch of known words filled the piles.)
+- Words marked known in the list need no rule: "I know" answers both faces Easy, so they no longer need the user and are not drawn until the model finds them due, far out. (Marking only the face the user had seen left the other one unseen: drawn as a new card, first among new words and not counted against the limit, so a batch of known words filled the piles.) The daily new-word limit leaves out only words marked known (Easy outside any pile); a new card answered Easy in study counts like any other, so Easy answers can't let new cards in without end. Words marked on one face before this are repaired once per device, after a sync (so another device's repair arrives first): their unseen face is answered Easy.
 
 **Words screen**
 

@@ -18,10 +18,11 @@ function setup(words: number) {
   add([deck]);
   const deckId = (deck.payload as { deck_id: number }).deck_id;
   for (let i = 0; i < words; i++) add(f.note(deckId, { front: `w${i}`, back: `t${i}` }, { from: "es", to: "en" }));
-  const answer = (cardId: number, at: number, rating: Review["payload"]["rating"] = 3) => {
+  /** `pile`: answered in study from that pile (none: marked, e.g. "I know"). */
+  const answer = (cardId: number, at: number, rating: Review["payload"]["rating"] = 3, pile?: string) => {
     t = at;
     const c = col.cards.get(cardId)!;
-    col.apply(f.make<Review>("review", { card_id: c.id, note_id: c.note_id, deck_id: deckId, preset_id: 0, rating, duration_ms: 1, tz_offset_min: 0 }));
+    col.apply(f.make<Review>("review", { card_id: c.id, note_id: c.note_id, deck_id: deckId, preset_id: 0, rating, duration_ms: 1, tz_offset_min: 0, ...(pile ? { pile } : {}) }));
   };
   const clock = (now: number): DayClock => ({ now, tzOffsetMin: 0, rolloverHour: 4 });
   return { col, f, deckId, answer, clock, add };
@@ -43,11 +44,18 @@ describe("new cards", () => {
     expect(newQueue(col, clock(T0), 3)).toHaveLength(2);
   });
 
-  it("does not count words known on first sight (Easy)", () => {
+  it("does not count words marked known (Easy outside a pile)", () => {
     const { col, clock, answer } = setup(5);
     for (const c of newQueue(col, clock(T0), 3)) answer(c.id, T0, 4);
     expect(introducedToday(col, clock(T0)).words).toBe(0);
     expect(newQueue(col, clock(T0), 3)).toHaveLength(2); // only 2 unseen words left
+  });
+
+  it("counts new cards answered Easy in study: Easy doesn't let more and more in", () => {
+    const { col, clock, answer } = setup(5);
+    for (const c of newQueue(col, clock(T0), 3)) answer(c.id, T0, 4, "lang:es");
+    expect(introducedToday(col, clock(T0)).words).toBe(3);
+    expect(newQueue(col, clock(T0), 3)).toHaveLength(0);
   });
 
   it("starts the reverse card on a later study day, under its own limit", () => {
@@ -96,14 +104,13 @@ describe("knownCards", () => {
 
 describe("halfKnownFaces", () => {
   it("finds the unseen face of words answered only Easy outside a pile, not of words studied in one", () => {
-    const { col, f, deckId, answer } = setup(4);
+    const { col, answer } = setup(4);
     const [n0, n1, n2, n3] = col.liveNotes();
     const cardsOf = (id: number) => col.cardsByNote.get(id)!.map((c) => col.cards.get(c)!);
     answer(cardsOf(n0.id)[0].id, T0, 4); // marked known the old way: one face
     answer(cardsOf(n1.id)[0].id, T0, 4); // marked, then got wrong
     answer(cardsOf(n1.id)[0].id, T0 + DAY, 1);
-    const c2 = cardsOf(n2.id)[0]; // Easy in study, from a pile
-    col.apply(f.make<Review>("review", { card_id: c2.id, note_id: n2.id, deck_id: deckId, preset_id: 0, rating: 4, duration_ms: 1, tz_offset_min: 0, pile: "lang:es" }));
+    answer(cardsOf(n2.id)[0].id, T0, 4, "lang:es"); // Easy in study, from a pile
     for (const c of cardsOf(n3.id)) answer(c.id, T0, 4); // both faces already
     expect(halfKnownFaces(col).map((c) => [c.note_id, c.template])).toEqual([[n0.id, "reverse"]]);
   });

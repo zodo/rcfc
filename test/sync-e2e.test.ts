@@ -52,6 +52,21 @@ describe("sync end to end", () => {
     expect(sb.next()!.left).toBe(4);
   });
 
+  it("the repair of words marked known on one face runs once for the account, after a sync", async () => {
+    const { a, b } = await pair();
+    await a.deck(2);
+    const [n0] = a.store.col.liveNotes();
+    const fwd = a.store.col.cardsByNote.get(n0.id)!.map((c) => a.store.col.cards.get(c)!).find((c) => c.template === "forward")!;
+    await a.store.answer(fwd, 4, 2000); // "I know" before it covered both faces
+    await a.sync.now();
+    await b.sync.join(a.sync.code);
+    expect(await a.store.repairKnown()).toBe(1);
+    await a.sync.now();
+    await b.sync.now();
+    expect(await b.store.repairKnown()).toBe(0); // a's repair came first
+    expect(b.store.col.reviews.map((r) => r.payload.rating)).toEqual([4, 4]);
+  });
+
   it("pushes and pulls in pages", async () => {
     const { server, a, b } = await pair();
     await a.deck(PUSH_MAX); // 1 + 3 × 500 events with the preset and deck

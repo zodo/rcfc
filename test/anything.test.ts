@@ -241,6 +241,10 @@ describe("Store.importWords", () => {
     expect(reviewed.has(note("el perro").id) && reviewed.has(note("sin embargo").id)).toBe(true);
     expect(col.reviews.every((r) => r.payload.rating === 4)).toBe(true);
     expect(reviewed.size).toBe(2);
+    // Known on both faces: neither waits as a new card, today or later.
+    const known = new Set([note("el perro").id, note("sin embargo").id]);
+    expect(col.reviews.filter((r) => known.has(r.payload.note_id))).toHaveLength(4);
+    expect(d.store.newQueue().filter((c) => known.has(c.note_id))).toEqual([]);
     expect(note("la ventana").priority).toBeDefined();
     expect(note("el cajón").priority).toBeUndefined();
     expect(note("la cuenta").fields.picture_details).toBe("a restaurant bill, not a bank account");

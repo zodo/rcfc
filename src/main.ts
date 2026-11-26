@@ -39,8 +39,6 @@ async function boot() {
       if (document.visibilityState === "hidden") void store.engine.flush();
     });
     if (store.col.reviews.length || store.col.notes.size) void requestPersistence();
-    const repaired = await store.repairKnown();
-    if (repaired) console.info("rcfc: marked the other face of known words", repaired);
     app.sync = await Sync.open(store);
     app.pictures = await Pictures.open(store, () => app.sync.code);
     app.filler = new Filler(() => app.sync.code);
@@ -52,6 +50,7 @@ async function boot() {
       if (app.current === "home") void home();
     };
     app.sync.onReplay = reloadWhenSafe;
+    app.sync.onSynced = repairKnown;
     // Navigation through browser history; shows home, or the screen a reload left.
     const nav = router(screens);
     Object.assign(go, nav.go);
@@ -65,6 +64,27 @@ async function boot() {
     clear(root);
     root.appendChild(h("div", { class: "card-box" }, h("h2", {}, "Something went wrong"), h("pre", { class: "small" }, String(e instanceof Error ? (e.stack ?? e.message) : e)), h("button", { class: "primary", onclick: () => location.reload() }, "Reload")));
   }
+}
+
+/**
+ * Once, after a sync went through (so another device's repair is here first):
+ * the other face of words marked known on one face (Store.repairKnown). Not
+ * while studying (a face on screen could be one of them), nor before a replay.
+ */
+let repairing = false;
+function repairKnown(): void {
+  const { store } = app;
+  if (repairing || store.stale || app.current === "study") return;
+  repairing = true;
+  void store
+    .repairKnown()
+    .then((n) => {
+      if (!n) return;
+      console.info("rcfc: answered the other face of words marked known", n);
+      if (app.current === "home") void home();
+    })
+    .catch((e) => console.warn("rcfc: repair of known words failed", e))
+    .finally(() => (repairing = false));
 }
 
 setupPaper();

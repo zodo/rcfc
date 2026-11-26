@@ -21,6 +21,8 @@ export class Sync {
   status: SyncStatus = { state: "idle" };
   /** New events arrived from other devices (re-render the screen). */
   onPulled: () => void = () => {};
+  /** A push and pull went through: this device has what the account has. */
+  onSynced: () => void = () => {};
   /** Pulled events need a full RWKV replay; the app should reload when convenient. */
   onReplay: () => void = () => {};
   onStatus: (s: SyncStatus) => void = () => {};
@@ -107,6 +109,7 @@ export class Sync {
       this.setStatus({ state: "idle", lastOk });
       if (replay) this.onReplay();
       else if (added) this.onPulled();
+      this.onSynced();
     } catch (e) {
       const offline = e instanceof TypeError; // fetch network failure
       this.setStatus({ state: offline ? "offline" : "error", error: offline ? undefined : e instanceof Error ? e.message : String(e) });

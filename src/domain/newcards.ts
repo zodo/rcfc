@@ -26,7 +26,7 @@ function langOf(col: Collection, c: Card): string {
 }
 
 /**
- * Cards introduced today (except ones known on first sight), split into fresh words (no card of the note seen
+ * Cards introduced today (except ones marked known), split into fresh words (no card of the note seen
  * before today) and second directions (a sibling was seen on an earlier day). Only words of `lang`, when given;
  * cards first answered from a pile in `notCounted` (a sticker pile the user asked for more) don't count.
  */
@@ -38,8 +38,10 @@ export function introducedToday(col: Collection, clock: DayClock, lang?: string,
     if (c.first_review_ts === undefined || dayOf(c.first_review_ts, clock) !== today) continue;
     if (lang !== undefined && langOf(col, c) !== lang) continue;
     if (c.first_pile !== undefined && notCounted?.has(c.first_pile)) continue;
-    // Already known on first sight (Easy, e.g. sorted as known): not a new burden.
-    if (c.first_rating === 4) continue;
+    // Marked known (Easy outside any pile: "I know", an import): not a new burden. A new card
+    // answered Easy in study counts: it was shown as a new card, and uncounted, every Easy let
+    // another one in (a pile could fill with faces of known words and never reach new ones).
+    if (c.first_rating === 4 && c.first_pile === undefined) continue;
     if (siblingsOf(col, c).some((s) => s.first_review_ts !== undefined && dayOf(s.first_review_ts, clock) < today)) second++;
     else words.add(c.note_id);
   }
