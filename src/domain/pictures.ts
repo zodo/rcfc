@@ -76,19 +76,23 @@ export function parseSense(reply: unknown, r: PictureRequest): string {
 }
 
 const KINDS = `First decide which kind of picture fits the meaning:
-- "scene": almost every word: things, people, animals, actions, feelings, qualities, places, weather, days, seasons, and abstract ideas someone can act out.
-- "digits": numbers, times of day and years. Drawn as big numerals cut from paper, because counted things come out miscounted. Write only the digits (e.g. thirteen: "13", a hundred: "100", half past seven: "7:30", 1999: "1999"); ordinals get the bare digit (third: "3").
-- "none": only words whose meaning no picture can show: articles, prepositions, conjunctions, pronouns, particles, auxiliary verbs, and connecting words like however, therefore, actually or although. When in doubt, choose "scene".`;
+- "scene": things, people, animals, plain actions (to eat, to put, to write), feelings, qualities you can see or feel (heavy, red, noisy), places, weather, seasons, jobs, greetings, and ideas a person visibly acts out. Nouns for things you can hold, see or point at (a weapon, a message, a detail, a country), plain action verbs and concrete adjectives always get a scene. Units of time (hour, year, century), "number", midnight and noon get a scene too, never digits. First, second and third: a person on that step of a winners' podium.
+- "digits": only a number itself, a clock time or a year: drawn as big numerals cut from paper, because counted things come out miscounted. Write only the digits, at most 4 (thirteen: "13", a hundred: "100", half past seven: "7:30", 1999: "1999", percent: "%"). Never for bigger numbers, fractions or other ordinals.
+- "none": words whose meaning no picture can show, or none tells apart from its neighbours: articles, prepositions, conjunctions, pronouns, possessives, particles, auxiliary and modal verbs (can, must, need, may), aspect verbs (to usually do, to have just done, to do again), connecting words (however, therefore, actually, although), adverbs of time, frequency, degree and likelihood (still, already, yet, just, always, often, never, again, recently, later, today, tomorrow, the day after tomorrow, very, quite, too, only, almost, probably, maybe, totally), quantity words (all, every, some, in total), numbers past 9999, fractions and ordinals past third, weekdays and months (no picture tells Tuesday from Wednesday), swear words and insults, and words about suicide, sex, nudity or drug use. For any other word, abstract nouns too (quality, importance, system): "none" unless one clear, everyday action shows exactly this meaning.`;
 
 const SCENE_RULES = `Rules for a scene:
 - Show exactly the given "Meaning" of the word, nothing else.
 - Describe one concrete, instantly readable scene: one or two main figures or objects. Never describe a place behind them (no street, city, room, park, wall, doorway or landscape): it becomes a cut-out on blank paper, so at most one or two small props hint at the setting, like a sun, a lamp or a bush. 1-2 sentences, English, no style words (the style is added later).
 - Abstract words, verbs and idioms: show a person or animal visibly doing or feeling it, in a situation where the meaning is obvious.
 - Idioms whose literal words make a vivid picture: merge the literal image with the meaning, as a memory hook (e.g. "estar en las nubes": a daydreaming woman whose head floats among clouds).
-- People are always adults.
-- Make the meaning unmistakable: include the one detail that tells this meaning apart from similar ideas (e.g. for getting up early: a person already dressed, drinking coffee, a small sun just rising, a rooster crowing).
+- The picture must point to this word, not to a near neighbour: include the one detail that tells this meaning apart from similar words (think, know, understand; look, see; can, strong; buy, customer). E.g. for getting up early: a person already dressed, drinking coffee, a small sun just rising, a rooster crowing.
+- No stock symbols standing for the meaning: no lightbulbs, question marks, exclamation marks, hearts, check marks, thumbs up, magnifying glasses, keys, mirrors, forking paths, glows or sparkles, and no apple as a stand-in object, unless the word is that very thing.
+- The image model can't draw these, so never ask for them: more than three people or a crowd, something missing or absent ("without", "no", "not", "used to be"), time passing or before/after, a figure repeated, distance or "far away", split panels, arrows.
+- People are always adults, family words too (a mother: a woman hugging her grown son).
+- Death, killing, injury and blood: only a gentle sign of it (a wilting flower, a gravestone, a bandaged finger), never a body, a wound, blood or a weapon aimed at someone.
 - If "Details" are given, include them.
-- The picture is a test: the learner must guess the word from it. So nothing in it may carry writing: no quoted words, dialogue or names, no speech or thought bubbles, no calendars, signs, books, screens, chalkboards, labels, letters or digits. Show talking with gestures and open mouths; show days and seasons with what happens in them (e.g. Monday: a sleepy office worker with a briefcase hurrying to work at dawn). Never show a number by counting things.`;
+- The picture is a test: the learner must guess the word from it. So nothing in it may carry writing: no quoted words, dialogue or names, no speech or thought bubbles, no calendars, newspapers, signs, price tags, lists, documents, books, screens, maps, chalkboards, labels, letters, digits or numbered things; clocks have hands only. Show talking with gestures and open mouths. Never show a number by counting things.
+- Don't reuse these examples: write a scene of your own.`;
 
 const INTRO = "You write the subject for a flashcard illustration that helps a language learner remember one word.";
 
@@ -116,7 +120,7 @@ export function sceneMessages(r: PictureRequest, sense: string): { role: "system
 export type Plan = { kind: "scene"; scene: string } | { kind: "digits"; digits: string; scene: string } | { kind: "none" };
 
 /** A number, a time or a year: what may be drawn as numerals. "3." (FLUX drew "33.") and the like are left out. */
-const DIGITS_RE = /^\d{1,4}(?::\d{2})?$/;
+const DIGITS_RE = /^(?:\d{1,4}(?::\d{2})?|%)$/;
 
 /** The scene LLM's reply (a JSON string, an object, or JSON in a code fence). `always`: never "none". */
 export function parsePlan(reply: unknown, sense: string, always = false): Plan {
@@ -133,7 +137,8 @@ export function parsePlan(reply: unknown, sense: string, always = false): Plan {
   const digits = typeof o.digits === "string" || typeof o.digits === "number" ? String(o.digits).replace(/\s+/g, "") : "";
   if (o.kind === "digits" && DIGITS_RE.test(digits)) return { kind: "digits", digits, scene: `the number ${digits}, cut from paper` };
   const text = typeof o.scene === "string" ? withoutQuotes(o.scene) : "";
-  if (o.kind === "none" && !always) return { kind: "none" };
+  // Nothing usable (bad digits, an empty scene): none, unless the user asked for a picture.
+  if ((o.kind === "none" || !text) && !always) return { kind: "none" };
   return { kind: "scene", scene: text || `A simple everyday scene that shows ${sense}.` };
 }
 
