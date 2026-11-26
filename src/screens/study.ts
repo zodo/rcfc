@@ -88,7 +88,7 @@ export async function study(want?: string): Promise<void> {
   }
   const t = new Table(s);
   t.next();
-  if (from) t.growFrom(from.rect, from.copy);
+  if (from) t.dropIn(from.rect, from.copy);
 }
 
 interface Faces {
@@ -177,39 +177,29 @@ class Table {
   }
 
   /**
-   * Opened from the table: the pile lifts off the spot it lay on (`from`) and
-   * grows into place, the rest of the screen fading in around it. What grows
-   * is `copy`, the table's pile, as one layer drawn once: scaling the study
-   * pile itself (its card's 3D turn, the cards under it, shadows: many layers)
-   * dropped frames on Android. The study pile is drawn under it meanwhile and
-   * takes over at the end.
+   * Opened from the table: the tapped pile is picked up and leaves through
+   * the top of the screen (`copy`, a copy of it at `from`, where it lay), then
+   * the study pile drops in from above and settles. Both only move: growing
+   * one into the other dropped frames on Android (the study pile is many
+   * layers) and showed their faces differ. Nothing waits for it.
    */
-  growFrom(from: DOMRect, copy: HTMLElement): void {
-    const card = this.pile.querySelector<HTMLElement>(".flashcard");
-    if (!card || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const to = card.getBoundingClientRect();
-    // A few edges under it, not the table's whole thickness: grown 2-3x that would be a striped band.
-    const edges = [...copy.querySelectorAll(".pile-edge")];
-    edges.slice(0, Math.max(0, edges.length - 4)).forEach((e) => e.remove());
-    const stand = h("div", { class: "pile-grow", "aria-hidden": "true" }, copy);
+  dropIn(from: DOMRect, copy: HTMLElement): void {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const stand = h("div", { class: "pile-lift", "aria-hidden": "true" }, copy);
     Object.assign(stand.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
     document.body.append(stand);
-    const s = to.width / from.width;
-    const dx = to.left + to.width / 2 - (from.left + from.width / 2), dy = to.top + to.height / 2 - (from.top + from.height / 2);
-    const MS = 420;
-    stand.animate(
+    stand.animate([{ transform: "none" }, { transform: `translate(0, ${-(from.bottom + 60)}px) rotate(-4deg)` }], { duration: 230, easing: "cubic-bezier(0.5, 0, 0.75, 0)", fill: "forwards" }).onfinish = () => stand.remove();
+    const above = -(this.pile.getBoundingClientRect().bottom + 40);
+    this.pile.animate(
       [
-        { transform: "none" },
-        { transform: `translate(${dx * 0.6}px, ${dy * 0.6 - 10}px) scale(${1 + (s - 1) * 0.7})`, offset: 0.55 },
-        { transform: `translate(${dx}px, ${dy}px) scale(${s})` },
+        { translate: `0 ${above}px`, rotate: "-3deg" },
+        { translate: "0 7px", rotate: "0.6deg", offset: 0.72 },
+        { translate: "0 0", rotate: "0deg" },
       ],
-      { duration: MS, easing: "cubic-bezier(0.25, 0.7, 0.3, 1)", fill: "forwards" },
+      { duration: 460, delay: 150, easing: "cubic-bezier(0.3, 0.6, 0.35, 1)", fill: "backwards" },
     );
-    // Its own linear clock: under the move's easing, a fade at 80% would start at about 45%.
-    stand.animate([{ opacity: 1 }, { opacity: 0 }], { duration: MS * 0.2, delay: MS * 0.8, fill: "both" }).onfinish = () => stand.remove();
-    // The study pile comes up under the copy while it is still whole, then the copy fades off it: never both see-through at once.
-    this.pile.animate([{ opacity: 0 }, { opacity: 1 }], { duration: MS * 0.3, delay: MS * 0.48, fill: "backwards" });
-    for (const e of this.el.children) if (e !== this.pile) e.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 140, fill: "backwards" });
+    window.setTimeout(() => haptic("thud"), 150 + 460 * 0.72);
+    for (const e of this.el.children) if (e !== this.pile) e.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 120, fill: "backwards" });
   }
 
   /** Each card's own spot in the pile. */
