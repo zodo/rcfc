@@ -482,13 +482,12 @@ async function run(s: Browser, url: string) {
   await s.type("input[name=back]", "key");
   await s.click("button.ed-add", "Add");
   await s.until("der Schlüssel added", addedRow("der Schlüssel"));
-  log("a Spanish word translated into Russian joins the Spanish pile");
+  log("a Spanish word translated into Russian joins the Spanish pile; Cyrillic typed on the English side makes it Russian");
   await s.js(`const l = document.querySelector("select[name=language]"); l.value = "es"; l.dispatchEvent(new Event("change"));`);
   await s.until("Spanish into English", `document.querySelector("select[name=language]")?.value === "es" && document.querySelector("select[name=to]")?.value === "en"`);
-  await s.js(`const t = document.querySelector("select[name=to]"); t.value = "ru"; t.dispatchEvent(new Event("change"));`);
-  await s.until("its Russian translation", `${noteText(".ed-note-trans")} === "its Russian translation goes here"`);
   await s.type("input[name=front]", "el gato");
   await s.type("input[name=back]", "кот");
+  await s.until("its Russian translation", `document.querySelector("select[name=to]")?.value === "ru" && ${noteText(".ed-note-trans")} === "Russian"`);
   await s.click("button.ed-add", "Add");
   await s.until("el gato added", addedRow("el gato"));
   await s.click("button[aria-label=Back]");

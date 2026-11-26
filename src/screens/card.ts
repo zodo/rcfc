@@ -21,11 +21,14 @@ import { Ink } from "../ui/ink";
 import { arrowNote, pickWord } from "../ui/pencil";
 import { cutout, cutoutReady } from "../ui/picture";
 import { SketchNote } from "../ui/sketch";
+import { languageOfText } from "../domain/script";
 import { deckFor, languageForm, languages, lastLanguage, openLabel, rememberLanguage, rememberTranslation, translationFor } from "./languages";
 import { stickersSheet, stickerTag, type StickerTarget } from "./stickers";
 
 /** How long typing must pause before the card is filled in and its picture drawn. */
 export const PAUSE_MS = 1500;
+/** Filling in starts sooner than the picture: it costs little, and the pencil covers the wait. */
+const FILL_PAUSE_MS = 700;
 /** Add waits this long at most for a fill still on its way. */
 const FILL_WAIT_MS = 8000;
 const NEW_LANG = "new";
@@ -131,14 +134,48 @@ function open(note?: Note, over?: { leave: () => void }): void {
   const fromWord = pickWord(fromSel, "Language of the word");
   const toWord = pickWord(toSel, "Language of the translation");
   const plain = (l: string) => h("span", { class: "lang-plain" }, langName(l));
-  const setFrom = (l: string) => {
-    from = l;
-    to = translationFor(l);
+  /** What a fill wrote on a side whose language changed is in the old one: it goes at once, and the pencil waits there for the new. */
+  const rubOut = (ps: FillPlace[]) => {
+    const gone = ps.filter((p) => auto.has(p) && places[p].value);
+    if (!gone.length) return;
+    for (const p of gone) auto.delete(p);
+    const t = textNow();
+    for (const p of gone) t[p] = "";
+    setText(t);
+    shown = undefined;
+    options = [];
+    suggestion = "";
+  };
+  const typedHere = (p: FillPlace) => !auto.has(p) && !!cleanFill(places[p].value);
+  /** `typing`: told by the letters being typed; the typing pause asks then, not this. */
+  const setTo = (l: string, typing = false) => {
+    if (l === to) return;
+    to = l;
     if (![...toSel.options].some((o) => o.value === to)) toSel.prepend(h("option", { value: to }, langName(to)));
     toSel.value = to;
-    fillFrom();
+    rubOut(["back"]); // typed: it was just said to be in this language
     update();
+    renderFill();
+    if (!typing) pause();
+  };
+  const setFrom = (l: string) => {
+    from = l;
+    // A translation typed stays in its language; else the one usual for this studied language.
+    const keep = typedHere("back") && to !== l;
+    const next = keep ? to : translationFor(l);
+    if (![...toSel.options].some((o) => o.value === next)) toSel.prepend(h("option", { value: next }, langName(next)));
+    toSel.value = to = next;
+    fillFrom();
+    rubOut(["front", "example", ...(keep ? [] : (["back"] as const))]);
+    update();
+    renderFill();
     pause();
+  };
+  /** The languages the user's translations are in, most used first: what a translation typed in other letters is taken to be. */
+  const known = (): string[] => {
+    const n = new Map<string, number>();
+    for (const x of store.col.liveNotes()) n.set(x.lang_pair.to, (n.get(x.lang_pair.to) ?? 0) + 1);
+    return [...n].sort((a, b) => b[1] - a[1]).map(([l]) => l);
   };
   fromSel.addEventListener("change", () => {
     if (fromSel.value !== NEW_LANG) return setFrom(fromSel.value);
@@ -153,11 +190,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
       }, "Use it"),
     );
   });
-  toSel.addEventListener("change", () => {
-    to = toSel.value;
-    update();
-    pause();
-  });
+  toSel.addEventListener("change", () => setTo(toSel.value));
 
   const wordNote = arrowNote("ed-note-word");
   const transNote = arrowNote("ed-note-trans");
@@ -498,15 +531,27 @@ function open(note?: Note, over?: { leave: () => void }): void {
   // At the pause what is missing is filled in, and the picture draws (after the fill, when one may change the words).
   const pause = () => {
     clearTimeout(timer);
+    clearTimeout(fillTimer);
     checkDup();
     if (!fill()) draw(false);
   };
+  let fillTimer: ReturnType<typeof setTimeout> | undefined;
   for (const el of [front, back]) {
     el.addEventListener("input", () => {
       typed(el === front ? "front" : "back");
+      // A translation typed in other letters (Cyrillic on an English side) is in another language: the side says so.
+      if (el === back && !editing) {
+        const l = languageOfText(back.value, to, known());
+        if (l !== to) setTo(l, true);
+      }
       update();
       clearTimeout(timer);
+      clearTimeout(fillTimer);
       renderPic();
+      fillTimer = setTimeout(() => {
+        checkDup();
+        fill();
+      }, FILL_PAUSE_MS);
       timer = setTimeout(pause, PAUSE_MS);
     });
     el.addEventListener("blur", pause);
