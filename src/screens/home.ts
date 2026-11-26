@@ -17,6 +17,7 @@ import { StudySession } from "../session";
 import { checks } from "../ui/checks";
 import { h, langName } from "../ui/h";
 import { haptic, seeded } from "../ui/paper";
+import { autoReadScrap } from "../ui/autoread";
 import { cutout } from "../ui/picture";
 import { editSticker, languageForm, languages, rememberLanguage, setOpenLanguage } from "./languages";
 import { newStickerSheet, stickerTag } from "./stickers";
@@ -25,6 +26,9 @@ import { newStickerSheet, stickerTag } from "./stickers";
 const EDGES = 30;
 /** Thickness of one card, px. */
 const CARD_PX = 1.5;
+
+/** "Study", and the scrap that switches cards reading aloud by themselves, so it can be set before a pile is opened. */
+const title = () => h("div", { class: "title-row" }, h("h1", {}, "Study"), autoReadScrap());
 
 const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 
@@ -49,14 +53,14 @@ export async function home(): Promise<void> {
   const ready = piles.every(({ s }) => s.predicted());
   if (!ready) {
     // Re-drawn in place (a pile refilled): the table stays while the new one is made.
-    if (!(app.current === "home" && app.root.querySelector(".table"))) page("home", "Study", h("p", { class: "muted" }, "Loading…"));
+    if (!(app.current === "home" && app.root.querySelector(".table"))) page("home", title(), h("p", { class: "muted" }, "Loading…"));
     await refresh();
     if (gen !== drawn || app.current !== "home") return; // drawn again, or left, meanwhile
   }
   const refilled = app.refilled;
   app.refilled = null;
   const spots = piles.map(({ s, label }) => spot(s, label, refilled));
-  page("home", "Study", h("div", { class: "table" }, ...spots.map((x) => x.el), newPile()));
+  page("home", title(), h("div", { class: "table" }, ...spots.map((x) => x.el), newPile()));
   launchToTable(app.root); // at launch: the launch pile is dealt onto it
   if (!ready) return;
   await refresh();

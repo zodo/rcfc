@@ -332,6 +332,7 @@ async function run(s: Browser, url: string) {
   log("the corner speaker switches reading by itself off (the card's speakers still say it) and on again (it says the word now)");
   await s.click(".study-top .auto-read");
   await s.until("switched off", `document.querySelector(".study-top .auto-read")?.getAttribute("aria-pressed") === "false"`);
+  await shot(s, "study-quiet");
   await s.js(`window.__rcfcSpoken.length = 0;`);
   await s.click(".flashcard:not(.leaving) .face.prompt .speak");
   await s.until("word said on a tap", `window.__rcfcSpoken.includes("adiós")`);

@@ -1095,13 +1095,70 @@ header.top.sub .back svg {
   align-items: center;
   gap: 10px;
 }
-/* the corner speaker: cards read their word by themselves, or stay quiet until a speaker on the card is tapped */
-.study-top .auto-read svg {
-  width: 20px;
-  height: 20px;
+/* whether cards read aloud by themselves (ui/autoread.ts): a scrap of card stock
+   lying on the table, a pencil speaker on its white side; turned over, "shh" on the cream */
+.auto-read {
+  position: relative;
+  z-index: 3; /* cards lifted or thrown in study pass under it */
+  flex: none;
+  width: 46px;
+  height: 38px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: #6a736a;
+  filter: drop-shadow(0 1px 0.5px rgb(var(--shadow) / 0.35)) drop-shadow(0 2px 3px rgb(var(--shadow) / 0.2));
+  transform: rotate(-4deg);
+  transition: transform 0.12s ease-in;
 }
-.study-top .auto-read.off {
-  color: var(--muted);
+.auto-read::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--card);
+  background-image: var(--grain, none);
+  clip-path: var(--cut-4);
+}
+.auto-read.quiet {
+  transform: rotate(3deg);
+}
+.auto-read.quiet::before {
+  background-color: var(--card-known);
+  background-image: var(--fibre, none);
+}
+.auto-read.turning {
+  transform: rotate(-1deg) scaleX(0);
+}
+.auto-read .ar-side {
+  grid-area: 1 / 1;
+}
+.auto-read .ar-side svg {
+  display: block;
+  width: 30px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.auto-read .off {
+  font-size: 16px;
+  transform: rotate(-3deg);
+}
+.auto-read:not(.quiet) .off,
+.auto-read.quiet .on {
+  visibility: hidden;
+}
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.title-row .auto-read {
+  margin-top: 6px;
 }
 /* a finished pile, on the study table (study.ts finish): its checks, then a
    handful of more cards lying aside */
