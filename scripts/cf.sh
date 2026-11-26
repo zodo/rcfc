@@ -22,7 +22,7 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   # OAuth mode: fail fast with a clear message instead of a mid-deploy auth error.
   if ! out=$(wrangler whoami 2>&1); then
     # A failed whoami is not always a lapsed login: Cloudflare's API can be down (e.g. 504 on /memberships).
-    api=$(grep -oE '(GET|POST) /[^ ]+ -> [0-9]{3}[A-Za-z ]*' <<<"$out" | head -1)
+    api=$(grep -oE '(GET|POST) /[^ ]+ -> [0-9]{3}[A-Za-z ]*' <<<"$out" | head -1 || true)
     if [[ -n "$api" && "$api" != *" 401"* && "$api" != *" 403"* ]]; then
       echo "cf.sh: Cloudflare's API failed ($api); the login is fine, try again later." >&2
       exit 3
