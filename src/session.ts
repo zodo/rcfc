@@ -131,6 +131,21 @@ export class StudySession {
     if (!v.dealt && v.dealSize() > 0) await this.deal(v.today, v.dealSize(), false);
   }
 
+  /**
+   * Ready to study at once when the table has just drawn this pile: its
+   * predictions are there and its top card is fixed, so nothing is waited for;
+   * fresh predictions for the cards after it come in the background. False
+   * when there are none yet (start() waits for them).
+   */
+  async startNow(): Promise<boolean> {
+    if (!this.predicted()) return false;
+    this.settle();
+    const v = this.view();
+    if (!v.dealt && v.dealSize() > 0) await this.deal(v.today, v.dealSize(), false);
+    void this.store.predict(this.source());
+    return true;
+  }
+
   /** Fresh predictions and the cards on screen checked, without dealing: the pile as the table shows it. */
   async prepare(): Promise<void> {
     await this.store.predict(this.source());

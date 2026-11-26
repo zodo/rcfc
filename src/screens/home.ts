@@ -121,7 +121,8 @@ function spot(s: StudySession, label: string, moved: Moved): { el: HTMLElement; 
     cards.forEach((c, i) => c.style.setProperty("--d", `${Math.round(i * step)}ms`));
     setTimeout(() => haptic("thud"), Math.round(cards.length * step) + 180);
   }
-  const study = () => {
+  const study = (e: Event) => {
+    app.opening = { pile: s.pile, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() };
     if (s.lang === undefined) return go.study(s.pile);
     rememberLanguage(s.lang);
     go.study(s.lang);

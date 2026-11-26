@@ -79,10 +79,16 @@ export async function study(want?: string): Promise<void> {
     rememberLanguage(lang);
     pile = lang;
   }
-  fullScreen(h("p", { class: "muted center" }, "Preparing…"));
   const s = new StudySession(app.store, pile);
-  await s.start();
-  new Table(s).next();
+  const from = app.opening?.pile === s.pile ? app.opening.rect : null;
+  app.opening = null;
+  if (!(await s.startNow())) {
+    fullScreen(h("p", { class: "muted center" }, "Preparing…"));
+    await s.start();
+  }
+  const t = new Table(s);
+  t.next();
+  if (from) t.growFrom(from);
 }
 
 interface Faces {
@@ -168,6 +174,24 @@ class Table {
     }
     this.n++;
     this.show(n.pick, n.left);
+  }
+
+  /**
+   * Opened from the table: the pile lifts off the spot it lay on (`from`) and
+   * grows into place, the rest of the screen fading in around it.
+   */
+  growFrom(from: DOMRect): void {
+    const card = this.pile.querySelector<HTMLElement>(".flashcard");
+    if (!card || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const to = card.getBoundingClientRect(), box = this.pile.getBoundingClientRect();
+    const s = from.width / to.width;
+    const dx = from.left + from.width / 2 - (to.left + to.width / 2), dy = from.top + from.height / 2 - (to.top + to.height / 2);
+    this.pile.style.transformOrigin = `${to.left - box.left + to.width / 2}px ${to.top - box.top + to.height / 2}px`;
+    this.pile.animate([{ translate: `${dx}px ${dy}px`, scale: s }, { translate: `${dx * 0.4}px ${dy * 0.4 - 10}px`, scale: s + (1 - s) * 0.7, offset: 0.55 }, { translate: "0 0", scale: 1 }], {
+      duration: 420,
+      easing: "cubic-bezier(0.25, 0.7, 0.3, 1)",
+    });
+    for (const e of this.el.children) if (e !== this.pile) e.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 140, fill: "backwards" });
   }
 
   /** Each card's own spot in the pile. */

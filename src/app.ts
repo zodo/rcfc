@@ -81,6 +81,8 @@ export const app = {
   cleared: null as string | null,
   /** The pile just dealt more or gathered again from the table: its cards land on its spot. */
   refilled: null as string | null,
+  /** A pile tapped on the table, and where it lay: study grows its pile from there. */
+  opening: null as { pile: string; rect: DOMRect } | null,
 };
 
 /** Reload now if nothing is in progress on screen, else on the next visit home. */
