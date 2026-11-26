@@ -76,7 +76,7 @@ describe("new cards", () => {
 });
 
 describe("knownCards", () => {
-  it("picks the forward card of an unseen word, every studied card of a started one, nothing of a deleted one", () => {
+  it("picks both faces of a word, seen or not, nothing of a deleted one", () => {
     const { col, f, answer, add } = setup(3);
     const [n0, n1, n2] = col.liveNotes();
     const cardsOf = (id: number) => col.cardsByNote.get(id)!.map((c) => col.cards.get(c)!);
@@ -87,6 +87,7 @@ describe("knownCards", () => {
     const picked = knownCards(col, [n0.id, n1.id, n2.id]);
     expect(picked.map((c) => [c.note_id, c.template])).toEqual([
       [n0.id, "forward"],
+      [n0.id, "reverse"],
       [n1.id, "forward"],
       [n1.id, "reverse"],
     ]);

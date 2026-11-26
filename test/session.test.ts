@@ -267,15 +267,20 @@ describe("piles", () => {
     expect(s.next()).toBeNull();
   });
 
-  it("words marked known are answered Easy and don't count against the daily limit", async () => {
-    const d = await Device.open();
+  it("words marked known are answered Easy on both faces and don't count against the daily limit", async () => {
+    const clock = new Clock();
+    const d = await Device.open(clock);
     const deckId = await d.deck(12);
     const notes = d.store.col.liveNotes(deckId);
     expect(await d.store.markKnown(notes.slice(0, 4).map((n) => n.id))).toBe(4);
-    expect(d.store.col.reviews.map((r) => r.payload.rating)).toEqual([4, 4, 4, 4]);
+    expect(d.store.col.reviews.map((r) => r.payload.rating)).toEqual([4, 4, 4, 4, 4, 4, 4, 4]);
     expect(d.store.newQueue(deckId)).toHaveLength(8);
     expect(await d.store.markKnown([notes[0].id])).toBe(1);
-    expect(d.store.col.reviews).toHaveLength(5);
+    expect(d.store.col.reviews).toHaveLength(10);
+    // The next day no face of a known word is waiting as a new card: the new words are the unknown ones.
+    clock.advance(DAY);
+    const known = new Set(notes.slice(0, 4).map((n) => n.id));
+    expect(d.store.newQueue(deckId).filter((c) => known.has(c.note_id))).toEqual([]);
   });
 
   it("don't know: studied words come back due, unseen ones first among new words", async () => {
@@ -286,7 +291,7 @@ describe("piles", () => {
     await d.store.markKnown([notes[0].id]);
     clock.advance(DAY);
     expect(await d.store.markUnknown([notes[0].id, notes[9].id])).toEqual({ forgotten: 1, next: 1 });
-    expect(d.store.col.reviews.map((r) => r.payload.rating)).toEqual([4, 1]);
+    expect(d.store.col.reviews.map((r) => r.payload.rating)).toEqual([4, 4, 1, 1]);
     clock.advance(18 * HOUR); // forgotten again: due (fake engine: P = 0.9 after half a day)
     const order = await run(await sitting(d));
     expect(order.slice(0, 2)).toEqual(["palabra 0", "palabra 9"]); // due first, then the word asked for

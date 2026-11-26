@@ -312,7 +312,7 @@ export class Store {
 
   /**
    * Import from anything: adds the words, sticks their stickers on (made when
-   * new), and sets their progress: known = answered Easy once (as "I know"),
+   * new), and sets their progress: known = both faces answered Easy once (as "I know"),
    * learning = learned before other new words (as "Don't know" on an unseen one).
    * `deckFor` gives a studied language's hidden deck (made when new).
    */

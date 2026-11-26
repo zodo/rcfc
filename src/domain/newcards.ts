@@ -98,21 +98,18 @@ export function newQueue(col: Collection, clock: DayClock, limit: number | ((lan
 }
 
 /**
- * Cards to answer "Easy" when the user says they already know these words: the
- * first card of a never-studied word (the other direction then starts on a
- * later day), else every card of it studied so far.
+ * Cards to answer "Easy" when the user says they already know these words:
+ * every card of the word, both faces, seen or not. Knowing a word is knowing
+ * it both ways; an unseen face left behind would be drawn as a new card (a
+ * second direction, first in the new queue and, answered Easy, never counted
+ * against the limit), so a batch of known words filled every pile with them.
+ * The model then brings each face back when it is due, far out.
  */
 export function knownCards(col: Collection, noteIds: Iterable<EntityId>): Card[] {
   const out: Card[] = [];
   for (const id of noteIds) {
     if (!col.liveNote(id)) continue;
-    const cards = (col.cardsByNote.get(id) ?? []).map((c) => col.cards.get(c)!);
-    const studied = cards.filter((c) => c.reviews > 0);
-    if (studied.length) out.push(...studied);
-    else {
-      const first = cards.find((c) => c.template === "forward") ?? cards[0];
-      if (first) out.push(first);
-    }
+    out.push(...(col.cardsByNote.get(id) ?? []).map((c) => col.cards.get(c)!));
   }
   return out;
 }
