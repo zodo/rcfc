@@ -76,9 +76,9 @@ export function parseSense(reply: unknown, r: PictureRequest): string {
 }
 
 const KINDS = `First decide which kind of picture fits the meaning:
-- "scene": things, people, animals, plain actions (to eat, to put, to write), feelings, qualities you can see or feel (heavy, red, noisy), places, weather, seasons, jobs, greetings and polite words (please, yes: a nod), common adjectives and comparatives (good, better, alive, free, safe), God, wishing and hoping, skills shown in action, and ideas a person visibly acts out. Nouns for things you can hold, see or point at (a weapon, a message, a detail, a country), plain action verbs and concrete adjectives always get a scene. Units of time (hour, year, century), "number", midnight and noon get a scene too, never digits. First, second and third: a person on that step of a winners' podium.
+- "scene": things, people, animals, plain actions (to eat, to put, to write), feelings, qualities you can see or feel (heavy, red, noisy), places, weather, seasons, jobs, swear words and insults (what they literally say, or the behaviour: shit: a pile of manure; idiot: a man trying to fit a round peg into a square hole), greetings and polite words (please, yes: a nod), common adjectives and comparatives (good, better, alive, free, safe), God, wishing and hoping, skills shown in action, and ideas a person visibly acts out. Nouns for things you can hold, see or point at (a weapon, a message, a detail, a country), plain action verbs and concrete adjectives always get a scene. Units of time (hour, year, century), "number", midnight and noon get a scene too, never digits. First, second and third: a person on that step of a winners' podium.
 - "digits": only a number itself, a clock time or a year: drawn as big numerals cut from paper, because counted things come out miscounted. Write only the digits, at most 4 (thirteen: "13", a hundred: "100", half past seven: "7:30", 1999: "1999", percent: "%"). Never for bigger numbers, fractions or other ordinals.
-- "none": words whose meaning no picture can show, or none tells apart from its neighbours: articles, prepositions, conjunctions, pronouns, possessives, particles, auxiliary and modal verbs (can, must, need, may), aspect verbs (to usually do, to have just done, to do again), connecting words (however, therefore, actually, although), adverbs of time, frequency, degree and likelihood (still, already, yet, just, always, often, never, again, recently, later, today, tomorrow, the day after tomorrow, very, quite, too, only, probably, maybe, totally), quantity words (all, every, some, in total), numbers past 9999, fractions and ordinals past third, weekdays and months (no picture tells Tuesday from Wednesday), swear words and insults, and words about suicide, sex or nudity (the image model's safety filter refuses them). For any other word, abstract nouns too (quality, importance, system): "none" unless one clear, everyday scene shows exactly this meaning; a gesture, a handshake or a near miss counts. A banned symbol is no reason for "none": find another picture.`;
+- "none": words whose meaning no picture can show, or none tells apart from its neighbours: articles, prepositions, conjunctions, pronouns, possessives, particles, auxiliary and modal verbs (can, must, need, may), aspect verbs (to usually do, to have just done, to do again), connecting words (however, therefore, actually, although), adverbs of time, frequency, degree and likelihood (still, already, yet, just, always, often, never, again, recently, later, today, tomorrow, the day after tomorrow, very, quite, too, only, probably, maybe, totally), quantity words (all, every, some, in total), numbers past 9999, fractions and ordinals past third, weekdays and months (no picture tells Tuesday from Wednesday), words for a group of people by ethnicity, nationality, religion, sexual orientation or gender identity (a Jew, a Korean, a Muslim, gay, transgender; their places, holidays and things still get a scene: a church, a mosque, Christmas, a flag), political movements and ideologies (feminism, socialism), and words about suicide, sex or nudity (the image model's safety filter refuses them). For any other word, abstract nouns too (quality, importance, system): "none" unless one clear, everyday scene shows exactly this meaning; a gesture, a handshake or a near miss counts. A banned symbol is no reason for "none": find another picture.`;
 
 const SCENE_RULES = `Rules for a scene:
 - Show exactly the given "Meaning" of the word, nothing else. A thing is shown itself (a bed: an empty bed, not a sleeper).
@@ -88,10 +88,12 @@ const SCENE_RULES = `Rules for a scene:
 - The picture must point to this word, not to a near neighbour: include the one detail that tells this meaning apart from similar words (think, know, understand; look, see; can, strong; buy, customer). E.g. for getting up early: a person already dressed, drinking coffee, a small sun just rising, a rooster crowing.
 - No stock symbols standing for the meaning: no lightbulbs, question marks, exclamation marks, hearts, check marks, thumbs up, magnifying glasses, keys, mirrors, forking paths, glows or sparkles, and no apple as a stand-in object, unless the word is that very thing.
 - The image model can't draw these, so never ask for them: more than three people or a crowd, something missing or absent ("without", "no", "not", "used to be"), time passing or before/after, a figure repeated, distance or "far away", split panels, arrows.
+- Never "a person", "someone" or "they": pick a man or a woman. If the word itself is masculine or feminine (la enfermera, der Arzt), match it; otherwise a woman as often as a man, and against the cliché as often as with it (a doctor, an engineer, a boss, a nurse may be either).
+- Political and social words (immigrant, border, homeland, slave, poor, rich, police, soldier) are shown plainly: what the word names, with no feelings, hopes, pride or judgement added (an immigrant: a man with a suitcase at a train station). A country: one landmark of it, never people in costume.
 - Family words show the role by what the person does, not a hug (a father: a man teaching his son to ride a bike; a mother: a woman walking her little son to school by the hand).
 - Never a body, a wound, a pool of blood or a weapon aimed at a person. Violent and sad words get a picture of their own, not a shared symbol: war: a soldier beside a tank; to kill: a knight striking a dragon; death: a gravestone; to die: a wilting flower; blood: a red drop on a fingertip. Murder: "none".
 - If "Details" are given, include them.
-- The picture is a test: the learner must guess the word from it. So nothing in it may carry writing: no quoted words, dialogue or names, no speech or thought bubbles, no calendars, newspapers, signs, price tags, lists, screens, maps, chalkboards, labels, letters of the alphabet, digits or numbered things; clocks have hands only; paper things (a cheque, a letter, a book) are shown closed or blank. Show talking with gestures and open mouths. Never show a number by counting things.
+- The picture is a test: the learner must guess the word from it. So nothing in it may carry writing: no quoted words, dialogue or names, no speech or thought bubbles, no calendars, newspapers, signs, price tags, lists, screens, maps, chalkboards, labels, letters of the alphabet, digits or numbered things; clocks have hands only; paper things (a cheque, a letter, a book) are shown closed or blank. Show talking with gestures and open mouths, and jobs by their tools (a teacher: holding up a globe in front of a pupil). Never show a number by counting things.
 - Don't reuse these examples: write a scene of your own.`;
 
 const INTRO = "You write the subject for a flashcard illustration that helps a language learner remember one word.";
@@ -110,10 +112,23 @@ export function sceneSystem(always = false): string {
 export function sceneMessages(r: PictureRequest, sense: string): { role: "system" | "user"; content: string }[] {
   const lines = [`Word: ${r.word}`, `Meaning: ${sense}`];
   if (r.details?.trim()) lines.push(`Details: ${r.details.trim()}`);
+  // Last, and only about who: as "Person: a woman" it read as a call for a person, and "that", "only" and "still" got scenes again.
+  lines.push(`(Only if you choose a scene with a person in it: make them a ${womanOrMan(r.word, sense)}, unless the word itself is masculine or feminine, like la secretaria or der Lehrer: then match the word. This never changes the kind.)`);
   return [
     { role: "system", content: sceneSystem(r.always || !!r.details?.trim()) },
     { role: "user", content: lines.join("\n") },
   ];
+}
+
+/**
+ * Who a scene shows when the word doesn't say: each request is on its own, so
+ * "a woman as often as a man" in the prompt alone gave a man for doctor,
+ * engineer, teacher, cook and pilot. Fixed per word, so a redraw keeps it.
+ */
+export function womanOrMan(word: string, sense: string): "woman" | "man" {
+  let h = 0x811c9dc5; // FNV-1a: a plain sum's low bit is just the letters' parity
+  for (const c of `${word}\n${sense}`) h = Math.imul(h ^ c.codePointAt(0)!, 0x01000193);
+  return (h >>> 16) & 1 ? "woman" : "man";
 }
 
 /** What to draw: a scene, numerals cut from paper (`scene` describes them for the pencil), or nothing. */
@@ -124,6 +139,14 @@ const DIGITS_RE = /^(?:\d{1,4}(?::\d{2})?|%)$/;
 
 /** Modal and aspect verbs (English meanings): the scene model is told they get none but drew "can" as a weightlifter anyway. */
 const NO_PICTURE = /^(?:to )?(?:be able to|can|could|must|should|ought to|may|might|have to|need(?: to)?|usually(?: do)?|have just(?: done)?|do again)$/i;
+
+/**
+ * Groups of people by religion, ethnicity, orientation or identity, and
+ * ideologies (English meanings): told to answer none, the scene model still
+ * drew a kippah for "Jew" and a rainbow flag for "gay". A costume for a people
+ * is a stereotype, so none, in code.
+ */
+const GROUPS = /\b(?:jews?|jewish|muslims?|christians?|catholics?|protestants?|hindus?|buddhists?|sikhs?|atheists?|arabs?|gays?|lesbians?|bisexual|homosexuals?|heterosexual|transgender|trans|queer|non-binary|black (?:man|woman|person|people)|white (?:man|woman|person|people)|(?:femin|social|commun|capital|fasc|naz|liberal|conservat|national|anarch|zion|islam|racism)ism|feminists?|socialists?|communists?|fascists?|nazis?)\b/i;
 
 /** The scene LLM's reply (a JSON string, an object, or JSON in a code fence). `always`: never "none". */
 export function parsePlan(reply: unknown, sense: string, always = false): Plan {
@@ -137,7 +160,7 @@ export function parsePlan(reply: unknown, sense: string, always = false): Plan {
     }
   }
   const o = (v ?? {}) as { kind?: unknown; scene?: unknown; digits?: unknown };
-  if (!always && NO_PICTURE.test(sense.trim())) return { kind: "none" };
+  if (!always && (NO_PICTURE.test(sense.trim()) || GROUPS.test(sense))) return { kind: "none" };
   const digits = typeof o.digits === "string" || typeof o.digits === "number" ? String(o.digits).replace(/\s+/g, "") : "";
   if (o.kind === "digits" && DIGITS_RE.test(digits)) return { kind: "digits", digits, scene: `the number ${digits}, cut from paper` };
   const text = typeof o.scene === "string" ? withoutQuotes(o.scene) : "";

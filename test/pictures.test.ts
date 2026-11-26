@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AssetAttached, NoteCreatedPayload } from "../src/domain/events";
-import { budgetDay, digitsPrompt, imagePrompt, meanings, parsePlan, parseScene, planProblem, parseSense, SCENE_MODEL, sceneMessages, sceneSoFar, sceneSystem, secondsToReset, senseFor, senseMessages, takeLines, withoutQuotes, type PictureLine } from "../src/domain/pictures";
+import { budgetDay, digitsPrompt, imagePrompt, meanings, parsePlan, parseScene, planProblem, parseSense, SCENE_MODEL, sceneMessages, sceneSoFar, sceneSystem, secondsToReset, senseFor, senseMessages, takeLines, withoutQuotes, womanOrMan, type PictureLine } from "../src/domain/pictures";
 import { Pictures } from "../src/pictures";
 import { handlePictures, type AiRunner, type BlobStore, type PictureEnv } from "../worker/pictures";
 import { sqliteD1 } from "./support/d1";
@@ -99,7 +99,7 @@ describe("picture prompts", () => {
 
   it("writes the scene from word and meaning only: never the example", () => {
     const [, user] = sceneMessages({ word: "la torre", translation: "the tower", example: "En el castillo hay una torre donde vivía la princesa.", details: "at night" }, "the tower");
-    expect(user.content).toBe("Word: la torre\nMeaning: the tower\nDetails: at night");
+    expect(user.content).toStartWith("Word: la torre\nMeaning: the tower\nDetails: at night\n(Only if you choose a scene with a person in it: make them a ");
   });
 
   it("survives junk scene replies", () => {
@@ -145,12 +145,25 @@ describe("picture prompts", () => {
     expect(digitsPrompt("7")).toContain("one single large numeral 7, only one");
   });
 
+  it("picks a woman or a man per word, the same every time, about half each", () => {
+    const jobs = ["doctor", "engineer", "teacher", "cook", "pilot", "boss", "lawyer", "farmer", "dentist", "baker", "judge", "driver"];
+    const w = jobs.map((j) => womanOrMan(`el ${j}`, j));
+    expect(w).toEqual(jobs.map((j) => womanOrMan(`el ${j}`, j)));
+    expect(w.filter((x) => x === "woman").length).toBeGreaterThan(2);
+    expect(w.filter((x) => x === "man").length).toBeGreaterThan(2);
+  });
+
   it("finds the rules the scene model breaks, so it is asked again", () => {
     expect(planProblem({ kind: "digits", digits: "1", scene: "" }, "year")).toContain("not a number");
     expect(planProblem({ kind: "digits", digits: "13", scene: "" }, "thirteen")).toBeUndefined();
     expect(planProblem({ kind: "digits", digits: "10", scene: "" }, "tenth")).toContain("not a number");
     expect(planProblem({ kind: "digits", digits: "12", scene: "" }, "a dozen")).toContain("not a number");
     expect(parsePlan({ kind: "scene", scene: "A man lifting a box." }, "to need")).toEqual({ kind: "none" });
+    // Groups of people and ideologies: none, however the model answers.
+    expect(parsePlan({ kind: "scene", scene: "A man in a kippah." }, "Jew")).toEqual({ kind: "none" });
+    expect(parsePlan({ kind: "scene", scene: "A rainbow flag." }, "gay")).toEqual({ kind: "none" });
+    expect(parsePlan({ kind: "scene", scene: "Sharing grain." }, "socialism")).toEqual({ kind: "none" });
+    expect(parsePlan({ kind: "scene", scene: "A stone church." }, "church")).toMatchObject({ kind: "scene" });
     expect(planProblem({ kind: "scene", scene: "A man with a lightbulb above his head." }, "to think")).toContain("lightbulb");
     expect(planProblem({ kind: "scene", scene: "A calendar page torn off." }, "year")).toContain("calendar");
     expect(planProblem({ kind: "scene", scene: "A small round mirror on a stand." }, "mirror")).toBeUndefined();
@@ -308,7 +321,8 @@ describe("pictures API", () => {
     const body = (await (await s.fetch("/api/pictures", post({ word: "el banco", translation: "bank, bench", example: "Me senté en el banco." }))).json()) as { sense: string };
     expect(body.sense).toBe("bench");
     const texts = s.ai.calls.filter((c) => c.model === SCENE_MODEL).map((c) => (c.input as { messages: { content: string }[] }).messages[1].content);
-    expect(texts).toEqual(["Word: el banco\nExample: Me senté en el banco.\nMeanings:\n1. bank\n2. bench", "Word: el banco\nMeaning: bench"]);
+    expect(texts[0]).toBe("Word: el banco\nExample: Me senté en el banco.\nMeanings:\n1. bank\n2. bench");
+    expect(texts[1]).toStartWith("Word: el banco\nMeaning: bench\n");
   });
 
   it("retries with a new seed when the safety filter flags a harmless picture", async () => {
