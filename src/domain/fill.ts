@@ -8,7 +8,7 @@
 
 export const FILL_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 /** Bump when the prompt or the reply's shape changes: cached replies are keyed by it. */
-export const FILL_VERSION = 2;
+export const FILL_VERSION = 3;
 /** Estimated neurons per fill (~700 tokens in, ~250 out on Gemma 4 26B), rounded up. Cached fills cost nothing. */
 export const NEURONS_PER_FILL = 15;
 export const MAX_FILL_TEXT = 120;
@@ -135,7 +135,7 @@ export function fillMessages(r: FillRequest): { role: "system" | "user"; content
     user = `${from} word: ${w}\n${to} translation: ${t}`;
   }
   return [
-    { role: "system", content: `${rules(r)}\n\n${task}\n\nReturn JSON: {"suggest": string or null, "options": [{"word": "...", "translation": "...", "example": "..."}]}` },
+    { role: "system", content: `${rules(r)}\n\n${task}\n\nReturn JSON: {"options": [{"word": "...", "translation": "...", "example": "..."}], "suggest": string or null}` },
     { role: "user", content: user },
   ];
 }
@@ -143,8 +143,8 @@ export function fillMessages(r: FillRequest): { role: "system" | "user"; content
 /** JSON schema for models that take one (response_format json_schema). */
 export const FILL_SCHEMA = {
   type: "object",
+  // The options first: streamed, the first translation comes sooner.
   properties: {
-    suggest: { type: ["string", "null"] },
     options: {
       type: "array",
       items: {
@@ -153,8 +153,9 @@ export const FILL_SCHEMA = {
         required: ["word", "translation", "example"],
       },
     },
+    suggest: { type: ["string", "null"] },
   },
-  required: ["suggest", "options"],
+  required: ["options", "suggest"],
 };
 
 const same = (a: string, b: string) => clean(a).toLocaleLowerCase() === clean(b).toLocaleLowerCase();
@@ -211,6 +212,42 @@ export function parseFill(reply: unknown, r: FillRequest): Fill {
   const said = tidy(o.suggest, MAX_FILL_TEXT);
   const suggest = kind === "translation" ? "" : said && said.toLowerCase() !== "null" ? said : lemma;
   return suggest && !same(suggest, w) ? { options, suggest } : { options };
+}
+
+// ---- streamed: the first option as it is written ----
+
+/** A line of a streamed fill (NDJSON): the first option so far (its places written out), then the whole fill, or why there is none. */
+export type FillLine = { first: Partial<FillOption> } | { fill: Fill } | { error: string; status?: number; retry_after?: number };
+
+/**
+ * The first option's places written out completely in a reply still being
+ * streamed, e.g. `{"options": [{"word": "el banco", "transl` → {word: "el banco"}.
+ * What was typed is not taken from the reply, as in parseFill.
+ */
+export function firstSoFar(text: string, r: FillRequest): Partial<FillOption> {
+  const at = text.indexOf('"options"');
+  if (at < 0) return {};
+  const open = text.indexOf("{", at);
+  if (open < 0) return {};
+  const close = text.indexOf("}", open);
+  const body = text.slice(open, close < 0 ? undefined : close);
+  const out: Partial<FillOption> = {};
+  for (const k of ["word", "translation", "example"] as const) {
+    const m = new RegExp(`"${k}"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*")`).exec(body);
+    if (!m) continue;
+    try {
+      const v = tidy(JSON.parse(m[1]), k === "example" ? 300 : MAX_FILL_TEXT);
+      if (v) out[k] = v;
+    } catch {
+      // not a whole string yet
+    }
+  }
+  const kind = fillKind(r);
+  if (kind === "example") {
+    out.word = clean(r.word);
+    out.translation = clean(r.translation);
+  } else if (kind === "translation") out.translation = clean(r.translation);
+  return out;
 }
 
 /** Where a fill is kept, so the same words never cost twice (for anyone). */

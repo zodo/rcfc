@@ -421,13 +421,26 @@ function open(note?: Note, over?: { leave: () => void }): void {
     const mine = ++fillGen;
     filling = asking = undefined;
     if (!r) return renderFill(), false;
-    const p = app.filler.fill(r).then((res) => {
+    const keep = (): Set<FillPlace> | undefined => (keepExample ? new Set(["example"]) : undefined);
+    /** Streamed: the first option's places as they are written out, the filled place first. */
+    const onFirst = (first: Partial<FillOption>) => {
+      if (mine !== fillGen || askKey(askNow()) !== k) return;
+      const place = filledPlace(r);
+      if (place && !(place === "back" ? first.translation : first.word)) return;
+      const a = applyOption(textNow(), auto, r, { word: first.word ?? "", translation: first.translation ?? "", example: first.example ?? "" }, keep());
+      auto = a.auto;
+      setText(a.text, place ?? "example");
+      update();
+      checkDup();
+      draw(false); // the words are in: the picture needn't wait for the example
+    };
+    const p = app.filler.fill(r, onFirst).then((res) => {
       if (mine !== fillGen) return;
       filling = asking = undefined;
       // The card changed meanwhile (the user typed what was asked for): this answer is for another question.
       if (askKey(askNow()) !== k) return renderFill();
       if (res.ok && res.fill.options.length) {
-        const a = applyOption(textNow(), auto, r, res.fill.options[0], keepExample ? new Set(["example"]) : undefined);
+        const a = applyOption(textNow(), auto, r, res.fill.options[0], keep());
         keepExample = false;
         auto = a.auto;
         // What else it offers shows once the pencil has written the answer in.

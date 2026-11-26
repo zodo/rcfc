@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { applyOption, askKey, clearAuto, FILL_MODEL, fillAsk, fillKey, fillKind, fillMessages, filledPlace, parseFill, type FillPlace, type FillRequest } from "../src/domain/fill";
+import { applyOption, askKey, clearAuto, FILL_MODEL, fillAsk, fillKey, fillKind, fillMessages, filledPlace, firstSoFar, parseFill, type FillLine, type FillPlace, type FillRequest } from "../src/domain/fill";
+import { Filler } from "../src/fill";
 import { handleFill, type FillEnv } from "../worker/fill";
 import type { AiRunner, BlobStore } from "../worker/pictures";
 import { sqliteD1 } from "./support/d1";
@@ -134,9 +135,22 @@ class FakeAi implements AiRunner {
   calls: { model: string; input: Record<string, unknown> }[] = [];
   fail = false;
   reply: unknown = { suggest: "el banco", options: [{ word: "el banco", translation: "bank", example: "Voy al banco." }, { word: "el banco", translation: "bench", example: "Me siento en el banco." }] };
+  /** Asked to stream: these pieces, as server-sent events. */
+  pieces: string[] | undefined;
   async run(model: string, input: unknown) {
     this.calls.push({ model, input: input as Record<string, unknown> });
     if (this.fail) throw new Error("5000: model down");
+    const pieces = this.pieces;
+    if ((input as { stream?: boolean }).stream && pieces) {
+      const enc = new TextEncoder();
+      return new ReadableStream<Uint8Array>({
+        start(c) {
+          for (const p of pieces) c.enqueue(enc.encode(`data: ${JSON.stringify({ response: p })}\n\n`));
+          c.enqueue(enc.encode("data: [DONE]\n\n"));
+          c.close();
+        },
+      });
+    }
     return { response: this.reply };
   }
 }
@@ -214,5 +228,57 @@ describe("a side's language switched", () => {
     const o = { word: "el perro", translation: "dog", example: "El perro corre." };
     const a = applyOption({ front: "el perro", back: "", example: "Mi perro duerme." }, new Set(["back", "example"]), r, o, new Set(["example"]));
     expect(a.text).toEqual({ front: "el perro", back: "dog", example: "Mi perro duerme." });
+  });
+});
+
+describe("a streamed fill", () => {
+  const banco = '{"options": [{"word": "el banco", "translation": "bank", "example": "Voy al banco."}, {"word": "el banco", "translation": "bench", "example": "Me siento en el banco."}], "suggest": "el banco"}';
+  const cut = (n: number) => banco.slice(0, n);
+
+  it("reads the first option's places as they are written out", () => {
+    const r = { from: "es", to: "en", word: "banco" };
+    expect(firstSoFar(cut(10), r)).toEqual({});
+    expect(firstSoFar(cut(banco.indexOf("bank") + 2), r)).toEqual({ word: "el banco" });
+    expect(firstSoFar(cut(banco.indexOf("bank") + 5), r)).toEqual({ word: "el banco", translation: "bank" });
+    expect(firstSoFar(banco, r)).toEqual({ word: "el banco", translation: "bank", example: "Voy al banco." });
+    // What was typed stays as typed.
+    expect(firstSoFar('{"options": [{"word": "el perro", "translation": "doggy"', { from: "es", to: "en", translation: "dog" })).toEqual({ word: "el perro", translation: "dog" });
+  });
+
+  const lines = async (res: Response) => (await res.text()).trim().split("\n").map((l) => JSON.parse(l) as FillLine);
+
+  it("streams the first option, then the whole fill, kept like any other", async () => {
+    const { fetch, ai } = server();
+    ai.pieces = banco.match(/.{1,7}/gs)!;
+    const out = await lines(await fetch({ from: "es", to: "en", word: "banco", stream: true }));
+    expect(ai.calls[0].input.stream).toBe(true);
+    expect(ai.calls[0].input.response_format).toBeUndefined(); // with a JSON mode the reply comes whole
+    expect(out[0]).toEqual({ first: { word: "el banco" } });
+    expect(out.find((l) => "first" in l && l.first.translation)).toEqual({ first: { word: "el banco", translation: "bank" } });
+    expect(out.at(-1)).toEqual({ fill: { options: [{ word: "el banco", translation: "bank", example: "Voy al banco." }, { word: "el banco", translation: "bench", example: "Me siento en el banco." }], suggest: "el banco" } });
+    // Kept: the next one, streamed or not, costs nothing.
+    expect(await lines(await fetch({ from: "es", to: "en", word: "banco", stream: true }))).toEqual([out.at(-1)!]);
+    expect((await (await fetch({ from: "es", to: "en", word: "banco" })).json()).suggest).toBe("el banco");
+    expect(ai.calls).toHaveLength(1);
+  });
+
+  it("asks once more in JSON mode when the streamed reply doesn't parse", async () => {
+    const { fetch, ai } = server();
+    ai.pieces = ["Sure! Here is", " your card."];
+    const out = await lines(await fetch({ from: "es", to: "en", word: "banco", stream: true }));
+    expect(ai.calls).toHaveLength(2);
+    expect((ai.calls[1].input.response_format as { type: string }).type).toBe("json_schema");
+    expect(out.at(-1)).toMatchObject({ fill: { suggest: "el banco" } });
+  });
+
+  it("the client hands on the first option, then answers the whole fill", async () => {
+    const { fetch, ai } = server();
+    ai.pieces = banco.match(/.{1,7}/gs)!;
+    const filler = new Filler(() => CODE);
+    filler.fetch = (_url, init) => fetch(JSON.parse(String(init!.body)));
+    const firsts: unknown[] = [];
+    const res = await filler.fill({ from: "es", to: "en", word: "banco" }, (f) => firsts.push(f));
+    expect(firsts).toContainEqual({ word: "el banco", translation: "bank" });
+    expect(res).toMatchObject({ ok: true, fill: { suggest: "el banco" } });
   });
 });
