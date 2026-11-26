@@ -113,6 +113,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
   let options: FillOption[] = [];
   let chosen = 0;
   let suggestion = "";
+  /** The next fill leaves the example alone (the translation's language was switched; the example is the word's). */
+  let keepExample = false;
 
   // ---- the places ----
   const input = (name: string, attrs: Record<string, unknown> = {}) => h("input", { name, autocomplete: "off", enterkeyhint: "done", ...attrs });
@@ -146,26 +148,41 @@ function open(note?: Note, over?: { leave: () => void }): void {
     options = [];
     suggestion = "";
   };
-  const typedHere = (p: FillPlace) => !auto.has(p) && !!cleanFill(places[p].value);
-  /** `typing`: told by the letters being typed; the typing pause asks then, not this. */
+  const has = (p: FillPlace) => !!cleanFill(places[p].value);
+  /**
+   * A side's language picked: its text is translated into it from the other
+   * side's word, which becomes what the card is filled in from (typed or not);
+   * with nothing on the other side, the text is just said to be in it.
+   * `typing`: told by the letters being typed, so the text is in it already.
+   */
   const setTo = (l: string, typing = false) => {
     if (l === to) return;
     to = l;
     if (![...toSel.options].some((o) => o.value === to)) toSel.prepend(h("option", { value: to }, langName(to)));
     toSel.value = to;
-    rubOut(["back"]); // typed: it was just said to be in this language
+    if (!typing && has("front") && has("back")) {
+      auto.delete("front");
+      auto.add("back");
+      keepExample = has("example"); // in the studied language: it still fits the word
+      rubOut(["back"]);
+    } else rubOut(["back"]);
     update();
     renderFill();
     if (!typing) pause();
   };
   const setFrom = (l: string) => {
     from = l;
-    // A translation typed stays in its language; else the one usual for this studied language.
-    const keep = typedHere("back") && to !== l;
+    // A translation on the card stays in its language, and the word is translated from it.
+    const keep = has("back") && to !== l;
     const next = keep ? to : translationFor(l);
     if (![...toSel.options].some((o) => o.value === next)) toSel.prepend(h("option", { value: next }, langName(next)));
     toSel.value = to = next;
     fillFrom();
+    if (keep && has("front")) {
+      auto.delete("back");
+      auto.add("front");
+      if (has("example")) auto.add("example"); // in the old language
+    }
     rubOut(["front", "example", ...(keep ? [] : (["back"] as const))]);
     update();
     renderFill();
@@ -410,7 +427,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
       // The card changed meanwhile (the user typed what was asked for): this answer is for another question.
       if (askKey(askNow()) !== k) return renderFill();
       if (res.ok && res.fill.options.length) {
-        const a = applyOption(textNow(), auto, r, res.fill.options[0]);
+        const a = applyOption(textNow(), auto, r, res.fill.options[0], keepExample ? new Set(["example"]) : undefined);
+        keepExample = false;
         auto = a.auto;
         // What else it offers shows once the pencil has written the answer in.
         shown = undefined;
@@ -466,6 +484,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   /** The user typed in a place: it is theirs now. Emptying every word typed takes back what the fill wrote. */
   const typed = (p: FillPlace) => {
     auto.delete(p);
+    keepExample = false;
     const mine = (q: FillPlace) => !auto.has(q) && !!cleanFill(places[q].value);
     if (!mine("front") && !mine("back") && auto.size) {
       setText(clearAuto(textNow(), auto));

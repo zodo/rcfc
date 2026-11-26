@@ -270,12 +270,12 @@ export function filledPlace(r: FillRequest): "front" | "back" | undefined {
 /**
  * The card with option `i` of a fill written in: the filled place and the
  * example, each only where it is empty or was written by a fill (never over
- * what the user typed). Returns the new text and auto places.
+ * what the user typed, nor over `keep`). Returns the new text and auto places.
  */
-export function applyOption(text: FillText, auto: ReadonlySet<FillPlace>, r: FillRequest, o: FillOption): { text: FillText; auto: Set<FillPlace> } {
+export function applyOption(text: FillText, auto: ReadonlySet<FillPlace>, r: FillRequest, o: FillOption, keep: ReadonlySet<FillPlace> = new Set()): { text: FillText; auto: Set<FillPlace> } {
   const t = { ...text };
   const a = new Set(auto);
-  const free = (p: FillPlace) => !clean(t[p]) || a.has(p);
+  const free = (p: FillPlace) => !keep.has(p) && (!clean(t[p]) || a.has(p));
   const place = filledPlace(r);
   if (place && free(place)) {
     t[place] = place === "back" ? o.translation : o.word;

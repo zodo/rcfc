@@ -207,3 +207,12 @@ describe("fill API", () => {
     expect((await fetch(null, { method: "GET", body: undefined })).status).toBe(405);
   });
 });
+
+describe("a side's language switched", () => {
+  it("the refill leaves a kept example alone", () => {
+    const r = { from: "es", to: "en", word: "el perro" };
+    const o = { word: "el perro", translation: "dog", example: "El perro corre." };
+    const a = applyOption({ front: "el perro", back: "", example: "Mi perro duerme." }, new Set(["back", "example"]), r, o, new Set(["example"]));
+    expect(a.text).toEqual({ front: "el perro", back: "dog", example: "Mi perro duerme." });
+  });
+});
