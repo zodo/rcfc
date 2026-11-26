@@ -148,6 +148,8 @@ class Table {
   private left = 1;
   private readonly seed = Math.floor(Math.random() * 1e6);
   private peekId: EntityId | null = null;
+  /** The pile has been on screen: cards coming into view further down fade in from now on. */
+  private shown = false;
 
   constructor(private s: StudySession) {
     const close = h("button", { class: "icon", "aria-label": "Close", onclick: () => go.home() });
@@ -190,36 +192,24 @@ class Table {
     Object.assign(stand.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
     document.body.append(stand);
     stand.animate([{ transform: "none" }, { transform: `translate(0, ${-(from.bottom + 60)}px) rotate(-4deg)` }], { duration: 230, easing: "cubic-bezier(0.5, 0, 0.75, 0)", fill: "forwards" }).onfinish = () => stand.remove();
-    // Brought in and laid down the way the card editor lays a picture on the card (src/ui/sketch.ts bringIn):
-    // from past the top, close to the lens (bigger, its shadow far off and soft), slowing over its place,
-    // hovering, coming down as the shadow slides under it and sharpens.
+    // Brought in and laid down along the path the card editor lays a picture on the card (src/ui/sketch.ts
+    // bringIn): from past the top right, turning as it slows over its place, hovering, coming down. Only moved
+    // and turned: scaled (the picture is, near the lens) or with blurred shadows, the pile's many layers lagged
+    // on Android and shimmered when the scaling ended.
     const box = this.pile.getBoundingClientRect();
     const x = box.width * 0.25, y = -(box.bottom + box.height * 0.4 + 60);
     const MS = 820, T = 0.45, DELAY = 30; // it starts far above: on its way while the old pile leaves, the table never stands empty
-    const far = h("div", { class: "sk-shadow far" }), near = h("div", { class: "sk-shadow near" });
-    this.pile.prepend(far, near);
     this.pile.animate(
       [
-        { transform: `translate(${x}px, ${y}px) rotate(12deg) scale(1.25)` },
-        { transform: "translate(6px, -14px) rotate(-2deg) scale(1.05)", offset: T, easing: "cubic-bezier(.2,.6,.35,1)" },
-        { transform: "translate(2px, -4.7px) rotate(-0.7deg) scale(1.02)", offset: T + (0.8 - T) * 0.55, easing: "ease-in" },
+        { transform: `translate(${x}px, ${y}px) rotate(12deg)` },
+        { transform: "translate(6px, -14px) rotate(-2deg)", offset: T, easing: "cubic-bezier(.2,.6,.35,1)" },
+        { transform: "translate(2px, -4.7px) rotate(-0.7deg)", offset: T + (0.8 - T) * 0.55, easing: "ease-in" },
         { transform: "none", offset: 0.8, easing: "ease-out" },
-        { transform: "scale(0.994)", offset: 0.88 },
+        { transform: "translate(0, 1px)", offset: 0.88 },
         { transform: "none" },
       ],
       { duration: MS, delay: DELAY, easing: "cubic-bezier(.45,.05,.55,.95)", fill: "backwards" },
     );
-    far.animate(
-      [
-        { translate: "46px 70px", scale: "1.12", opacity: 0.55 },
-        { translate: "18px 26px", scale: "1.04", opacity: 0.7, offset: T },
-        { translate: "4px 6px", scale: "1", opacity: 0.25, offset: 0.74 },
-        { translate: "0 0", scale: "1", opacity: 0, offset: 0.8 },
-        { translate: "0 0", scale: "1", opacity: 0 },
-      ],
-      { duration: MS, delay: DELAY, fill: "both" },
-    ).onfinish = () => far.remove();
-    near.animate([{ opacity: 0 }, { opacity: 0, offset: T + 0.1 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }], { duration: MS, delay: DELAY, fill: "both" }).onfinish = () => near.remove();
     window.setTimeout(() => haptic("thud"), DELAY + MS * 0.8);
     for (const e of this.el.children) if (e !== this.pile) e.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 120, fill: "backwards" });
   }
@@ -249,7 +239,7 @@ class Table {
         el.dataset.i = String(i);
         el.style.transform = `translate(${p.x}px,${p.y}px) rotate(${p.r}deg)`;
         this.pile.prepend(el);
-        if (i !== instant) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300 }); // a card further down comes into view
+        if (i !== instant && this.shown) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300 }); // a card further down comes into view (not when the pile first appears: it comes whole)
       }
       el.firstElementChild!.classList.toggle("known", faces[d - 1] === "reverse");
       el.style.zIndex = String(10 - d);
@@ -259,6 +249,7 @@ class Table {
     const t = Math.min(Math.max(0, this.left - 1), 40) * 0.12;
     this.pileShadow.style.boxShadow = this.left > 1 ? `0 ${(1 + t).toFixed(1)}px ${(2 + t * 2.5).toFixed(1)}px rgb(var(--shadow) / ${(0.14 + t * 0.012).toFixed(3)})` : "none";
     relight(this.el);
+    this.shown = true;
   }
 
   /** The card right under the top one shows the next card's front, so dragging the top away uncovers it. */
