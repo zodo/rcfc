@@ -2367,8 +2367,9 @@ header.top.sub .back svg {
 }
 .ed-pic-edit {
   position: absolute;
-  top: -14px;
-  right: -14px;
+  /* on the picture's piece of paper, in its white top right corner */
+  top: 2px;
+  right: 2px;
   z-index: 3;
   padding: 10px;
   line-height: 0;
@@ -2492,8 +2493,13 @@ header.top.ed-bar:has(+ .content .editor.folded) {
   max-width: none;
 }
 .editor.folded .ed-side.known.open .ed-pic-edit {
-  top: -16px;
-  right: -22px;
+  top: -6px;
+  right: -6px;
+  padding: 9px; /* the tip 3 px in from the paper's corner, still a finger's room to tap */
+}
+.editor.folded .ed-side.known.open .ed-pic-edit svg {
+  width: 14px;
+  height: 14px;
 }
 /* too small for words */
 .editor.folded .ed-side.known.open .ed-pic-says,
