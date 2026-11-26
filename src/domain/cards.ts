@@ -96,6 +96,17 @@ export function saveEvents(f: EventFactory, note: Note, wears: EntityId[], d: Ca
   return events;
 }
 
+/**
+ * Undo of a Save: the events that put the card back as `was` (a copy taken
+ * when it was opened, wearing `woreThen`), against the card as it is now.
+ */
+export function undoEvents(f: EventFactory, now: Note, wearsNow: EntityId[], was: Note, woreThen: EntityId[]): AppEvent[] {
+  const d = draftOf(was.lang_pair, was, woreThen);
+  // The picture it had (or "none" if it had been removed); a picture first drawn by this edit stays.
+  d.picture = was.picture ? { ...was.picture } : was.noPicture ? null : undefined;
+  return saveEvents(f, now, wearsNow, d);
+}
+
 function picture(f: EventFactory, noteId: EntityId, p: DraftPicture): AssetAttached {
   return f.make<AssetAttached>("asset_attached", { note_id: noteId, kind: "image", r2_key: p.key, sense: p.sense, details: p.details, scene: p.scene });
 }

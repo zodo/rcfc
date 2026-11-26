@@ -279,8 +279,15 @@ async function run(s: Browser, url: string) {
   await s.until("its picture drawn (so Add doesn't move under the click)", `document.querySelector(".ed-pic .pic img")?.naturalWidth > 0`, 90_000);
   await s.click("button.ed-add", "Add");
   await s.until("duplicate refused", `document.querySelector(".ed-hint")?.textContent === "This card is already in your words."`);
+  log("back on a card not added yet asks; keep editing stays, back again throws it away");
   await s.click("button[aria-label=Back]");
-  await s.until("2 words listed", `document.querySelectorAll(".list button.word").length === 2`);
+  await s.until("asked", `document.querySelector(".pile-sheet h2")?.textContent === "This card is already in your words"`);
+  await s.click(".pile-sheet button", "Keep editing");
+  await s.until("still editing", `!document.querySelector(".pile-sheet") && document.querySelector("input[name=front]")?.value === "hola"`);
+  await s.js(`history.back();`);
+  await s.until("asked by the gesture too", `document.querySelector(".pile-sheet")`);
+  await s.js(`history.back();`);
+  await s.until("2 words listed", `document.querySelectorAll(".list button.word").length === 2 && !document.querySelector(".pile-sheet")`);
 
   log("the table shows the pile: both new words, the first face up");
   await s.click("nav .nav-item", "Study");
@@ -303,7 +310,7 @@ async function run(s: Browser, url: string) {
   await s.click(".flashcard:not(.leaving) .side.front .edit-card");
   await s.until("Edit card", `document.querySelector("header.sub h1")?.textContent === "Edit card" && document.querySelector("input[name=front]")?.value === "hola"`);
   await s.type("input[name=memo_known]", "a greeting");
-  await s.click("button.primary", "Save");
+  await s.click("button[aria-label=Back]"); // leaving saves
   await s.until("hola again, turned", `document.querySelector(".flashcard.turned:not(.leaving) .face.prompt")?.textContent === "hola" && document.querySelector("button.rate")`);
   await s.until("the note on it", `document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden) .memo")?.textContent === "a greeting"`);
   await shot(s, "study-memo");
@@ -354,8 +361,15 @@ async function run(s: Browser, url: string) {
   await shot(s, "edit");
   await s.type("input[name=back]", "bye");
   await s.type("input[name=memo_known]", "said when leaving");
-  await s.click("button.primary", "Save");
+  await s.click("button[aria-label=Back]");
   await s.until("back to the list, changed", `[...document.querySelectorAll(".list button.word")].some((b) => b.textContent.includes("bye")) && document.querySelectorAll(".list button.word").length === 2`);
+  await s.until("saved, with Undo", `document.querySelector("#slip span")?.textContent === "Saved adiós"`);
+  log("the bin deletes at once; Undo brings the card back");
+  await s.click("button.word", "adiós");
+  await s.click("button.ed-bin");
+  await s.until("1 word", `document.querySelectorAll(".list button.word").length === 1 && document.querySelector("#slip span")?.textContent === "Deleted adiós"`);
+  await s.click("#slip button", "Undo");
+  await s.until("back again", `document.querySelectorAll(".list button.word").length === 2`);
   await s.click("button.word", "adiós");
   await s.until("saved", `document.querySelector("input[name=memo_known]")?.value === "said when leaving"`);
   await s.click("button[aria-label=Back]");
@@ -570,6 +584,8 @@ async function run(s: Browser, url: string) {
   await s.click("button[aria-label=Back]");
   await s.until("the draft, after Back", draftKept);
   await s.js(`history.back();`);
+  await s.until("the draft not added yet: asked", `document.querySelector(".pile-sheet h2")?.textContent === "la casa isn't added yet"`);
+  await s.js(`history.back();`);
   await s.until("then back leaves Add for Words", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
   await s.click("button[aria-label='Add a word']");
   await s.until("a blank card", `document.querySelector("input[name=front]")?.value === ""`);
@@ -597,6 +613,8 @@ async function run(s: Browser, url: string) {
   await s.type("input[name=front]", "el sol");
   await s.type("input[name=back]", "sun");
   await s.click("button[aria-label=Back]");
+  await s.until("asked", `document.querySelector(".pile-sheet h2")?.textContent === "el sol isn't added yet" && [...document.querySelectorAll(".pile-sheet button")].some((b) => b.textContent === "Add el sol")`);
+  await s.js(`history.back();`); // back again: thrown away
   await s.until("Words", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
   if (await s.js<boolean>(`return [...document.querySelectorAll(".list button.word")].some((b) => b.textContent.includes("el sol"));`)) throw new Error("a card left unsaved was added");
 

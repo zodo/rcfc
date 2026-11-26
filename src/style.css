@@ -1864,6 +1864,40 @@ header.top.sub .back svg {
   opacity: 1;
   transform: translate(-50%, 0) rotate(-1.2deg);
 }
+/* what just happened, with Undo (h.ts slip) */
+#slip {
+  position: fixed;
+  left: 50%;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  z-index: 31;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: calc(100vw - 48px);
+  width: max-content;
+  padding: 10px 16px;
+  border-radius: 2px;
+  font-size: 15px;
+  background-color: var(--card);
+  background-image: var(--grain, none);
+  color: var(--ink);
+  box-shadow:
+    0 1px 1px rgb(var(--shadow) / 0.25),
+    0 6px 14px rgb(var(--shadow) / 0.25);
+  opacity: 0;
+  transform: translate(-50%, 16px) rotate(-1.2deg);
+  transition:
+    opacity 0.2s,
+    transform 0.25s cubic-bezier(0.3, 1.3, 0.5, 1);
+}
+#slip.show {
+  opacity: 1;
+  transform: translate(-50%, 0) rotate(-1.2deg);
+}
+#slip button.link {
+  font-weight: 700;
+  color: var(--easy);
+}
 .update-banner,
 .install-banner {
   position: fixed;
@@ -2329,17 +2363,89 @@ header.top.sub .back svg {
 .ed-hint:empty {
   display: none;
 }
-.ed-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
+/* the card editor's bar: stays at the top, with Add (a new card) or the bin (a saved one) */
+header.top.ed-bar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  margin: calc(-1 * env(safe-area-inset-top)) -18px 0;
+  padding: env(safe-area-inset-top) 18px 0;
+  background-color: var(--table);
+  background-image: var(--fibre, none), var(--mottle, none);
 }
-.ed-actions .primary {
-  width: 100%;
+.ed-bar .ed-add {
+  margin-left: auto;
+  padding: 9px 22px;
 }
-.danger-link {
-  color: var(--on-table-muted);
+.ed-bar .ed-bin {
+  margin: 4px -10px 0 auto;
+  padding: 10px;
+  color: var(--danger-ink);
+}
+.ed-bar .ed-bin svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+/* folded (src/ui/fold.ts): the keyboard leaves room for one side; the other is tucked under it, its main line showing */
+.editor.folded {
+  gap: 0;
+}
+.editor.folded .ed-side.open {
+  z-index: 1;
+  padding-top: 12px;
+  padding-bottom: 4px;
+}
+.editor.folded .ed-side.tucked {
+  z-index: 0;
+  cursor: pointer;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.editor.folded .ed-side.target.tucked {
+  padding-bottom: 34px;
+  margin-bottom: -28px;
+}
+.editor.folded .ed-side.known.tucked {
+  padding-top: 34px;
+  margin-top: -28px;
+}
+.editor.folded .ed-side.tucked > :not(.ed-word-line):not(input[name="back"]):not(.ed-fold-hint) {
+  display: none;
+}
+.editor.folded .ed-side.tucked input {
+  border-bottom-color: transparent;
+}
+/* the open cream side: its picture small, "+ how it looks" beside it */
+.editor.folded .ed-side.known.open .ed-pic {
+  flex-direction: row;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 4px;
+}
+.editor.folded .ed-side.known.open .ed-pic > :first-child {
+  max-width: 108px;
+}
+.editor.folded .ed-side.known.open .ed-caption.room {
+  display: none;
+}
+/* in pencil on the tucked side, its first few times */
+.ed-fold-hint {
+  margin: 0;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--muted);
+  text-align: center;
+}
+.ed-fold-hint[hidden] {
+  display: none;
+}
+.sheet-pencil {
+  margin: 0;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+  text-align: center;
 }
 /* the cards added this sitting */
 .ed-added {

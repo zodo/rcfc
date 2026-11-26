@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { addEvents, draftOf, duplicates, saveEvents, type CardDraft } from "../src/domain/cards";
+import { addEvents, draftOf, duplicates, saveEvents, undoEvents, type CardDraft } from "../src/domain/cards";
 import { Collection, EventFactory, type Note } from "../src/domain/collection";
 import type { AppEvent, LangPair, NoteEdited, NotesLabeled } from "../src/domain/events";
 
@@ -165,5 +165,39 @@ describe("saveEvents", () => {
   it("keeps the card's languages", () => {
     const { n } = card();
     expect(draftOf(ES_RU, n).lang_pair).toEqual(ES_EN);
+  });
+});
+
+describe("undo", () => {
+  it("puts an edited card back as it was: text, stickers and picture", () => {
+    const col = collection(["banco", "bench"]);
+    const id = col.liveNotes()[0].id;
+    col.apply(f.make("asset_attached", { note_id: id, kind: "image", r2_key: "pics/old.jpg" }));
+    const was = structuredClone(col.liveNote(id)!);
+    const d = { ...draftOf(ES_EN, was, [1]), picture: { key: "pics/new.jpg" } };
+    d.text.back = "bank";
+    d.labels = [2];
+    for (const e of saveEvents(f, was, [1], d)) col.apply(e);
+    expect(col.liveNote(id)!.fields.back).toBe("bank");
+    const undo = undoEvents(f, col.liveNote(id)!, [2], was, [1]);
+    for (const e of undo) col.apply(e);
+    const n = col.liveNote(id)!;
+    expect([n.fields.back, n.picture?.key]).toEqual(["bench", "pics/old.jpg"]);
+    expect((undo.filter((e) => e.type === "notes_labeled") as NotesLabeled[]).map((e) => [e.payload.label_id, e.payload.on])).toEqual([
+      [1, true],
+      [2, false],
+    ]);
+  });
+
+  it("brings a deleted card back; the later of delete and restore wins in any order", () => {
+    const col = collection(["banco", "bench"]);
+    const id = col.liveNotes()[0].id;
+    const del = f.make("note_deleted", { note_id: id });
+    const back = f.make("note_restored", { note_id: id });
+    col.apply(back); // arrives first (another device), but is the later one
+    col.apply(del);
+    expect(col.liveNote(id)).toBeDefined();
+    col.apply(f.make("note_deleted", { note_id: id }));
+    expect(col.liveNote(id)).toBeUndefined();
   });
 });

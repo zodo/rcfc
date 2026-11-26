@@ -40,6 +40,30 @@ export function toast(msg: string) {
   toastTimer = setTimeout(() => t!.classList.remove("show"), 2400);
 }
 
+let slipTimer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * A slip of paper saying what just happened, with a way to take it back
+ * ("Saved hola · Undo"). It stays a few seconds, whatever screen comes next.
+ */
+export function slip(msg: string, action: string, onAction: () => void): void {
+  document.getElementById("slip")?.remove();
+  clearTimeout(slipTimer);
+  const el = h("div", { id: "slip", role: "status" }, h("span", {}, msg));
+  const btn = h("button", { type: "button", class: "link" }, action);
+  btn.addEventListener("click", () => {
+    el.remove();
+    clearTimeout(slipTimer);
+    onAction();
+  });
+  el.append(btn);
+  document.body.append(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  slipTimer = setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => el.remove(), 300);
+  }, 6000);
+}
+
 const names = typeof Intl !== "undefined" && "DisplayNames" in Intl ? new Intl.DisplayNames(["en"], { type: "language" }) : null;
 export function langName(code: string): string {
   try {

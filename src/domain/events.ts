@@ -85,6 +85,11 @@ export interface NoteDeletedPayload {
   note_id: EntityId;
 }
 
+/** Undo of a delete: the card is back, reviews and all. The later of the two wins. */
+export interface NoteRestoredPayload {
+  note_id: EntityId;
+}
+
 /** "I don't know these" on words never studied: introduce them before other new words. Latest batch first. */
 export interface NotesPrioritizedPayload {
   note_ids: EntityId[];
@@ -184,6 +189,7 @@ export type DeckRenamed = EventEnvelope<"deck_renamed", DeckRenamedPayload>;
 export type NoteCreated = EventEnvelope<"note_created", NoteCreatedPayload>;
 export type NoteEdited = EventEnvelope<"note_edited", NoteEditedPayload>;
 export type NoteDeleted = EventEnvelope<"note_deleted", NoteDeletedPayload>;
+export type NoteRestored = EventEnvelope<"note_restored", NoteRestoredPayload>;
 export type NotesPrioritized = EventEnvelope<"notes_prioritized", NotesPrioritizedPayload>;
 export type CardCreated = EventEnvelope<"card_created", CardCreatedPayload>;
 export type Review = EventEnvelope<"review", ReviewPayload>;
@@ -202,6 +208,7 @@ export type AppEvent =
   | NoteCreated
   | NoteEdited
   | NoteDeleted
+  | NoteRestored
   | NotesPrioritized
   | CardCreated
   | Review

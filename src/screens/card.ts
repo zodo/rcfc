@@ -4,16 +4,19 @@
 // When typing pauses, the AI fills in what is missing (the other word, an
 // example; src/domain/fill.ts), and the picture draws itself once both words
 // are in.
-// Nothing is written until Add or Save (src/domain/cards.ts turns the draft
-// into events); a picture still drawing then follows the card.
-import { app, back as goBack, go, hold, sheet, subPage } from "../app";
-import { addEvents, draftOf, duplicates, MEMO_KNOWN, MEMO_TARGET, PICTURE_DETAILS, saveEvents, type CardDraft, type DraftPicture } from "../domain/cards";
+// A new card is written when Add is pressed (in the bar, or Enter on its last
+// places); leaving one not added yet asks first. An edited card is saved when
+// it is left, with Undo on a slip. src/domain/cards.ts turns the draft into
+// events; a picture still drawing then follows the card.
+import { app, back as goBack, go, guardLeaving, hold, keepHoldsNext, sheet, sheetOr, subPage } from "../app";
+import { addEvents, draftOf, duplicates, MEMO_KNOWN, MEMO_TARGET, PICTURE_DETAILS, saveEvents, undoEvents, type CardDraft, type DraftPicture } from "../domain/cards";
 import type { Note } from "../domain/collection";
 import { applyOption, askKey, clean as cleanFill, clearAuto, fillAsk, filledPlace, type FillOption, type FillPlace, type FillRequest, type FillText } from "../domain/fill";
-import type { NoteDeleted } from "../domain/events";
+import type { NoteDeleted, NoteRestored } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import type { PicState, SketchResult } from "../pictures";
-import { h, ICON_SPEAK, langName, langSelect } from "../ui/h";
+import { foldWhenTight } from "../ui/fold";
+import { h, ICON_SPEAK, langName, langSelect, slip } from "../ui/h";
 import { Ink } from "../ui/ink";
 import { arrowNote, pickWord } from "../ui/pencil";
 import { cutout, cutoutReady } from "../ui/picture";
@@ -23,9 +26,10 @@ import { stickersSheet, stickerTag, type StickerTarget } from "./stickers";
 
 /** How long typing must pause before the card is filled in and its picture drawn. */
 export const PAUSE_MS = 1500;
-/** Add / Save wait this long at most for a fill still on its way. */
+/** Add waits this long at most for a fill still on its way. */
 const FILL_WAIT_MS = 8000;
 const NEW_LANG = "new";
+const ICON_BIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>';
 
 /** Cards added since the Add screen was opened, newest first. */
 let added: EntityId[] = [];
@@ -109,6 +113,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
 
   // ---- the places ----
   const input = (name: string, attrs: Record<string, unknown> = {}) => h("input", { name, autocomplete: "off", enterkeyhint: "done", ...attrs });
+  /** The card as it was opened: what Undo puts back after leaving saved it. */
+  const was = note ? structuredClone(note) : undefined;
   const front = input("front", { class: "ed-word", value: note?.fields.front ?? "", autocapitalize: "off", spellcheck: false, enterkeyhint: "next", "aria-label": "Word" });
   const back = input("back", { class: "ed-trans", value: note?.fields.back ?? "", "aria-label": "Translation" });
   const example = input("example", { class: "ed-example", value: note?.fields.example ?? "", "aria-label": "Example" });
@@ -483,7 +489,14 @@ function open(note?: Note, over?: { leave: () => void }): void {
     update();
   });
   front.addEventListener("keydown", (e) => e.key === "Enter" && (e.preventDefault(), back.focus()));
-  for (const el of [back, example, memoTarget, memoKnown]) el.addEventListener("keydown", (e) => e.key === "Enter" && (e.preventDefault(), el.blur()));
+  // Enter on the other places: done. On a new card that means Add, so a row of cards goes without leaving the keyboard.
+  for (const el of [back, example, memoTarget, memoKnown])
+    el.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.isComposing) return;
+      e.preventDefault();
+      if (editing) el.blur();
+      else void addIt();
+    });
   detailsInput.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -503,23 +516,14 @@ function open(note?: Note, over?: { leave: () => void }): void {
     d.picture = removed || (problem === "none" && !pending && drawnFor === current) ? null : !pending && drawn && drawnFor === current ? drawn : undefined;
     return d;
   };
+  /** Why the card can't be added (or saved) as it is. */
+  const whyNot = (): "word" | "translation" | "repeat" | undefined => (!clean(front.value) ? "word" : !clean(back.value) ? "translation" : checkDup().exact ? "repeat" : undefined);
   const ready = (): boolean => {
-    hint.textContent = "";
-    if (!clean(front.value)) {
-      hint.textContent = "The word is missing.";
-      front.focus();
-      return false;
-    }
-    if (!clean(back.value)) {
-      hint.textContent = "The translation is missing.";
-      back.focus();
-      return false;
-    }
-    if (checkDup().exact) {
-      hint.textContent = "This card is already in your words.";
-      return false;
-    }
-    return true;
+    const why = whyNot();
+    hint.textContent = why === "word" ? "The word is missing." : why === "translation" ? "The translation is missing." : why === "repeat" ? "This card is already in your words." : "";
+    if (why === "word") front.focus();
+    if (why === "translation") back.focus();
+    return !why;
   };
   let busy = false;
   const once = (f: () => Promise<void>) => async () => {
@@ -540,9 +544,10 @@ function open(note?: Note, over?: { leave: () => void }): void {
     draw(false);
   };
 
-  const addIt = once(async () => {
+  /** Add the card as it is: its id, or undefined when it can't be added yet (the hint says why). */
+  const addNow = async (): Promise<EntityId | undefined> => {
     await settle();
-    if (!ready()) return;
+    if (!ready()) return undefined;
     const d = draft();
     const wait = d.picture === undefined ? pending : undefined;
     const { events, noteId } = addEvents(store.factory, await deckFor(from!), d);
@@ -552,7 +557,11 @@ function open(note?: Note, over?: { leave: () => void }): void {
     if (wait) void pictures.adopt(noteId, wait);
     else if (d.picture === undefined) void pictures.ensure(noteId);
     added.unshift(noteId);
-    // A fresh blank card, same languages and open sticker.
+    return noteId;
+  };
+
+  /** A fresh blank card, same languages and open sticker. */
+  const fresh = () => {
     ink.clear();
     for (const el of [front, back, example, memoTarget, memoKnown]) el.value = "";
     labels = openSticker();
@@ -575,35 +584,124 @@ function open(note?: Note, over?: { leave: () => void }): void {
     renderStickers();
     renderAdded();
     front.focus();
+  };
+
+  const addIt = once(async () => {
+    if (await addNow()) fresh();
   });
 
-  const saveIt = once(async () => {
-    await settle();
-    if (!note || !ready()) return;
-    const d = draft();
-    const wait = d.picture === undefined ? pending : undefined;
-    const was = note.picture?.key;
-    const events = saveEvents(store.factory, note, wears, d);
-    if (events.length) await store.append(events);
-    if (d.picture !== undefined || wait) pictures.cancel(note.id);
-    if (wait) void pictures.adopt(note.id, wait, was);
-    leave();
-  });
+  /** The screen under this one shows what Undo changed. */
+  const refresh = () => {
+    if (app.current === "words") go.words();
+    else if (app.current === "home") go.home();
+  };
+  const unDelete = (id: EntityId) => void store.append([store.factory.make<NoteRestored>("note_restored", { note_id: id })]).then(refresh);
 
   const deleteIt = once(async () => {
-    if (!note || !confirm(`Delete "${note.fields.front}"? Its review history is kept for the model.`)) return;
+    if (!note) return;
     sketcher.cancel();
     await store.append([store.factory.make<NoteDeleted>("note_deleted", { note_id: note.id })]);
-    leave();
+    away();
+    slip(`Deleted ${note.fields.front}`, "Undo", () => unDelete(note.id));
   });
 
-  const leave = () => {
+  // ---- leaving: a new card not added yet asks first; an edit is saved, with Undo ----
+  /** Holds the back gesture, so leaving goes through `leave` too. */
+  let guard: (() => void) | undefined;
+  const arm = () => {
+    if (!guard && !parked) guard = hold(() => ((guard = undefined), leave()));
+  };
+  const typedAnything = () => [front, back, example, memoTarget, memoKnown].some((el) => !!clean(el.value));
+
+  /** Off this screen: back to the one under it, the card this one lies on, or `then` (a tab). */
+  const away = (then?: () => void) => {
     ink.clear();
     sketcher.cancel();
     dropSketch();
     fillGen++; // a fill still on its way writes nothing, and draws nothing
-    if (over) over.leave();
+    guard?.();
+    guard = undefined;
+    if (then) then();
+    else if (over) over.leave();
     else goBack();
+  };
+
+  const leave = (then?: () => void) => {
+    if (busy) return;
+    clearTimeout(timer);
+    ink.finishAll();
+    if (editing) return void saveAndLeave(then);
+    if (!typedAnything()) return away(then);
+    notAdded(then);
+  };
+
+  /** Back on a card not added yet: add it, keep editing, or (back again) throw it away. */
+  const notAdded = (then?: () => void) => {
+    arm(); // back on the sheet throws the card away, so the gesture stays held under it
+    const word = clean(front.value) || clean(back.value);
+    const why = whyNot();
+    const title = why === "repeat" ? "This card is already in your words" : why ? `${word} has no ${why} yet` : `${word} isn't added yet`;
+    const close = sheetOr(
+      () => away(then),
+      "Not added yet",
+      title,
+      why
+        ? null
+        : h(
+            "button",
+            {
+              type: "button",
+              class: "primary",
+              onclick: async () => {
+                close();
+                const id = await addNow();
+                if (!id) return;
+                away(then);
+                slip(`Added ${word}`, "Undo", () => void store.append([store.factory.make<NoteDeleted>("note_deleted", { note_id: id })]).then(refresh));
+              },
+            },
+            `Add ${word}`,
+          ),
+      h("button", { type: "button", class: "secondary", onclick: () => close() }, "Keep editing"),
+      h("p", { class: "sheet-pencil" }, "back again throws it away"),
+    );
+  };
+
+  /** Leaving an edited card saves it; a slip offers to put it back as it was. */
+  const saveAndLeave = async (then?: () => void) => {
+    if (!note) return away(then);
+    if (whyNot() === "repeat") {
+      arm();
+      const close = sheetOr(
+        () => away(then),
+        "Not saved",
+        "This card is already in your words",
+        h("button", { type: "button", class: "secondary", onclick: () => close() }, "Keep editing"),
+        h("button", { type: "button", class: "link", onclick: () => (close(), away(then)) }, "Leave it as it was"),
+      );
+      return;
+    }
+    const now = store.col.liveNote(note.id);
+    if (!now) return away(then);
+    const d = draft();
+    const wait = d.picture === undefined ? pending : undefined;
+    const events = saveEvents(store.factory, now, wears, d);
+    busy = true;
+    try {
+      if (events.length) await store.append(events);
+    } finally {
+      busy = false;
+    }
+    if (d.picture !== undefined || wait) pictures.cancel(note.id);
+    if (wait) void pictures.adopt(note.id, wait, was?.picture?.key);
+    away(then);
+    if (events.length && was)
+      slip(`Saved ${clean(front.value) || note.fields.front}`, "Undo", () => {
+        const cur = store.col.liveNote(note.id);
+        if (!cur) return;
+        const undo = undoEvents(store.factory, cur, store.col.labelsOf(note.id).map((l) => l.id), was, wears);
+        if (undo.length) void store.append(undo).then(refresh);
+      });
   };
 
   /** While another card is open on top of this one: kept whole, put back when that one is left. */
@@ -620,6 +718,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     const putBack = () => {
       parked = false;
       app.root.replaceChildren(...saved);
+      guardLeaving(tabGuard); // the tabs ask this card again; its hold on the gesture stayed under the other one's
       window.scrollTo(0, scroll);
       update();
       checkDup();
@@ -627,14 +726,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
       renderPic();
       renderAdded();
     };
-    let release = () => {};
-    open(n, {
-      leave: () => {
-        release();
-        putBack();
-      },
-    });
-    release = hold(putBack); // the back gesture
+    keepHoldsNext();
+    open(n, { leave: putBack }); // its back gesture goes through its own leave, which ends here
   };
 
   // ---- cards added this sitting ----
@@ -672,18 +765,29 @@ function open(note?: Note, over?: { leave: () => void }): void {
   const root = h("div", { class: "editor" }, white, cream);
   // Reaching for the card while the pencil writes: everything shows written at once.
   for (const type of ["pointerdown", "keydown"]) root.addEventListener(type, () => ink.finishAll(), true);
-  subPage(
-    "words",
-    editing ? "Edit card" : "Add a card",
-    () => leave(),
-    root,
-    hint,
-    editing
-      ? h("div", { class: "ed-actions" }, h("button", { class: "primary", type: "button", onclick: saveIt }, "Save"), h("button", { class: "link danger-link", type: "button", onclick: deleteIt }, "Delete card"))
-      : h("div", { class: "ed-actions" }, h("button", { class: "primary ed-add", type: "button", onclick: addIt }, "Add")),
-    editing ? null : addedList,
+  const foldHint = h("p", { class: "ed-fold-hint", hidden: true }, "the other side, tap to turn it up");
+  cream.append(foldHint);
+  subPage("words", editing ? "Edit card" : "Add a card", () => leave(), root, hint, editing ? null : addedList,
     editing ? null : h("p", { class: "small center" }, h("button", { class: "link", type: "button", onclick: () => go.import() }, "Import from anything")),
   );
+
+  // The bar stays at the top: Add on a new card, the bin on a saved one.
+  const bar = app.root.querySelector<HTMLElement>("header.top")!;
+  bar.classList.add("ed-bar");
+  if (editing) {
+    const bin = h("button", { type: "button", class: "icon ed-bin", "aria-label": "Delete card", onclick: deleteIt });
+    bin.innerHTML = ICON_BIN;
+    bar.append(bin);
+  } else bar.append(h("button", { type: "button", class: "primary ed-add", onclick: addIt }, "Add"));
+  const tabGuard = (to: () => void) => {
+    if (!editing && !typedAnything()) return false;
+    leave(to);
+    return true;
+  };
+  guardLeaving(tabGuard);
+  if (editing) arm();
+  else root.addEventListener("input", arm);
+  foldWhenTight(root, [white, cream], [front, back], bar, foldHint);
 
   // Pictures arriving (the queue, a drawing adopted after Add) redraw what shows them.
   const off = pictures.subscribe((id) => {

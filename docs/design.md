@@ -54,6 +54,7 @@ Entity ids (`note_id`, `card_id`, `deck_id`, `preset_id`, `label_id`) are random
 | `card_created` | `card_id, note_id, template` | `forward` or `reverse` |
 | `note_edited` | `note_id, field, value` | One event per field; last write wins per field |
 | `note_deleted` | `note_id` | Tombstone only; history stays usable by RWKV |
+| `note_restored` | `note_id` | Undo of a delete; the later of `note_deleted` / `note_restored` wins |
 | `notes_prioritized` | `note_ids` | "Don't know" on unseen words: learn them before other new words, latest first |
 | `asset_attached` | `note_id, kind: image, r2_key, sense?, details?, scene?` | The picture lives in R2; `r2_key` null = removed (never redrawn automatically); last write wins per note |
 | `review` | see below | Append-only, never edited |
@@ -277,7 +278,10 @@ What "needs the user most" means:
 
 **The card editor (Add and Edit)**
 
-Add ("Add a card") and Edit ("Edit card") are one screen that looks like the card itself, both sides at once: stacked on a phone, side by side from 900 px. Nothing is written until Add or Save; back drops every change, a redrawn picture included.
+Add ("Add a card") and Edit ("Edit card") are one screen that looks like the card itself, both sides at once: stacked on a phone, side by side from 900 px. Its bar stays at the top and holds the one action: Add on a new card, a bin on a saved one; nothing sits at the bottom, where the keyboard covers it (with the keyboard open a phone shows 413 of 852 px on an iPhone 14 Pro, 343 of 667 on an SE).
+
+- Adding is deliberate, editing isn't. A new card is written by Add (in the bar, or Enter on the translation, example or a note: a row of cards goes without leaving the keyboard). Leaving a card not added yet (back, the gesture, a tab) asks on a sheet: "*hola* isn't added yet" with Add *hola* and Keep editing; back again throws it away. Nothing typed: it just leaves. An edited card is saved when it is left, and a slip on the screen under it says "Saved *hola* · Undo" (Undo puts the card back as it was opened, picture and stickers included). The bin deletes at once: "Deleted *hola* · Undo" (`note_restored`).
+- With the keyboard open and too little room for the whole card (`src/ui/fold.ts`), the side being typed on keeps all its places and the other is tucked under it, only its word or translation showing, like the card under the top one in a pile ("the other side, tap to turn it up" in pencil its first three turns). A tap on it, or Enter moving to it, pulls it out on top and the two slide past each other. The open cream side shows the picture small with "+ how it looks" beside it. Keyboard closed, or room enough (wide screens), the card lies whole.
 
 - White side: the word with its speak button, an example, the user's own note; the card's stickers on its corner with "+ Sticker". Cream side: the translation, the picture with "+ how it looks" under it, the user's own note. Places left empty show nothing in study.
 - A blank card has pencil notes with arrows pointing at its places: "the *Spanish* word goes here", "its *English* translation goes here", "an example, if you like". The language names are words that pick the language (a native picker; "Add a language…" opens a sheet and keeps what was typed). Once a place is filled its note shrinks to the arrow and the language. On Edit the languages are plain pencil: a card's pair is fixed.
@@ -285,7 +289,7 @@ Add ("Add a card") and Edit ("Edit card") are one screen that looks like the car
 - Picture: once both words are in, the picture space mirrors the translation in pencil; 1.5 s after typing pauses (at once on Enter or leaving the field) it draws, and typing more draws again. "+ how it looks" opens a details line with Redraw and No picture. There is no meaning to choose: the meaning is the translation. Offline or past the daily budget it says so, and Add leaves the picture to the queue.
 - Add takes the picture along; one still drawing follows the card when it arrives (never drawn twice), and the queue draws it only if that drawing fails. After Add: a fresh blank card, same languages, and the cards added this sitting under it (a tap opens Edit).
 - Duplicates: the same word with the same translation and pair is refused ("this card is already in your words", with a link); the same word with another translation gets a pencil note ("you already have *banco* · bench"), told as soon as typing pauses.
-- Edit: Save writes only what changed; "Delete card" under it. A removed picture is not redrawn by word edits, only by Redraw. Leaving the editor goes one step back in history, to where it was opened. A card opened from the editor itself (its "you already have" note, or the cards added this sitting) opens on top of the card being filled in: leaving it (back, the gesture, Save, Delete) puts that card back exactly as it was.
+- Edit: leaving saves only what changed. A removed picture is not redrawn by word edits, only by Redraw. Leaving the editor goes one step back in history, to where it was opened. A card opened from the editor itself (its "you already have" note, or the cards added this sitting) opens on top of the card being filled in: leaving it (back, the gesture, the bin) puts that card back exactly as it was.
 - In study, a pencil in the corner of a turned card opens it in the editor; back returns to the same card, still turned over, with the changes, and the time spent editing doesn't count toward the answer.
 
 - Filling in: see [Card enrichment](#card-enrichment).

@@ -103,12 +103,23 @@ const ICONS = {
   settings: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10.3 2h3.4l.5 2.6 1.6.7 2.2-1.5 2.4 2.4-1.5 2.2.7 1.6 2.6.5v3.4l-2.6.5-.7 1.6 1.5 2.2-2.4 2.4-2.2-1.5-1.6.7-.5 2.6h-3.4l-.5-2.6-1.6-.7-2.2 1.5-2.4-2.4 1.5-2.2-.7-1.6L2 13.7v-3.4l2.6-.5.7-1.6-1.5-2.2 2.4-2.4 2.2 1.5 1.6-.7zM12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/></svg>',
 };
 
+/**
+ * Asked before a tab leaves the screen (the card editor: a card not added yet,
+ * an edit to save). Returns true when it takes over: it calls `go` itself once
+ * it is done. Cleared when another screen renders.
+ */
+let leaveGuard: ((go: () => void) => boolean) | null = null;
+export function guardLeaving(f: ((go: () => void) => boolean) | null): void {
+  leaveGuard = f;
+}
+
 /** The tab bar: paper tabs, the current one lifted. */
 function nav(active: Tab) {
   const item = (s: Tab, label: string) => {
     const icon = h("span", { class: "nav-icon", "aria-hidden": "true" });
     icon.innerHTML = ICONS[s];
-    return h("button", { class: `nav-item${active === s ? " active" : ""}`, onclick: () => go[s](), "aria-label": label }, icon, h("span", {}, label));
+    const to = () => go[s]();
+    return h("button", { class: `nav-item${active === s ? " active" : ""}`, onclick: () => (leaveGuard?.(to) ? undefined : to()), "aria-label": label }, icon, h("span", {}, label));
   };
   return h("nav", { class: "nav" }, item("home", "Study"), item("words", "Words"), item("settings", "Settings"));
 }
@@ -127,13 +138,21 @@ export function subPage(active: Tab, title: string, back: () => void, ...body: B
   show(active, h("header", { class: "top sub" }, b, h("h1", {}, title)), body);
 }
 
+let keepHolds = false;
+/** The next screen renders over this one (a card opened on top of the one being edited): its holds stay, under the new screen's. */
+export function keepHoldsNext(): void {
+  keepHolds = true;
+}
+
 function releaseHolds(): void {
+  if (keepHolds) return void (keepHolds = false);
   for (const r of [...held].reverse()) r();
   held.clear();
 }
 
 function show(active: Tab, header: Node, body: Body): void {
   releaseHolds();
+  leaveGuard = null;
   if (active !== "home") launchAway(); // the table and the welcome card send it off themselves
   app.current = active;
   setKeys(null);
@@ -144,6 +163,7 @@ function show(active: Tab, header: Node, body: Body): void {
 /** A full-screen view without the tab bar (study and its summary). */
 export function fullScreen(...children: Node[]): void {
   releaseHolds();
+  leaveGuard = null;
   launchAway();
   app.current = "study";
   setKeys(null);
@@ -179,6 +199,11 @@ function aboveKeyboard(el: HTMLElement): () => void {
  * outside, Escape or the back gesture closes it. Returns close.
  */
 export function sheet(label: string, title: string | Node, ...body: Body): () => void {
+  return sheetOr(undefined, label, title, ...body);
+}
+
+/** A sheet whose back gesture does `onBack` after closing it (e.g. leaves the screen). */
+export function sheetOr(onBack: (() => void) | undefined, label: string, title: string | Node, ...body: Body): () => void {
   const backdrop = h("div", { class: "sheet-backdrop" });
   const el = h("div", { class: "pile-sheet", role: "dialog", "aria-label": label }, h("h2", {}, title), ...body);
   const remove = () => {
@@ -196,7 +221,10 @@ export function sheet(label: string, title: string | Node, ...body: Body): () =>
   document.addEventListener("keydown", onKey);
   app.root.append(backdrop, el);
   const unfit = aboveKeyboard(el);
-  const release = hold(remove);
+  const release = hold(() => {
+    remove();
+    onBack?.();
+  });
   (el.querySelector("input, button") as HTMLElement | null)?.focus();
   return close;
 }

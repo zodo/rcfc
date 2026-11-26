@@ -145,9 +145,11 @@ export class Collection {
         if (n && !n.deleted && this.wins(`note:${n.id}:${e.payload.field}`, e)) n.fields[e.payload.field] = e.payload.value;
         break;
       }
-      case "note_deleted": {
+      case "note_deleted":
+      case "note_restored": {
+        // The later of a delete and its undo wins, whatever order they arrive in.
         const n = this.notes.get(e.payload.note_id);
-        if (n) n.deleted = true;
+        if (n && this.wins(`note:${n.id}:deleted`, e)) n.deleted = e.type === "note_deleted";
         break;
       }
       case "notes_prioritized":
