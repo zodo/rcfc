@@ -2460,7 +2460,7 @@ header.top.ed-bar:has(+ .content .editor.folded) {
   padding-top: 34px;
   margin-top: -28px;
 }
-.editor.folded .ed-side.tucked > :not(.ed-word-line):not(input[name="back"]):not(.ed-fold-hint) {
+.editor.folded .ed-side.tucked > :not(.ed-word-line):not(input[name="back"]):not(.ed-fold-hint):not(.ink-layer) {
   display: none;
 }
 .editor.folded .ed-side.tucked input {
