@@ -1,5 +1,6 @@
 // App shell shared by the screens (src/screens/): the open store and sync,
 // which screen is showing, page chrome, keyboard handling and navigation.
+import { launchAway } from "./ui/launch";
 import type { EntityId } from "./domain/ids";
 import type { Filler } from "./fill";
 import type { Pictures } from "./pictures";
@@ -133,6 +134,7 @@ function releaseHolds(): void {
 
 function show(active: Tab, header: Node, body: Body): void {
   releaseHolds();
+  if (active !== "home") launchAway(); // the table and the welcome card send it off themselves
   app.current = active;
   setKeys(null);
   clear(app.root);
@@ -142,6 +144,7 @@ function show(active: Tab, header: Node, body: Body): void {
 /** A full-screen view without the tab bar (study and its summary). */
 export function fullScreen(...children: Node[]): void {
   releaseHolds();
+  launchAway();
   app.current = "study";
   setKeys(null);
   clear(app.root);

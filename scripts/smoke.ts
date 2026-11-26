@@ -247,6 +247,8 @@ async function run(s: Browser, url: string) {
   log("fresh start shows the welcome screen");
   await s.go(`${url}/?reset`);
   await s.until("welcome", `document.querySelector("header.top h1")?.textContent === "Welcome"`, 60_000);
+  log("the launch pile turns over into the welcome card and goes");
+  await s.until("launch screen gone", `!document.getElementById("launch") && getComputedStyle(document.querySelector(".welcome-card")).opacity === "1"`);
 
   log("pick a language: lands on adding its first word");
   await s.click("button", "Start");
@@ -367,6 +369,8 @@ async function run(s: Browser, url: string) {
   log("seeded collection: replay, due cards");
   await s.go(`${url}/?reset&seed=60`);
   await s.until("seeded home", `document.querySelector(".pile-name")?.textContent === "Spanish"`, 90_000);
+  log("the launch pile is dealt onto the table and goes; the pile's top card shows");
+  await s.until("launch screen gone", `!document.getElementById("launch") && getComputedStyle(document.querySelector(".spot .pile-top")).opacity === "1"`);
   const pile = Number((await s.text(".pile-count")).split(" ")[0]);
   if (!(pile > 0)) throw new Error(`seeded deck shows a pile of ${pile}`);
   const edges = await s.js<number>(`return document.querySelectorAll(".spot .pile-edge").length;`);

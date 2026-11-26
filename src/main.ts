@@ -17,6 +17,7 @@ import { Pictures } from "./pictures";
 import { Speech, webAudio } from "./speech";
 import { Store } from "./store";
 import { Summaries } from "./summaries";
+import { launchAway, launchProgress, startLaunch } from "./ui/launch";
 import { setupPaper } from "./ui/paper";
 import { Sync } from "./sync";
 import { clear, h } from "./ui/h";
@@ -27,16 +28,10 @@ const screens: Screens = { home, study, words, add, import: importScreen, edit, 
 
 async function boot() {
   const { root } = app;
-  const status = h("p", { class: "muted center" }, "Loading your words…");
-  clear(root);
-  root.appendChild(status);
   try {
-    if (import.meta.env.DEV && (await (await import("./dev/hooks")).devHooks())) return;
-    const { store, info } = await Store.open({
-      onProgress: (done, total) => {
-        status.textContent = `Updating the memory model… ${Math.round((100 * done) / total)}%`;
-      },
-    });
+    if (import.meta.env.DEV && (await (await import("./dev/hooks")).devHooks())) return launchAway();
+    // While this runs the launch screen (src/ui/launch.ts) covers the app; the first screen shown sends it away.
+    const { store, info } = await Store.open({ onProgress: launchProgress });
     app.store = store;
     console.info("rcfc startup", info);
     if (import.meta.env.DEV) (window as unknown as { rcfc: typeof app }).rcfc = app;
@@ -64,12 +59,14 @@ async function boot() {
     app.pictures.start();
   } catch (e) {
     console.error(e);
+    launchAway();
     clear(root);
     root.appendChild(h("div", { class: "card-box" }, h("h2", {}, "Something went wrong"), h("pre", { class: "small" }, String(e instanceof Error ? (e.stack ?? e.message) : e)), h("button", { class: "primary", onclick: () => location.reload() }, "Reload")));
   }
 }
 
 setupPaper();
+startLaunch();
 setupUpdates();
 setupInstallPrompt();
 void boot();

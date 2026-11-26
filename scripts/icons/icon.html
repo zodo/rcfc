@@ -6,7 +6,8 @@
     ?w=&h=&kind=any     rounded icon, transparent corners
     ?w=&h=&kind=full    full-bleed square (maskable, iOS)
     ?w=&h=&kind=light   splash: the table with the icon in the middle
-    ?w=&h=&kind=dark    the same on the dark table
+    ?w=&h=&kind=dark    the same on the dark table (&dpr= for the pile's largest size)
+    ?kind=card&name=&theme=  one card of that pile, as public/launch/ keeps it
   Everything is seeded, so a re-run draws the same pixels.
 -->
 <meta charset="utf-8" />
@@ -68,6 +69,49 @@ const rect = (x, y, w, h) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
 function pathOf(pts) { const p = new Path2D(); pts.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y))); p.closePath(); return p; }
 function at(ctx, x, y, deg, fn) { ctx.save(); ctx.translate(x, y); ctx.rotate((deg * Math.PI) / 180); fn(); ctx.restore(); }
 
+/**
+ * The table's paper as src/ui/paper.ts makes it at boot (--fibre, --mottle;
+ * the same noise, seeded here): saved for the launch screen's background, and
+ * tiled on the splash at the same size, so the table's tone never jumps.
+ */
+function paperNoise(ctx, size, cell, rgb, lo, hi, stretch, r) {
+  const w = Math.max(1, Math.round(size / cell)), h = Math.max(1, Math.round(size / cell / stretch));
+  const a = Array.from({ length: w * h }, () => (lo + r() * (hi - lo)) * 255);
+  const c = document.createElement("canvas"); c.width = w + 2; c.height = h + 2;
+  const g = c.getContext("2d"), img = g.createImageData(w + 2, h + 2);
+  for (let y = 0; y < h + 2; y++)
+    for (let x = 0; x < w + 2; x++) {
+      const i = (y * (w + 2) + x) * 4;
+      img.data.set(rgb, i);
+      img.data[i + 3] = a[((y + h - 1) % h) * w + ((x + w - 1) % w)];
+    }
+  g.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = cell > 1;
+  const cw = size / w, ch = size / h;
+  ctx.drawImage(c, -cw, -ch, size + 2 * cw, size + 2 * ch);
+}
+function tableTile(name) {
+  const r = rng(name === "fibre" ? 17 : 29), c = document.createElement("canvas");
+  if (name === "fibre") {
+    c.width = c.height = 256;
+    const x = c.getContext("2d");
+    paperNoise(x, 256, 1, [0, 0, 0], 0, 0.06, 1, r); paperNoise(x, 256, 2, [0, 0, 0], 0, 0.05, 3, r); paperNoise(x, 256, 6, [0, 0, 0], 0, 0.04, 1, r);
+  } else {
+    c.width = c.height = 1024;
+    paperNoise(c.getContext("2d"), 1024, 128, [0, 0, 0], 0, 0.09, 1, r);
+  }
+  return c;
+}
+/** The table at `dpr` device px per CSS px: its colour, then fibre over mottle, as body in style.css. */
+function table(ctx, color, w, h, dpr) {
+  ctx.fillStyle = color; ctx.fillRect(0, 0, w, h);
+  for (const name of ["mottle", "fibre"]) {
+    const p = ctx.createPattern(tableTile(name), "repeat");
+    p.setTransform(new DOMMatrix().scale(dpr));
+    ctx.fillStyle = p; ctx.fillRect(0, 0, w, h);
+  }
+}
+
 /** A piece of paper: soft and contact shadows, fibre, a little sheen, a cut line. `k` = drawing scale, for shadows. */
 function piece(ctx, pts, color, k, lift = 1) {
   const p = pathOf(pts);
@@ -111,27 +155,60 @@ function icon(ctx, k) {
 // Card colours on the dark table (style.css dark tokens).
 const DARK = { white: "#dcd8cf", ink: "#26302a", yellow: "#c9b264", pink: "#c4929a", blue: "#8aa8c0", mint: "#93b59c" };
 
-/** A pile of portrait cards centred at (cx, cy), `k` screen px per unit: coloured cards under, RCFC on top. */
-function pile(ctx, cx, cy, k, col) {
-  const r = rng(707), w = 440, h = 580;
-  const card = () => cut([[-w / 2 + 10, -h / 2], [w / 2 - 10, -h / 2], [w / 2, -h / 2 + 10], [w / 2, h / 2 - 10], [w / 2 - 10, h / 2], [-w / 2 + 10, h / 2], [-w / 2, h / 2 - 10], [-w / 2, -h / 2 + 10]], r, 2.5, 60);
-  ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k);
-  for (const [c, dx, dy, rot] of [[col.mint, 10, 46, -5], [col.blue, -8, 33, 4], [col.pink, 6, 20, -3], [col.yellow, -4, 8, 2.5]])
-    at(ctx, dx, dy, rot, () => piece(ctx, card(), c, k, 0.5));
-  at(ctx, 0, -6, -1.2, () => {
-    piece(ctx, card(), col.white, k, 0.8);
+/**
+ * One card of the launch pile, upright, on a transparent canvas with room for
+ * its shadow (G.pad), at G.px pixels per unit. The splash is put together from
+ * these, and the app shows the same pictures (public/launch/), so both match.
+ */
+function cardCanvas(G, name, dark) {
+  const col = dark ? DARK : C, [w, h] = G.card, px = G.px;
+  const c = document.createElement("canvas");
+  c.width = Math.round((w + 2 * G.pad) * px); c.height = Math.round((h + 2 * G.pad) * px);
+  const ctx = c.getContext("2d");
+  const r = rng(707 + ["mint", "blue", "pink", "yellow", "top"].indexOf(name) * 101);
+  const pts = cut([[-w / 2 + 10, -h / 2], [w / 2 - 10, -h / 2], [w / 2, -h / 2 + 10], [w / 2, h / 2 - 10], [w / 2 - 10, h / 2], [-w / 2 + 10, h / 2], [-w / 2, h / 2 - 10], [-w / 2, -h / 2 + 10]], r, 2.5, 60);
+  ctx.translate(c.width / 2, c.height / 2); ctx.scale(px, px);
+  if (name !== "top") piece(ctx, pts, col[name], px, 0.5);
+  else {
+    piece(ctx, pts, col.white, px, 0.8);
     ctx.fillStyle = col.ink; ctx.font = '700 118px "Balsamiq Sans"';
     ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.letterSpacing = "3px";
     ctx.fillText("RCFC", 0, -20);
-  });
-  ctx.restore();
+  }
+  return c;
+}
+
+/** The pile as src/ui/launch.ts lays it: card pictures centred on (cx, cy), `k` screen px per unit. */
+function pile(ctx, G, cx, cy, k, dark) {
+  for (const [name, dx, dy, deg] of [...G.under, ["top", ...G.top]]) {
+    const c = cardCanvas(G, name, dark);
+    ctx.save();
+    ctx.translate(cx + dx * k, cy + dy * k); ctx.rotate((deg * Math.PI) / 180); ctx.scale(k / G.px, k / G.px);
+    ctx.drawImage(c, -c.width / 2, -c.height / 2);
+    ctx.restore();
+  }
 }
 
 function roundedSquare(ctx, x, y, s) { ctx.beginPath(); ctx.roundRect(x, y, s, s, s * 0.224); }
 
 async function main() {
   await document.fonts.load('700 250px "Balsamiq Sans"');
+  const G = await (await fetch("/src/ui/launch.json")).json();
   const c = document.getElementById("c");
+  if (KIND === "tile") {
+    const t = tableTile(q.get("name"));
+    c.width = t.width; c.height = t.height;
+    c.getContext("2d").drawImage(t, 0, 0);
+    document.title = "done";
+    return;
+  }
+  if (KIND === "card") {
+    const card = cardCanvas(G, q.get("name"), q.get("theme") === "dark");
+    c.width = card.width; c.height = card.height;
+    c.getContext("2d").drawImage(card, 0, 0);
+    document.title = "done";
+    return;
+  }
   c.width = W; c.height = H;
   const ctx = c.getContext("2d");
   ctx.imageSmoothingQuality = "high";
@@ -145,9 +222,10 @@ async function main() {
   } else {
     // Splash: the table (like body in style.css) with a big pile on it, as on the table screen.
     const dark = KIND === "dark";
-    ctx.fillStyle = dark ? C.sageDark : C.sage; ctx.fillRect(0, 0, W, H);
-    texture(ctx, ["fibre", "grain"], 0.6);
-    pile(ctx, W / 2, H * 0.46, (W * 0.6) / 440, dark ? DARK : C);
+    const dpr = +q.get("dpr") || 1;
+    table(ctx, dark ? C.sageDark : C.sage, W, H, dpr);
+    const width = Math.min(W * G.width, G.maxWidth * dpr);
+    pile(ctx, G, W / 2, H * G.centerY, width / G.card[0], dark);
   }
   document.title = "done";
 }

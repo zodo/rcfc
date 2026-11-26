@@ -47,7 +47,7 @@ export default defineConfig({
         clientsClaim: true,
         // The RWKV model (~11 MB) and engine must be precached for offline use;
         // Workbox silently skips files over its 2 MiB default.
-        globPatterns: ["**/*.{js,css,html,svg,png,woff2,webmanifest,wasm,safetensors}"],
+        globPatterns: ["**/*.{js,css,html,svg,png,webp,woff2,webmanifest,wasm,safetensors}"],
         maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
         // Fetched once when the app is installed, never offline: iOS splash screens, the big manifest icons.
         globIgnores: ["splash/**", "icon-512.png", "icon-maskable-512.png"],

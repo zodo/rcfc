@@ -6,6 +6,7 @@
 // spot, and a tap on the pile studies them. A sticker with no words has its spot
 // printed empty, and the last spot is always a new pile (a new sticker). First
 // launch asks which language to learn.
+import { launchToTable, launchToWelcome } from "../ui/launch";
 import { app, go, page, sheet as openSheet } from "../app";
 import { derivedEntityId } from "../domain/ids";
 import { labelPile } from "../domain/labels";
@@ -30,12 +31,10 @@ export async function home(): Promise<void> {
   if (app.reloadPending) return location.reload();
   const langs = languages();
   if (langs.length === 0) {
-    page(
-      "home",
-      "Welcome",
-      h("p", {}, "Flashcards scheduled by RWKV, a neural memory model that runs on your device."),
-      languageForm(() => go.add(), "Start"),
-    );
+    // A card, the shape of the launch pile's: on a first launch the RCFC card turns over into it.
+    const card = h("div", { class: "welcome-card" }, h("p", {}, "Flashcards scheduled by RWKV, a neural memory model that runs on your device."), languageForm(() => go.add(), "Start"));
+    page("home", "Welcome", card);
+    launchToWelcome(app.root, card);
     return;
   }
   const gen = ++drawn;
@@ -57,6 +56,7 @@ export async function home(): Promise<void> {
   app.cleared = app.refilled = null;
   const spots = piles.map(({ s, label }) => spot(s, label, moved));
   page("home", "Study", h("div", { class: "table" }, ...spots.map((x) => x.el), newPile()));
+  launchToTable(app.root); // at launch: the launch pile is dealt onto it
   if (!ready) return;
   await refresh();
   if (gen !== drawn || app.current !== "home") return;

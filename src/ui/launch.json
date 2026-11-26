@@ -1,0 +1,16 @@
+{
+  "//": "The pile on the iOS splash screen and on the app's launch screen (src/ui/launch.ts, index.html), so both lie in the same place. Units: one card is 440 x 580; pad = room around a card's picture for its shadow. width = share of the screen width (at most maxWidth CSS px), centerY = share of the screen height. Cards: [dx, dy, degrees] from the pile's centre, bottom first. scripts/build-icons.ts draws from this.",
+  "width": 0.6,
+  "maxWidth": 270,
+  "centerY": 0.46,
+  "card": [440, 580],
+  "pad": 90,
+  "px": 1.6,
+  "under": [
+    ["mint", 10, 46, -5],
+    ["blue", -8, 33, 4],
+    ["pink", 6, 20, -3],
+    ["yellow", -4, 8, 2.5]
+  ],
+  "top": [0, -6, -1.2]
+}

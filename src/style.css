@@ -159,6 +159,36 @@ pre {
     0 1px 1px rgb(var(--shadow) / 0.22),
     0 3px 7px rgb(var(--shadow) / 0.18);
 }
+/* the welcome card: the launch pile's card shape (440 x 580), the RCFC card turns over into it on a first launch */
+.welcome-card {
+  width: min(100%, 300px);
+  aspect-ratio: 440 / 580;
+  margin: 8px auto 0;
+  padding: 24px 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  background-color: var(--card);
+  background-image: var(--grain, none);
+  color: var(--ink);
+  border-radius: 5px;
+  box-shadow:
+    0 1.5px 1.5px rgb(var(--shadow) / 0.28),
+    0 6px 14px rgb(var(--shadow) / 0.2);
+}
+.welcome-card > p {
+  margin: 0;
+}
+.welcome-card .card-box {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+.welcome-card .row2 {
+  grid-template-columns: 1fr;
+}
 .card-box {
   padding: 18px;
   display: flex;
