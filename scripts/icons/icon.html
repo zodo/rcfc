@@ -1,0 +1,141 @@
+<!doctype html>
+<!--
+  The app icon and the iPhone splash screens, drawn on a canvas as cut paper
+  (the same kind of textures and hand-cut edges as src/ui/paper.ts).
+  scripts/build-icons.ts screenshots this page at each size:
+    ?w=&h=&kind=any     rounded icon, transparent corners
+    ?w=&h=&kind=full    full-bleed square (maskable, iOS)
+    ?w=&h=&kind=light   splash: the table with the icon in the middle
+    ?w=&h=&kind=dark    the same on the dark table
+  Everything is seeded, so a re-run draws the same pixels.
+-->
+<meta charset="utf-8" />
+<style>
+  @font-face {
+    font-family: "Balsamiq Sans";
+    font-weight: 700;
+    src: url("/node_modules/@fontsource/balsamiq-sans/files/balsamiq-sans-latin-700-normal.woff2") format("woff2");
+  }
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  canvas { display: block; }
+</style>
+<canvas id="c"></canvas>
+<script>
+const q = new URLSearchParams(location.search);
+const W = +q.get("w"), H = +q.get("h"), KIND = q.get("kind");
+const S = 1024; // the icon is drawn at this size, then scaled
+const C = { sage: "#a9bfa3", sageDark: "#2f3431", white: "#ffffff", ink: "#26302a", yellow: "#f1d77e", pink: "#f3b5be", blue: "#acd0ec", mint: "#b7e0c2" };
+
+function rng(seed) { let s = seed % 233280; return () => (s = (s * 9301 + 49297) % 233280) / 233280; }
+
+function tile(size, cell, rgb, hi, stretch, seed) {
+  const r = rng(seed);
+  const w = Math.max(1, Math.round(size / cell)), h = Math.max(1, Math.round(size / cell / stretch));
+  const small = document.createElement("canvas"); small.width = w; small.height = h;
+  const g = small.getContext("2d"), img = g.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) { img.data.set(rgb, i * 4); img.data[i * 4 + 3] = r() * hi * 255; }
+  g.putImageData(img, 0, 0);
+  const c = document.createElement("canvas"); c.width = c.height = size;
+  const x = c.getContext("2d"); x.imageSmoothingEnabled = cell > 1; x.drawImage(small, 0, 0, size, size);
+  return c;
+}
+const TEX = {
+  grain: tile(256, 1, [97, 77, 51], 0.07, 1, 3),
+  fibre: tile(256, 2, [0, 0, 0], 0.05, 3, 7),
+  mottle: tile(1024, 96, [0, 0, 0], 0.08, 1, 11),
+};
+function texture(ctx, names, alpha = 1) {
+  ctx.save(); ctx.globalAlpha = alpha;
+  for (const n of names) { ctx.fillStyle = ctx.createPattern(TEX[n], "repeat"); ctx.fillRect(-4 * S, -4 * S, 8 * S, 8 * S); }
+  ctx.restore();
+}
+
+// A hand-cut outline: every edge split into short runs that wobble a little.
+function cut(pts, r, wob = 4, seg = 70) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length];
+    const len = Math.hypot(bx - ax, by - ay), k = Math.max(1, Math.round(len / seg));
+    const nx = -(by - ay) / len, ny = (bx - ax) / len;
+    for (let j = 0; j < k; j++) {
+      const t = j / k, o = j ? (r() - 0.5) * 2 * wob : 0;
+      out.push([ax + (bx - ax) * t + nx * o, ay + (by - ay) * t + ny * o]);
+    }
+  }
+  return out;
+}
+const rect = (x, y, w, h) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+function pathOf(pts) { const p = new Path2D(); pts.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y))); p.closePath(); return p; }
+function at(ctx, x, y, deg, fn) { ctx.save(); ctx.translate(x, y); ctx.rotate((deg * Math.PI) / 180); fn(); ctx.restore(); }
+
+/** A piece of paper: soft and contact shadows, fibre, a little sheen, a cut line. `k` = drawing scale, for shadows. */
+function piece(ctx, pts, color, k, lift = 1) {
+  const p = pathOf(pts);
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.shadowColor = "rgba(25,35,28,0.30)"; ctx.shadowBlur = 44 * lift * k; ctx.shadowOffsetY = 20 * lift * k; ctx.fill(p);
+  ctx.shadowColor = "rgba(25,35,28,0.32)"; ctx.shadowBlur = 5 * k; ctx.shadowOffsetY = 3 * k; ctx.fill(p);
+  ctx.restore();
+  ctx.save(); ctx.clip(p);
+  texture(ctx, ["fibre", "grain"], 0.9);
+  const g = ctx.createLinearGradient(-400, -400, 400, 400);
+  g.addColorStop(0, "rgba(255,255,255,0.18)"); g.addColorStop(1, "rgba(0,0,0,0.05)");
+  ctx.fillStyle = g; ctx.fillRect(-4 * S, -4 * S, 8 * S, 8 * S);
+  ctx.restore();
+  ctx.save(); ctx.strokeStyle = "rgba(0,0,0,0.10)"; ctx.lineWidth = 2; ctx.stroke(p); ctx.restore();
+}
+
+/**
+ * The icon, full bleed on a 1024 square: the top of a pile seen from the
+ * front, the word card above the sticker-coloured edges of the cards under it.
+ * Pieces run past the square, so only cut edges inside it show.
+ */
+function icon(ctx, k) {
+  const r = rng(101), B = 70;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, S, S); ctx.clip();
+  ctx.fillStyle = C.mint; ctx.fillRect(0, 0, S, S);
+  texture(ctx, ["fibre", "grain"], 0.9);
+  for (const [col, y, tilt] of [[C.blue, 905, 1.2], [C.pink, 815, -1], [C.yellow, 725, 0.8]])
+    at(ctx, S / 2, y, tilt, () => piece(ctx, cut(rect(-S / 2 - B, -y - B, S + 2 * B, y + B), r), col, k, 0.45));
+  at(ctx, S / 2, 635, -0.8, () => {
+    piece(ctx, cut(rect(-S / 2 - B, -800, S + 2 * B, 800), r), C.white, k, 0.6);
+    ctx.fillStyle = C.ink; ctx.font = '700 250px "Balsamiq Sans"';
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.letterSpacing = "6px";
+    ctx.fillText("RCFC", 0, -300);
+  });
+  ctx.restore();
+}
+
+function roundedSquare(ctx, x, y, s) { ctx.beginPath(); ctx.roundRect(x, y, s, s, s * 0.224); }
+
+async function main() {
+  await document.fonts.load('700 250px "Balsamiq Sans"');
+  const c = document.getElementById("c");
+  c.width = W; c.height = H;
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  // Drawn at 1024 and scaled down, so shadows and textures look the same at every size.
+  const art = document.createElement("canvas"); art.width = art.height = S;
+  icon(art.getContext("2d"), 1);
+
+  if (KIND === "full" || KIND === "any") {
+    if (KIND === "any") { roundedSquare(ctx, 0, 0, W); ctx.clip(); }
+    ctx.drawImage(art, 0, 0, W, H);
+  } else {
+    // Splash: the table (like body in style.css) with the icon as a card in the middle.
+    ctx.fillStyle = KIND === "dark" ? C.sageDark : C.sage; ctx.fillRect(0, 0, W, H);
+    texture(ctx, ["fibre", "grain"], 0.6);
+    const s = Math.round(W * 0.34), x = (W - s) / 2, y = Math.round(H * 0.45 - s / 2);
+    ctx.save();
+    roundedSquare(ctx, x, y, s);
+    ctx.shadowColor = "rgba(20,28,22,0.35)"; ctx.shadowBlur = s * 0.08; ctx.shadowOffsetY = s * 0.035;
+    ctx.fillStyle = C.mint; ctx.fill();
+    ctx.restore();
+    ctx.save(); roundedSquare(ctx, x, y, s); ctx.clip(); ctx.drawImage(art, x, y, s, s); ctx.restore();
+  }
+  document.title = "done";
+}
+main();
+</script>

@@ -23,6 +23,7 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: false,
+      includeManifestIcons: false, // the 512s are fetched once at install (globIgnores below)
       manifest: {
         name: "Really Cool Flashcards",
         short_name: "rcfc",
@@ -32,11 +33,10 @@ export default defineConfig({
         background_color: "#a9bfa3",
         theme_color: "#a9bfa3",
         icons: [
-          // PNGs from scripts/build-icons.sh; Chrome's install check wants 192 + 512.
+          // Drawn by scripts/build-icons.ts; Chrome's install check wants 192 + 512.
           { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
           { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
           { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-          { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
         ],
       },
       workbox: {
@@ -49,6 +49,8 @@ export default defineConfig({
         // Workbox silently skips files over its 2 MiB default.
         globPatterns: ["**/*.{js,css,html,svg,png,woff2,webmanifest,wasm,safetensors}"],
         maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
+        // Fetched once when the app is installed, never offline: iOS splash screens, the big manifest icons.
+        globIgnores: ["splash/**", "icon-512.png", "icon-maskable-512.png"],
       },
     }),
   ],
