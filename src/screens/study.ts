@@ -210,8 +210,9 @@ class Table {
       ],
       { duration: MS, delay: DELAY, easing: "cubic-bezier(.45,.05,.55,.95)", fill: "backwards" },
     );
-    // It first touches down at keyframe 0.8, which the overall easing brings forward to 69.5% of the time.
-    window.setTimeout(() => haptic("thud"), DELAY + MS * 0.695);
+    // It lands where its fall ends (keyframe T, which the overall easing brings to 47% of the time); the
+    // hover and settle after it read as a little bounce.
+    window.setTimeout(() => haptic("thud"), DELAY + MS * 0.473);
     for (const e of this.el.children) if (e !== this.pile) e.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 120, fill: "backwards" });
   }
 
