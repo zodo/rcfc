@@ -179,9 +179,10 @@ class Table {
   /**
    * Opened from the table: the tapped pile is picked up and leaves through
    * the top of the screen (`copy`, a copy of it at `from`, where it lay), then
-   * the study pile drops in from above and settles. Both only move: growing
-   * one into the other dropped frames on Android (the study pile is many
-   * layers) and showed their faces differ. Nothing waits for it.
+   * the study pile is brought in and laid down like a picture on the card in
+   * the editor. Never one grown into the other: that dropped frames on
+   * Android (the study pile is many layers) and showed their faces differ.
+   * Nothing waits for it.
    */
   dropIn(from: DOMRect, copy: HTMLElement): void {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -189,16 +190,37 @@ class Table {
     Object.assign(stand.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px` });
     document.body.append(stand);
     stand.animate([{ transform: "none" }, { transform: `translate(0, ${-(from.bottom + 60)}px) rotate(-4deg)` }], { duration: 230, easing: "cubic-bezier(0.5, 0, 0.75, 0)", fill: "forwards" }).onfinish = () => stand.remove();
-    const above = -(this.pile.getBoundingClientRect().bottom + 40);
+    // Brought in and laid down the way the card editor lays a picture on the card (src/ui/sketch.ts bringIn):
+    // from past the top, close to the lens (bigger, its shadow far off and soft), slowing over its place,
+    // hovering, coming down as the shadow slides under it and sharpens.
+    const box = this.pile.getBoundingClientRect();
+    const x = box.width * 0.25, y = -(box.bottom + box.height * 0.4 + 60);
+    const MS = 820, T = 0.45, DELAY = 30; // it starts far above: on its way while the old pile leaves, the table never stands empty
+    const far = h("div", { class: "sk-shadow far" }), near = h("div", { class: "sk-shadow near" });
+    this.pile.prepend(far, near);
     this.pile.animate(
       [
-        { translate: `0 ${above}px`, rotate: "-3deg" },
-        { translate: "0 7px", rotate: "0.6deg", offset: 0.72 },
-        { translate: "0 0", rotate: "0deg" },
+        { transform: `translate(${x}px, ${y}px) rotate(12deg) scale(1.25)` },
+        { transform: "translate(6px, -14px) rotate(-2deg) scale(1.05)", offset: T, easing: "cubic-bezier(.2,.6,.35,1)" },
+        { transform: "translate(2px, -4.7px) rotate(-0.7deg) scale(1.02)", offset: T + (0.8 - T) * 0.55, easing: "ease-in" },
+        { transform: "none", offset: 0.8, easing: "ease-out" },
+        { transform: "scale(0.994)", offset: 0.88 },
+        { transform: "none" },
       ],
-      { duration: 460, delay: 150, easing: "cubic-bezier(0.3, 0.6, 0.35, 1)", fill: "backwards" },
+      { duration: MS, delay: DELAY, easing: "cubic-bezier(.45,.05,.55,.95)", fill: "backwards" },
     );
-    window.setTimeout(() => haptic("thud"), 150 + 460 * 0.72);
+    far.animate(
+      [
+        { translate: "46px 70px", scale: "1.12", opacity: 0.55 },
+        { translate: "18px 26px", scale: "1.04", opacity: 0.7, offset: T },
+        { translate: "4px 6px", scale: "1", opacity: 0.25, offset: 0.74 },
+        { translate: "0 0", scale: "1", opacity: 0, offset: 0.8 },
+        { translate: "0 0", scale: "1", opacity: 0 },
+      ],
+      { duration: MS, delay: DELAY, fill: "both" },
+    ).onfinish = () => far.remove();
+    near.animate([{ opacity: 0 }, { opacity: 0, offset: T + 0.1 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }], { duration: MS, delay: DELAY, fill: "both" }).onfinish = () => near.remove();
+    window.setTimeout(() => haptic("thud"), DELAY + MS * 0.8);
     for (const e of this.el.children) if (e !== this.pile) e.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 120, fill: "backwards" });
   }
 
