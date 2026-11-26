@@ -9,6 +9,11 @@
 // picture is brought in from past the top of the screen and laid down over
 // the note (`bringIn`); the note under it goes once it lies flat.
 //
+// Too small a place for words (the card editor's cream side folded small above
+// the keyboard): the pencil draws three dots in it instead, rubs them out with
+// its eraser and draws them again, as on a place a fill is awaited for; given
+// room again, it writes on.
+//
 // One pencil on a card: given `yieldTo`, the note pauses while that other
 // pencil (the card editor's fills) is busy, with no pencil of its own, and
 // goes on where it stopped.
@@ -16,9 +21,11 @@
 // Per frame only the pencil's translate, the letters' opacity and the doodle's
 // and strikes' strokes change; the glued picture moves by transform only.
 import type { SceneText } from "../pictures";
-import { PENCIL } from "./ink";
+import { dot, PENCIL } from "./ink";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+/** Narrower than this, the place shows dots, not words. */
+const SMALL_PX = 160;
 /** Steady handwriting: ~2.5 s for a two-line scene. */
 const LETTER_MS = 26;
 /** The meaning is written a little slower than the scene: it's the heading. */
@@ -133,6 +140,8 @@ export class SketchNote {
   /** When everything that had arrived was written. */
   private caughtUp = 0;
   private doodling: { stopped: boolean; anims: Animation[] } | undefined;
+  /** Too small for words: the dots, drawn and rubbed out round after round. */
+  private dotting: { stopped: boolean; anims: Animation[] } | undefined;
   /** The lines struck through so far, drawn by the frame clock. */
   private strikes: SVGSVGElement;
   private strike: { from: number; total: number; penFrom: { x: number; y: number }; items: Strike[] } | undefined;
@@ -200,6 +209,7 @@ export class SketchNote {
     if (this.closed) return;
     this.hurry = true;
     this.stopDoodle();
+    this.stopDots();
     this.strike = undefined;
     for (const s of this.all()) s.classList.add("on");
     this.written = this.all().length;
@@ -220,6 +230,7 @@ export class SketchNote {
     this.closed = true;
     cancelAnimationFrame(this.frame);
     this.stopDoodle();
+    this.stopDots();
     this.pen?.remove();
     this.pen = undefined;
   }
@@ -269,6 +280,14 @@ export class SketchNote {
       return;
     }
     if (real < this.resumeAt) return;
+    const small = this.el.clientWidth < SMALL_PX;
+    this.el.classList.toggle("small", small);
+    if (small) {
+      this.stopDoodle();
+      this.strike = undefined;
+      return this.dots();
+    }
+    this.stopDots();
     const now = (this.clock += dt) + 1;
     this.started ||= now;
     const all = this.all();
@@ -493,6 +512,73 @@ export class SketchNote {
 
   private rubOut(): void {
     for (const p of [...this.svg.children]) void p.animate([{ opacity: 0.75 }, { opacity: 0 }], { duration: this.hurry ? 150 : 300, fill: "forwards" }).finished.then(() => p.remove(), () => {});
+  }
+
+  /** Three dots in the middle, a rest, rubbed out with the eraser (a smudge stays a moment), and again. */
+  private dots(): void {
+    if (this.dotting) return;
+    const start = { x: this.el.clientWidth / 2 - 14, y: this.el.clientHeight / 2 + 5 };
+    const pen = this.getPen(start);
+    const d = (this.dotting = { stopped: false, anims: [] as Animation[] });
+    const at = () => {
+      const [x, y] = pen.style.translate.split(" ").map(parseFloat);
+      return { x: x || start.x, y: y || start.y };
+    };
+    // The tip along these points over ms, inking `path` as it goes; false once stopped.
+    const follow = async (pts: { x: number; y: number }[], ms: number, path?: SVGPathElement) => {
+      if (d.stopped) return false;
+      const from = at();
+      const frames: Keyframe[] = [{ translate: `${from.x}px ${from.y}px`, offset: 0 }];
+      pts.forEach((q, i) => frames.push({ translate: `${q.x}px ${q.y}px`, offset: Math.max(0.01, i / Math.max(1, pts.length - 1)) }));
+      const move = pen.animate(frames, { duration: ms, easing: "linear", fill: "forwards" });
+      d.anims.push(move);
+      if (path) {
+        const len = path.getTotalLength();
+        path.style.strokeDasharray = `${len}px`;
+        d.anims.push(path.animate([{ strokeDashoffset: `${len}px` }, { strokeDashoffset: "0px" }], { duration: ms, easing: "linear", fill: "forwards" }));
+      }
+      const ok = await move.finished.then(() => true, () => false);
+      if (!ok || d.stopped) return false;
+      const end = pts.at(-1)!;
+      pen.style.translate = `${end.x}px ${end.y}px`;
+      move.cancel();
+      return true;
+    };
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    void (async () => {
+      while (!d.stopped) {
+        this.hand && (this.hand.className = "ink-hand");
+        const paths: SVGPathElement[] = [];
+        for (let i = 0; i < 3; i++) {
+          const pts = dot(start.x + 4 + i * 9, start.y - 5);
+          const path = document.createElementNS(SVG_NS, "path");
+          path.setAttribute("class", "ink-dot");
+          path.setAttribute("d", "M" + pts.map((q) => `${q.x.toFixed(2)} ${q.y.toFixed(2)}`).join(" L"));
+          this.svg.append(path);
+          paths.push(path);
+          if (!(await follow([pts[0]], 90)) || !(await follow(pts, 420, path))) return;
+        }
+        await wait(520);
+        if (d.stopped) return;
+        this.hand?.classList.add("erasing");
+        const rub = Array.from({ length: 9 }, (_, i) => ({ x: start.x + (i % 2 ? 26 : 1), y: start.y - 5 + (i - 4) * 0.7 }));
+        for (const p of paths) d.anims.push(p.animate([{ opacity: 0.85 }, { opacity: 0.1 }], { duration: 560, easing: "ease-in", fill: "forwards" }));
+        if (!(await follow(rub, 560))) return;
+        this.hand?.classList.remove("erasing");
+        for (const p of paths) p.remove();
+        await wait(200);
+        if (!(await follow([start], 160))) return;
+      }
+    })();
+  }
+
+  private stopDots(): void {
+    if (!this.dotting) return;
+    this.dotting.stopped = true;
+    for (const a of this.dotting.anims) a.cancel();
+    this.dotting = undefined;
+    this.hand?.classList.remove("erasing");
+    for (const p of [...this.svg.querySelectorAll(".ink-dot")]) p.remove();
   }
 
   private stopDoodle(): void {

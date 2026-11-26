@@ -2263,6 +2263,11 @@ header.top.sub .back svg {
   border: 2px dashed rgb(var(--shadow) / 0.2);
   border-radius: 4px;
 }
+/* too small for words: only the pencil's dots show (sketch.ts) */
+.sketch.small .sk-note,
+.sketch.small .sk-strikes {
+  visibility: hidden;
+}
 .sketch.glued::before,
 .sketch.glued .sk-note,
 .sketch.glued .ink-doodle {
