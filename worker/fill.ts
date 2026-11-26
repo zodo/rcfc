@@ -50,6 +50,51 @@ async function ask(ai: AiRunner, model: string, r: FillRequest): Promise<Fill> {
   return parseFill(res.response ?? res.choices?.[0]?.message?.content, r);
 }
 
+/**
+ * Comparing models for a streamed fill (preview only, `timing: true`): the
+ * reply streamed without a JSON mode (with one it comes whole), and when its
+ * first piece, its first translation (complete) and its end came, in ms. Nothing kept.
+ */
+async function timing(ai: AiRunner, model: string, r: FillRequest): Promise<Record<string, unknown>> {
+  const input: Record<string, unknown> = { messages: fillMessages(r), max_tokens: 700, temperature: 0.2, stream: true };
+  if (model.includes("gemma-4")) input.chat_template_kwargs = { enable_thinking: false };
+  const t0 = Date.now();
+  const stream = (await ai.run(model, input)) as ReadableStream<Uint8Array>;
+  const reader = stream.getReader();
+  const dec = new TextDecoder();
+  let buf = "", text = "";
+  let first: number | undefined, translation: number | undefined, word: number | undefined;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buf += dec.decode(value, { stream: !done });
+    const lines = buf.split("\n");
+    buf = done ? "" : (lines.pop() ?? "");
+    for (const line of lines) {
+      const data = line.replace(/^data:\s*/, "").trim();
+      if (!data || data === "[DONE]") continue;
+      try {
+        const j = JSON.parse(data) as { response?: string; choices?: { delta?: { content?: string } }[] };
+        const piece = j.response ?? j.choices?.[0]?.delta?.content ?? "";
+        if (!piece) continue;
+        first ??= Date.now() - t0;
+        text += piece;
+        if (word === undefined && /"word"\s*:\s*"[^"]*"/.test(text)) word = Date.now() - t0;
+        if (translation === undefined && /"translation"\s*:\s*"[^"]*"/.test(text)) translation = Date.now() - t0;
+      } catch {
+        // not a data line
+      }
+    }
+    if (done) break;
+  }
+  let parsed: Fill | undefined;
+  try {
+    parsed = parseFill(JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)), r);
+  } catch {
+    parsed = undefined;
+  }
+  return { first, word, translation, total: Date.now() - t0, chars: text.length, fill: parsed, raw: parsed ? undefined : text.slice(0, 300) };
+}
+
 /** Handles /api/fill; null for any other path. */
 export async function handleFill(request: Request, env: FillEnv): Promise<Response | null> {
   if (new URL(request.url).pathname !== "/api/fill") return null;
@@ -66,6 +111,13 @@ export async function handleFill(request: Request, env: FillEnv): Promise<Respon
 
   const asked = (body as { model?: unknown }).model;
   const model = !env.production && typeof asked === "string" && asked.startsWith("@cf/") ? asked : FILL_MODEL;
+  if (!env.production && (body as { timing?: unknown }).timing === true && env.AI) {
+    try {
+      return json(await timing(env.AI, model, r));
+    } catch (e) {
+      return json({ error: `timing failed: ${e instanceof Error ? e.message : String(e)}` }, 502);
+    }
+  }
   const key = await fillKey(r, model);
   const kept = await env.MEDIA.get(key);
   if (kept) return json(await new Response(kept.body).json());
