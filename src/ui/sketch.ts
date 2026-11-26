@@ -21,7 +21,7 @@
 // Per frame only the pencil's translate, the letters' opacity and the doodle's
 // and strikes' strokes change; the glued picture moves by transform only.
 import type { SceneText } from "../pictures";
-import { dot, PENCIL } from "./ink";
+import { dot, letGo, PENCIL, takeUp } from "./ink";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** Narrower than this, the place shows dots, not words. */
@@ -159,7 +159,7 @@ export class SketchNote {
   /** Its own clock: runs only while it has the pencil. */
   private clock = 0;
   private lastFrame = 0;
-  /** After the other pencil leaves: not before it has lifted off (real time). */
+  /** After the other pencil leaves: a moment after it lifts off (real time), to take it up. */
   private resumeAt = 0;
 
   constructor(private yieldTo?: () => boolean) {
@@ -276,7 +276,7 @@ export class SketchNote {
       // The other pencil is on the card: this one waits off it, until that one has lifted off.
       this.stopDoodle();
       if (this.pen) this.lift();
-      this.resumeAt = real + 260;
+      this.resumeAt = real + 30; // a frame after it lifts: it takes that pencil up (one pencil on the card)
       return;
     }
     if (real < this.resumeAt) return;
@@ -450,7 +450,12 @@ export class SketchNote {
     pen.append(hand);
     pen.style.translate = `${at.x}px ${at.y}px`;
     this.el.append(pen);
-    pen.animate([{ opacity: 0, translate: `${at.x + 14}px ${at.y - 18}px` }, { opacity: 1, translate: `${at.x}px ${at.y}px` }], { duration: 200, easing: "ease-out" });
+    // The fills' pencil just lifted off: it is this one, travelling here from where it wrote.
+    const was = takeUp();
+    if (was) {
+      const r = this.el.getBoundingClientRect();
+      pen.animate([{ translate: `${was.left - r.left}px ${was.top - r.top}px` }, { translate: `${at.x}px ${at.y}px` }], { duration: 240, easing: "ease-in-out" });
+    } else pen.animate([{ opacity: 0, translate: `${at.x + 14}px ${at.y - 18}px` }, { opacity: 1, translate: `${at.x}px ${at.y}px` }], { duration: 200, easing: "ease-out" });
     this.pen = pen;
     this.hand = hand;
     return pen;
@@ -600,8 +605,8 @@ export class SketchNote {
     if (!pen) return;
     this.pen = undefined;
     const [x, y] = pen.style.translate.split(" ").map(parseFloat);
-    void pen
-      .animate([{ opacity: 1, translate: `${x}px ${y}px` }, { opacity: 0, translate: `${x + 16}px ${y - 22}px` }], { duration: 220, easing: "ease-in", fill: "forwards" })
-      .finished.then(() => pen.remove(), () => pen.remove());
+    const a = pen.animate([{ opacity: 1, translate: `${x}px ${y}px` }, { opacity: 1, translate: `${x}px ${y}px`, offset: 0.35 }, { opacity: 0, translate: `${x + 16}px ${y - 22}px` }], { duration: 320, easing: "ease-in", fill: "forwards" });
+    letGo(pen, a); // the fills' pencil may take it up
+    void a.finished.then(() => pen.remove(), () => pen.remove());
   }
 }

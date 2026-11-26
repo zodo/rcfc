@@ -431,6 +431,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
       auto = a.auto;
       setText(a.text, place ?? "example");
       update();
+      renderFill(); // the pencil goes on to wait on the example
       checkDup();
       draw(false); // the words are in: the picture needn't wait for the example
     };
@@ -522,9 +523,11 @@ function open(note?: Note, over?: { leave: () => void }): void {
       ...(typedWord ? ["did you mean ", h("button", { type: "button", class: "link", lang: from!, onclick: takeSuggestion }, suggestion), "?"] : place === "front" && auto.has("front") ? or("word", from!) : []),
     );
     transFill.replaceChildren(...(place === "back" && auto.has("back") ? or("translation", to) : []));
-    // Looking it up: the pencil waits on the place being filled in.
-    const waitOn = asking ? places[filledPlace(asking) ?? "example"] : null;
-    ink.waitAt(filling && waitOn && !cleanFill(waitOn.value) ? waitOn : null);
+    // Looking it up: the pencil waits on the first place still to be filled in (the word or translation,
+    // then the example), so it goes from one to the next and never leaves the card in between.
+    const awaited = asking ? ([filledPlace(asking), "example"] as const).filter((p): p is FillPlace => !!p) : [];
+    const waitOn = awaited.map((p) => places[p]).find((el) => !cleanFill(el.value)) ?? null;
+    ink.waitAt(filling ? waitOn : null);
   };
 
   // ---- duplicates: told as soon as typing pauses ----

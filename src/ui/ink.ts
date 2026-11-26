@@ -32,6 +32,31 @@ const DOTS_REST_MS = 520;
 const TURN_MS = 120;
 const ERASE_MS = 560;
 
+/**
+ * One pencil on the screen: a pencil lifting off (its fills written) is taken
+ * up by the next writing that wants one (the picture's note, the next fills)
+ * and moved there, instead of fading out and another fading in.
+ */
+let lifting: { el: HTMLElement; anim?: Animation } | undefined;
+
+/** A pencil lifts off: anyone taking one up in the next moments takes this one. */
+export function letGo(el: HTMLElement, anim?: Animation): void {
+  if (lifting && lifting.el !== el) lifting.el.remove();
+  lifting = { el, anim };
+  if (anim) void anim.finished.then(() => lifting?.el === el && (lifting = undefined), () => {});
+}
+
+/** The pencil lifting off, if there is one: where it is on the screen now; it is taken off the page (the taker draws its own there). */
+export function takeUp(): { left: number; top: number } | undefined {
+  const l = lifting;
+  lifting = undefined;
+  if (!l?.el.isConnected) return undefined;
+  const r = l.el.getBoundingClientRect();
+  l.anim?.cancel();
+  l.el.remove();
+  return { left: r.left, top: r.top };
+}
+
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const settled = (a: Animation) =>
@@ -368,6 +393,12 @@ export class Ink {
   /** The pencil; one that isn't there yet comes down onto the paper at `at`. */
   private getPen(at: { x: number; y: number }): Pen {
     if (this.pen?.el.isConnected) return this.pen;
+    // A pencil just lifted elsewhere on the card: it is this one, and travels here from there.
+    const was = takeUp();
+    if (was) {
+      const d = this.desk().getBoundingClientRect();
+      at = { x: was.left - d.left, y: was.top - d.top };
+    }
     const el = document.createElement("div");
     el.className = "ink-pen";
     el.setAttribute("aria-hidden", "true");
@@ -379,7 +410,7 @@ export class Ink {
     this.desk().append(el);
     const pen: Pen = { el, hand, x: at.x, y: at.y };
     this.pen = pen;
-    if (!reducedMotion())
+    if (!was && !reducedMotion())
       el.animate([{ opacity: 0, translate: `${at.x + 14}px ${at.y - 18}px` }, { opacity: 1, translate: `${at.x}px ${at.y}px` }], { duration: 200, easing: "ease-out" });
     return pen;
   }
@@ -401,7 +432,10 @@ export class Ink {
     this.pen = undefined;
     pen.move?.cancel();
     if (reducedMotion() || !pen.el.isConnected) return pen.el.remove();
-    const a = pen.el.animate([{ opacity: 1, translate: `${pen.x}px ${pen.y}px` }, { opacity: 0, translate: `${pen.x + 16}px ${pen.y - 22}px` }], { duration: 220, easing: "ease-in", fill: "forwards" });
+    // It rests a moment first: the next writing on the card may take it up there, still in full view.
+    const at = `${pen.x}px ${pen.y}px`;
+    const a = pen.el.animate([{ opacity: 1, translate: at }, { opacity: 1, translate: at, offset: 0.35 }, { opacity: 0, translate: `${pen.x + 16}px ${pen.y - 22}px` }], { duration: 320, easing: "ease-in", fill: "forwards" });
+    letGo(pen.el, a);
     void settled(a).then(() => pen.el.remove());
   }
 }
