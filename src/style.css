@@ -1054,6 +1054,13 @@ header.top.sub .back svg {
   min-width: 38px;
   text-align: right;
 }
+/* opening a pile: a copy of the table's pile grows from its spot into the study pile (study.ts growFrom) */
+.pile-grow {
+  position: fixed;
+  z-index: 30;
+  pointer-events: none;
+  transform-origin: center; /* no will-change: it would keep the copy drawn at its small size, blurry when grown */
+}
 .pile {
   position: relative;
   z-index: 2; /* a card held or thrown passes over the buttons */

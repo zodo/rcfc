@@ -122,7 +122,8 @@ function spot(s: StudySession, label: string, moved: Moved): { el: HTMLElement; 
     setTimeout(() => haptic("thud"), Math.round(cards.length * step) + 180);
   }
   const study = (e: Event) => {
-    app.opening = { pile: s.pile, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() };
+    const spot = e.currentTarget as HTMLElement;
+    app.opening = { pile: s.pile, rect: spot.getBoundingClientRect(), copy: pile.cloneNode(true) as HTMLElement };
     if (s.lang === undefined) return go.study(s.pile);
     rememberLanguage(s.lang);
     go.study(s.lang);
