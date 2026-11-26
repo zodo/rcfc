@@ -8,7 +8,7 @@
 // Spending is capped per UTC day in D1 (ai_budget) below the free Workers AI
 // allocation: past the cap the API answers 429 with Retry-After, never a bill.
 // Without an AI binding (local dev) it draws a placeholder instead.
-import { budgetDay, DEFAULT_DAILY_NEURONS, IMAGE_MODEL, MAX_DETAILS, meanings, NEURONS_PER_PICTURE, parsePlan, parseScene, parseSense, planPrompt, PICTURE_H, PICTURE_W, SCENE_MODEL, sceneMessages, sceneSoFar, secondsToReset, senseFor, senseMessages, takeLines, type Plan, type PictureLine, type PictureRequest } from "../src/domain/pictures";
+import { budgetDay, DEFAULT_DAILY_NEURONS, IMAGE_MODEL, MAX_DETAILS, meanings, NEURONS_PER_PICTURE, parsePlan, parseScene, parseSense, planPrompt, planProblem, retryMessages, PICTURE_H, PICTURE_W, SCENE_MODEL, sceneMessages, sceneSoFar, secondsToReset, senseFor, senseMessages, takeLines, type Plan, type PictureLine, type PictureRequest } from "../src/domain/pictures";
 import { isSyncCode } from "../src/domain/sync";
 import { json, type SqlDb } from "./sync";
 
@@ -87,7 +87,24 @@ async function chat(ai: AiRunner, model: string, messages: { role: string; conte
 /** The meaning (decided in code, else picked from the listed ones by the example), then a scene from word + meaning only. */
 async function drawScene(ai: AiRunner, r: PictureRequest, model = SCENE_MODEL): Promise<{ sense: string; plan: Plan }> {
   const sense = senseFor(r) ?? parseSense(await chat(ai, model, senseMessages(r), 20), r);
-  return { sense, plan: parsePlan(await chat(ai, model, sceneMessages(r, sense), 400), sense, wants(r)) };
+  const reply = await chat(ai, model, sceneMessages(r, sense), 400);
+  return { sense, plan: await checked(ai, model, r, sense, reply) };
+}
+
+/**
+ * The plan from the scene LLM's reply; one that breaks a rule (digits for a
+ * year, a lightbulb) is asked for once more; broken again, none.
+ */
+async function checked(ai: AiRunner, model: string, r: PictureRequest, sense: string, reply: unknown): Promise<Plan> {
+  const plan = parsePlan(reply, sense, wants(r));
+  const problem = planProblem(plan, sense);
+  if (!problem) return plan;
+  const text = typeof reply === "string" ? reply : JSON.stringify(reply);
+  const again = parsePlan(await chat(ai, model, retryMessages(sceneMessages(r, sense), text, problem), 400).catch(() => null), sense, wants(r));
+  // Broken twice: no picture beats a calendar for "year". Asked for by the user: the scene, or the first one.
+  if (!planProblem(again, sense)) return again;
+  if (!wants(r)) return { kind: "none" };
+  return again.kind === "scene" ? again : plan.kind === "scene" ? plan : { kind: "scene", scene: `A simple everyday scene that shows ${sense}.` };
 }
 
 /** The user asked for this picture (a tap, or details): never answered with none. */
@@ -177,7 +194,7 @@ function streamed(ai: AiRunner, r: PictureRequest, env: PictureEnv): Response {
       const s = sceneSoFar(text);
       if (s.length > shown.length) void send({ scene: (shown = s) });
     });
-    const plan = parsePlan(reply, sense, wants(r));
+    const plan = await checked(ai, SCENE_MODEL, r, sense, reply);
     if (plan.kind === "none") {
       await refund(env.DB, budgetDay((env.now ?? Date.now)()), NEURONS_PER_PICTURE - NEURONS_SCENE);
       return send({ none: true, sense });

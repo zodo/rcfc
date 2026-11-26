@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AssetAttached, NoteCreatedPayload } from "../src/domain/events";
-import { budgetDay, digitsPrompt, imagePrompt, meanings, parsePlan, parseScene, parseSense, SCENE_MODEL, sceneMessages, sceneSoFar, sceneSystem, secondsToReset, senseFor, senseMessages, takeLines, withoutQuotes, type PictureLine } from "../src/domain/pictures";
+import { budgetDay, digitsPrompt, imagePrompt, meanings, parsePlan, parseScene, planProblem, parseSense, SCENE_MODEL, sceneMessages, sceneSoFar, sceneSystem, secondsToReset, senseFor, senseMessages, takeLines, withoutQuotes, type PictureLine } from "../src/domain/pictures";
 import { Pictures } from "../src/pictures";
 import { handlePictures, type AiRunner, type BlobStore, type PictureEnv } from "../worker/pictures";
 import { sqliteD1 } from "./support/d1";
@@ -145,6 +145,22 @@ describe("picture prompts", () => {
     expect(digitsPrompt("7")).toContain("one single large numeral 7, only one");
   });
 
+  it("finds the rules the scene model breaks, so it is asked again", () => {
+    expect(planProblem({ kind: "digits", digits: "1", scene: "" }, "year")).toContain("not a number");
+    expect(planProblem({ kind: "digits", digits: "13", scene: "" }, "thirteen")).toBeUndefined();
+    expect(planProblem({ kind: "digits", digits: "10", scene: "" }, "tenth")).toContain("not a number");
+    expect(planProblem({ kind: "digits", digits: "12", scene: "" }, "a dozen")).toContain("not a number");
+    expect(parsePlan({ kind: "scene", scene: "A man lifting a box." }, "to need")).toEqual({ kind: "none" });
+    expect(planProblem({ kind: "scene", scene: "A man with a lightbulb above his head." }, "to think")).toContain("lightbulb");
+    expect(planProblem({ kind: "scene", scene: "A calendar page torn off." }, "year")).toContain("calendar");
+    expect(planProblem({ kind: "scene", scene: "A small round mirror on a stand." }, "mirror")).toBeUndefined();
+    expect(planProblem({ kind: "scene", scene: "A woman signing to a friend with her hands." }, "sign language")).toBeUndefined();
+    expect(planProblem({ kind: "scene", scene: "A smiling woman holding a mug." }, "hot")).toBeUndefined();
+    // Modal verbs get none in code: the model drew "can" as a weightlifter.
+    expect(parsePlan({ kind: "scene", scene: "A weightlifter." }, "to be able to")).toEqual({ kind: "none" });
+    expect(parsePlan({ kind: "scene", scene: "A weightlifter." }, "can", true)).toMatchObject({ kind: "scene" });
+  });
+
   it("names the medium before the scene", () => {
     expect(imagePrompt("A cat.").indexOf("Cut-paper")).toBe(0);
     expect(imagePrompt("A cat.")).toContain("irregular and hand-cut");
@@ -249,6 +265,26 @@ describe("pictures API", () => {
     expect(row.neurons).toBe(4);
     // Asked for: drawn anyway.
     expect((await (await s.fetch("/api/pictures", post({ word: "pero", translation: "but", always: true }))).json())).toMatchObject({ key: expect.any(String) });
+  });
+
+  it("a scene that breaks a rule is asked for once more", async () => {
+    const s = server();
+    s.ai.plans.set("el año", { kind: "digits", digits: "1" });
+    const replies = [{ kind: "scene", scene: "A calendar on a wall." }];
+    const orig = s.ai.run.bind(s.ai);
+    const retried: string[] = [];
+    s.ai.run = async (model, input) => {
+      const m = (input as { messages?: { role: string }[] }).messages;
+      if (model === SCENE_MODEL && m && m.length > 2) {
+        retried.push((m.at(-1) as unknown as { content: string }).content);
+        return { response: JSON.stringify(replies.shift()) };
+      }
+      return orig(model, input);
+    };
+    const body = await (await s.fetch("/api/pictures", post({ word: "el año", translation: "year" }))).json();
+    expect(body).toEqual({ none: true, sense: "year" }); // asked once more only; broken again, no picture
+    expect(retried).toHaveLength(1);
+    expect(retried[0]).toContain("not a number");
   });
 
   it("streamed: a picture that fails ends with an error line", async () => {
