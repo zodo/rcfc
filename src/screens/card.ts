@@ -16,7 +16,7 @@ import type { NoteDeleted, NoteRestored } from "../domain/events";
 import type { EntityId } from "../domain/ids";
 import type { PicState, SketchResult } from "../pictures";
 import { foldWhenTight } from "../ui/fold";
-import { h, ICON_SPEAK, langName, langSelect, slip } from "../ui/h";
+import { h, ICON_PEN, ICON_SPEAK, langName, langSelect, slip } from "../ui/h";
 import { Ink } from "../ui/ink";
 import { arrowNote, pickWord } from "../ui/pencil";
 import { cutout, cutoutReady } from "../ui/picture";
@@ -232,14 +232,38 @@ function open(note?: Note, over?: { leave: () => void }): void {
     });
   };
 
+  /** The picture whose pencil has shown. */
+  let pencilFor: string | undefined;
   const renderPic = () => {
     const b = clean(back.value);
     const both = !!clean(front.value) && !!b;
     const box = (...c: (Node | string | null)[]) => h("div", { class: "ed-pic-box" }, ...c);
     // The translation shows here once the pencil has written it, not before.
     const mirror = () => h("span", { class: "ed-mirror", lang: to }, ink.isWriting(back) ? "" : b);
-    const caption = () =>
-      h("button", { type: "button", class: "ed-caption", onclick: () => ((detailsOpen = true), renderPic(), detailsInput.focus()) }, details ? `how it looks: ${details}` : "+ how it looks");
+    /** The drawn picture with a pencil on its corner (how it looks: details, Redraw, No picture), laid over it so nothing moves when it comes. */
+    const framed = (el: HTMLElement, fresh: boolean) => {
+      const edit = h("button", {
+        type: "button",
+        class: `ed-pic-edit${fresh ? " fresh" : ""}`,
+        "aria-label": details ? `How it looks: ${details}` : "How it looks",
+        title: "How it looks",
+        onclick: () => {
+          detailsOpen = !detailsOpen;
+          renderPic();
+          if (!detailsOpen) return;
+          detailsInput.focus();
+          // Folded above the keyboard: its Redraw and No picture in view too.
+          const vv = window.visualViewport;
+          if (vv && pic.closest(".folded"))
+            requestAnimationFrame(() => {
+              const over = pic.getBoundingClientRect().bottom + 8 - (vv.offsetTop + vv.height);
+              if (over > 0) window.scrollBy({ top: over });
+            });
+        },
+      });
+      edit.innerHTML = ICON_PEN;
+      return h("div", { class: "ed-pic-frame" }, el, edit);
+    };
     const queued = note && !drawn && !pending && !removed ? pictures.state(note.id) : undefined;
     /** Keeps the caption's line while there is no picture yet, so nothing under it moves when one comes. */
     const room = () => h("span", { class: "ed-caption room", "aria-hidden": "true" }, "+ how it looks");
@@ -250,7 +274,10 @@ function open(note?: Note, over?: { leave: () => void }): void {
       body = [sketch.el, room()];
     } else if (drawn) {
       // On its piece of paper, glued on: the card being made.
-      body = [glued?.key === drawn.key ? glued.el : cutout(drawn.key, "l", true), caption()];
+      // Just brought in, the pencil comes once it lies flat; drawn again (details opened) it is there at once.
+      const fresh = glued?.key === drawn.key && pencilFor !== drawn.key;
+      pencilFor = drawn.key;
+      body = [glued?.key === drawn.key ? framed(glued.el, fresh) : framed(cutout(drawn.key, "l", true), false), room()];
     } else if (pending) {
       body = [box(mirror(), h("span", { class: "ed-pic-says" }, "drawing…")), room()];
     } else if (queued) {

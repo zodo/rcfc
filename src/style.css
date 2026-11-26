@@ -2352,8 +2352,41 @@ header.top.sub .back svg {
 }
 .ed-pic input.ed-details-input {
   max-width: 300px;
-  font-size: 15px;
+  font-size: 16px; /* under 16 px iOS zooms the page in on focus */
   text-align: center;
+}
+/* the drawn picture and the pencil on its top right corner */
+.ed-pic-frame {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+}
+.ed-pic-frame > .pic,
+.ed-pic-frame > .sketch {
+  max-width: none;
+}
+.ed-pic-edit {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  z-index: 3;
+  padding: 10px;
+  line-height: 0;
+  color: #8f978f;
+  background: none;
+}
+.ed-pic-edit svg {
+  width: 18px;
+  height: 18px;
+}
+/* a picture just brought in: the pencil once it lies flat */
+.ed-pic-edit.fresh {
+  animation: ed-pencil-in 0.25s ease-out 1s backwards;
+}
+@keyframes ed-pencil-in {
+  from {
+    opacity: 0;
+  }
 }
 .ed-pic-actions {
   display: flex;
@@ -2445,6 +2478,22 @@ header.top.ed-bar:has(+ .content .editor.folded) {
 }
 .editor.folded .ed-side.known.open .ed-caption.room {
   display: none;
+}
+/* the page can scroll a little under the keyboard, to bring what is typed with into view */
+.content:has(> .editor.folded) {
+  padding-bottom: 50vh;
+}
+/* its details being typed: the field the card's width, under the small picture */
+.editor.folded .ed-side.known.open .ed-pic:has(.ed-details-input) {
+  flex-direction: column;
+  gap: 4px;
+}
+.editor.folded .ed-side.known.open .ed-pic .ed-details-input {
+  max-width: none;
+}
+.editor.folded .ed-side.known.open .ed-pic-edit {
+  top: -16px;
+  right: -22px;
 }
 /* too small for words */
 .editor.folded .ed-side.known.open .ed-pic-says,

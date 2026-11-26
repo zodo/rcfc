@@ -592,9 +592,9 @@ async function run(s: Browser, url: string) {
   await s.type("input[name=front]", "la casa");
   await s.type("input[name=back]", "home");
   await s.js(`document.activeElement.blur();`); // typing done: the picture for these words, not the filled-in translation's
-  await s.until("its picture, loaded", `document.querySelector(".ed-pic .pic img")?.naturalWidth > 0 && document.querySelector(".ed-caption") && !document.querySelector(".ed-pic.busy")`, 90_000);
-  await s.js(`await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));`);
-  await s.click(".ed-caption");
+  await s.until("its picture, loaded", `document.querySelector(".ed-pic .pic img")?.naturalWidth > 0 && document.querySelector(".ed-pic-edit") && !document.querySelector(".ed-pic.busy")`, 90_000);
+  await s.js(`await new Promise((r) => setTimeout(r, 1300));`); // the pencil comes once the picture lies flat
+  await s.click(".ed-pic-edit");
   await s.click(".ed-pic-actions button", "No picture");
   await s.until("no picture", `document.querySelector(".ed-pic-box")?.textContent === "no picture"`);
   await s.click("button.ed-add", "Add");
