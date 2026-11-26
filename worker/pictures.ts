@@ -8,7 +8,7 @@
 // Spending is capped per UTC day in D1 (ai_budget) below the free Workers AI
 // allocation: past the cap the API answers 429 with Retry-After, never a bill.
 // Without an AI binding (local dev) it draws a placeholder instead.
-import { budgetDay, DEFAULT_DAILY_NEURONS, IMAGE_MODEL, imagePrompt, MAX_DETAILS, meanings, NEURONS_PER_PICTURE, parseScene, parseSense, PICTURE_H, PICTURE_W, SCENE_MODEL, sceneMessages, sceneSoFar, secondsToReset, senseFor, senseMessages, takeLines, type PictureLine, type PictureRequest } from "../src/domain/pictures";
+import { budgetDay, DEFAULT_DAILY_NEURONS, IMAGE_MODEL, MAX_DETAILS, meanings, NEURONS_PER_PICTURE, parsePlan, parseScene, parseSense, planPrompt, PICTURE_H, PICTURE_W, SCENE_MODEL, sceneMessages, sceneSoFar, secondsToReset, senseFor, senseMessages, takeLines, type Plan, type PictureLine, type PictureRequest } from "../src/domain/pictures";
 import { isSyncCode } from "../src/domain/sync";
 import { json, type SqlDb } from "./sync";
 
@@ -47,7 +47,7 @@ function parseRequest(body: unknown): PictureRequest | null {
   const word = str(b.word, MAX_FIELD);
   const translation = str(b.translation, MAX_FIELD);
   if (!word || !translation) return null;
-  return { word, translation, example: str(b.example, MAX_FIELD), sense: str(b.sense, 100), details: str(b.details, MAX_DETAILS) };
+  return { word, translation, example: str(b.example, MAX_FIELD), sense: str(b.sense, 100), details: str(b.details, MAX_DETAILS), always: b.always === true || undefined };
 }
 
 /** Reserve neurons for one AI call (pictures, fills); false when today's cap would be exceeded. */
@@ -59,6 +59,14 @@ export async function reserve(db: SqlDb, day: string, cost: number, cap: number)
   ]);
   return (r.meta.changes ?? 0) > 0;
 }
+
+/** Give back what a reservation didn't use (no picture drawn). */
+async function refund(db: SqlDb, day: string, cost: number): Promise<void> {
+  await db.batch([db.prepare("UPDATE ai_budget SET neurons = max(0, neurons - ?) WHERE day = ?").bind(cost, day)]);
+}
+
+/** Of a picture's reservation, what the two short LLM calls (meaning, scene) cost; the rest is the drawing. */
+const NEURONS_SCENE = 2;
 
 function chatInput(model: string, messages: { role: string; content: string }[], maxTokens: number): Record<string, unknown> {
   const input: Record<string, unknown> = { messages, max_tokens: maxTokens, temperature: 0.3 };
@@ -77,10 +85,13 @@ async function chat(ai: AiRunner, model: string, messages: { role: string; conte
 }
 
 /** The meaning (decided in code, else picked from the listed ones by the example), then a scene from word + meaning only. */
-async function drawScene(ai: AiRunner, r: PictureRequest, model = SCENE_MODEL): Promise<{ sense: string; scene: string }> {
+async function drawScene(ai: AiRunner, r: PictureRequest, model = SCENE_MODEL): Promise<{ sense: string; plan: Plan }> {
   const sense = senseFor(r) ?? parseSense(await chat(ai, model, senseMessages(r), 20), r);
-  return { sense, scene: parseScene(await chat(ai, model, sceneMessages(r, sense), 400), sense) };
+  return { sense, plan: parsePlan(await chat(ai, model, sceneMessages(r, sense), 400), sense, wants(r)) };
 }
+
+/** The user asked for this picture (a tap, or details): never answered with none. */
+const wants = (r: PictureRequest) => !!r.always || !!r.details;
 
 /** The scene LLM's reply streamed: `onText` gets all of it so far after each piece. Returns the whole reply. */
 async function chatStream(ai: AiRunner, messages: { role: string; content: string }[], maxTokens: number, onText: (text: string) => void): Promise<string> {
@@ -166,9 +177,14 @@ function streamed(ai: AiRunner, r: PictureRequest, env: PictureEnv): Response {
       const s = sceneSoFar(text);
       if (s.length > shown.length) void send({ scene: (shown = s) });
     });
-    const scene = parseScene(reply, sense);
+    const plan = parsePlan(reply, sense, wants(r));
+    if (plan.kind === "none") {
+      await refund(env.DB, budgetDay((env.now ?? Date.now)()), NEURONS_PER_PICTURE - NEURONS_SCENE);
+      return send({ none: true, sense });
+    }
+    const scene = plan.scene;
     if (scene !== shown) await send({ scene });
-    const jpeg = await drawImage(ai, imagePrompt(scene));
+    const jpeg = await drawImage(ai, planPrompt(plan));
     const key = `pics/${crypto.randomUUID()}.jpg`;
     await env.MEDIA.put(key, jpeg, { httpMetadata: { contentType: "image/jpeg" } });
     await send({ key, sense, scene });
@@ -192,12 +208,22 @@ async function create(request: Request, env: PictureEnv): Promise<Response> {
   if (!env.production && env.AI && b.scene_only === true) {
     const model = typeof b.scene_model === "string" && b.scene_model.startsWith("@cf/") ? b.scene_model : SCENE_MODEL;
     try {
-      return json(await drawScene(env.AI, r, model));
+      const { sense, plan } = await drawScene(env.AI, r, model);
+      return json({ sense, ...plan });
     } catch (e) {
       return json({ error: `scene failed: ${e instanceof Error ? e.message : String(e)}` }, 502);
     }
   }
   const stream = (body as { stream?: unknown }).stream === true;
+  // Local dev stands in for the scene model's "none" with a few grammar words, so the card editor's no-picture state shows.
+  if (!env.AI && !r.always && !r.details && /^(but|of|the|however|although)$/i.test(senseFor(r) ?? "")) {
+    const none = { none: true as const, sense: senseFor(r)! };
+    if (!stream) return json(none);
+    return ndjson(async (send) => {
+      if (env.devDelay) await sleep(env.devDelay);
+      await send(none);
+    });
+  }
   if (!env.AI) {
     if (!stream) return json(await placeholderPicture(r, env));
     // Streamed like a real picture: the scene word by word, the picture a while later.
@@ -223,8 +249,13 @@ async function create(request: Request, env: PictureEnv): Promise<Response> {
   }
   if (stream) return streamed(env.AI, r, env);
   try {
-    const { sense, scene } = await drawScene(env.AI, r);
-    const jpeg = await drawImage(env.AI, imagePrompt(scene));
+    const { sense, plan } = await drawScene(env.AI, r);
+    if (plan.kind === "none") {
+      await refund(env.DB, budgetDay(now), NEURONS_PER_PICTURE - NEURONS_SCENE);
+      return json({ none: true, sense });
+    }
+    const scene = plan.scene;
+    const jpeg = await drawImage(env.AI, planPrompt(plan));
     const key = `pics/${crypto.randomUUID()}.jpg`;
     await env.MEDIA.put(key, jpeg, { httpMetadata: { contentType: "image/jpeg" } });
     return json({ key, sense, scene });

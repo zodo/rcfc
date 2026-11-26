@@ -88,7 +88,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
     sketch?.close();
     sketch = undefined;
   };
-  let problem: "offline" | "limit" | "failed" | undefined;
+  /** Why the words drawn for have no picture; `none`: no picture can show them (of, however), so the card gets none. */
+  let problem: "offline" | "limit" | "failed" | "none" | undefined;
   let removed = !!note?.noPicture;
   let detailsOpen = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -183,7 +184,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
   const pic = h("div", { class: "ed-pic" });
   const detailsInput = input("details", { class: "ed-details-input", placeholder: "how it looks, e.g. in a park in autumn", maxLength: 300, "aria-label": "How it looks" });
 
-  const draw = (force: boolean, via = sketcher) => {
+  /** `always`: the user asked for a picture ("draw one"), so the answer is never none. */
+  const draw = (force: boolean, via = sketcher, always = false) => {
     clearTimeout(timer);
     const f = clean(front.value), b = clean(back.value);
     if (!f || !b || removed) return renderPic();
@@ -195,7 +197,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     const words = picKey(f, b, "");
     // New words: the pencil notes what the picture will show. A redraw of the same words: the old picture stays until the new one comes.
     const sk = drawn && drawnWords === words ? undefined : (sketch = new SketchNote(() => ink.busy()));
-    const p = via.draw({ word: f, translation: b, example: clean(example.value), details, onText: sk && ((t) => sk.text(t)) });
+    const p = via.draw({ word: f, translation: b, example: clean(example.value), details, always, onText: sk && ((t) => sk.text(t)) });
     pending = p;
     renderPic();
     void p.then(async (r) => {
@@ -216,7 +218,10 @@ function open(note?: Note, over?: { leave: () => void }): void {
         drawn = r.picture;
         drawnWords = words;
       }
-      else if (r.reason !== "stale") problem = r.reason;
+      else if (r.reason !== "stale") {
+        problem = r.reason;
+        if (r.reason === "none") drawn = undefined;
+      }
       renderPic();
     });
   };
@@ -234,7 +239,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     const room = () => h("span", { class: "ed-caption room", "aria-hidden": "true" }, "+ how it looks");
     let body: (Node | string | null)[];
     if (removed) {
-      body = [box(h("span", {}, "no picture")), h("button", { type: "button", class: "ed-caption", onclick: () => ((removed = false), draw(true)) }, "draw one")];
+      body = [box(h("span", {}, "no picture")), h("button", { type: "button", class: "ed-caption", onclick: () => ((removed = false), draw(true, sketcher, true)) }, "draw one")];
     } else if (pending && sketch) {
       body = [sketch.el, room()];
     } else if (drawn) {
@@ -244,6 +249,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
       body = [box(mirror(), h("span", { class: "ed-pic-says" }, "drawing…")), room()];
     } else if (queued) {
       body = [box(h("span", { class: "ed-pic-says" }, QUEUE_TEXT[queued])), queued === "failed" ? h("button", { type: "button", class: "ed-caption", onclick: () => void pictures.retry(note!.id) }, "try again") : null];
+    } else if (problem === "none") {
+      body = [box(mirror()), h("button", { type: "button", class: "ed-caption", onclick: () => draw(true, sketcher, true) }, "draw one anyway")];
     } else if (problem) {
       const says = problem === "offline" ? "it draws itself once you're online" : problem === "limit" ? "today's free pictures are used up; it comes tomorrow" : "it couldn't be drawn";
       body = [box(mirror(), h("span", { class: "ed-pic-says" }, says)), problem === "failed" ? h("button", { type: "button", class: "ed-caption", onclick: () => draw(true) }, "try again") : room()];
@@ -493,7 +500,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     d.lang_pair = note?.lang_pair ?? { from: from!, to };
     d.labels = labels;
     const current = picKey(front.value, back.value, details);
-    d.picture = removed ? null : !pending && drawn && drawnFor === current ? drawn : undefined;
+    d.picture = removed || (problem === "none" && !pending && drawnFor === current) ? null : !pending && drawn && drawnFor === current ? drawn : undefined;
     return d;
   };
   const ready = (): boolean => {

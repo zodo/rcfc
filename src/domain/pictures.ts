@@ -3,8 +3,10 @@
 //
 // Pipeline: the meaning is decided first (user's choice, else the only listed
 // meaning, else a small LLM picks one of the listed meanings from the example),
-// then the LLM turns word + meaning into one concrete scene, and FLUX.2 klein 4B
-// draws it in the house cut-paper style. The scene writer never sees the
+// then the LLM picks the kind of picture and turns word + meaning into one
+// concrete scene, and FLUX.2 klein 4B draws it in the house cut-paper style.
+// Numbers, times and years are drawn as numerals instead (FLUX miscounts
+// "thirteen apples"), and words no picture can show (of, however) get none. The scene writer never sees the
 // example: given one, it drew the sentence's situation instead of the word.
 
 export const PICTURE_W = 768;
@@ -28,6 +30,8 @@ export interface PictureRequest {
   sense?: string;
   /** Extra details the user wants in the picture. */
   details?: string;
+  /** The user asked for a picture: never answered with none. */
+  always?: boolean;
 }
 
 /** The meanings a translation lists ("bank, bench" → ["bank", "bench"]). */
@@ -71,8 +75,12 @@ export function parseSense(reply: unknown, r: PictureRequest): string {
   return m[n - 1] ?? m[0] ?? r.translation;
 }
 
-export const SCENE_SYSTEM = `You write the subject for a flashcard illustration that helps a language learner remember one word.
-Rules:
+const KINDS = `First decide which kind of picture fits the meaning:
+- "scene": almost every word: things, people, animals, actions, feelings, qualities, places, weather, days, seasons, and abstract ideas someone can act out.
+- "digits": numbers, times of day and years. Drawn as big numerals cut from paper, because counted things come out miscounted. Write only the digits (e.g. thirteen: "13", a hundred: "100", half past seven: "7:30", 1999: "1999"); ordinals get the bare digit (third: "3").
+- "none": only words whose meaning no picture can show: articles, prepositions, conjunctions, pronouns, particles, auxiliary verbs, and connecting words like however, therefore, actually or although. When in doubt, choose "scene".`;
+
+const SCENE_RULES = `Rules for a scene:
 - Show exactly the given "Meaning" of the word, nothing else.
 - Describe one concrete, instantly readable scene: one or two main figures or objects. Never describe a place behind them (no street, city, room, park, wall, doorway or landscape): it becomes a cut-out on blank paper, so at most one or two small props hint at the setting, like a sun, a lamp or a bush. 1-2 sentences, English, no style words (the style is added later).
 - Abstract words, verbs and idioms: show a person or animal visibly doing or feeling it, in a situation where the meaning is obvious.
@@ -80,21 +88,38 @@ Rules:
 - People are always adults.
 - Make the meaning unmistakable: include the one detail that tells this meaning apart from similar ideas (e.g. for getting up early: a person already dressed, drinking coffee, a small sun just rising, a rooster crowing).
 - If "Details" are given, include them.
-- The picture is a test: the learner must guess the word from it. So nothing in it may carry writing: no quoted words, dialogue or names, no speech or thought bubbles, no calendars, signs, books, screens, chalkboards, labels, letters or digits. Show talking with gestures and open mouths; show days, numbers and times with things you can count or see (e.g. Monday: a sleepy office worker with a briefcase hurrying to work at dawn; thirteen: thirteen apples in a row).
-Return JSON: {"scene": "<the scene>"}`;
+- The picture is a test: the learner must guess the word from it. So nothing in it may carry writing: no quoted words, dialogue or names, no speech or thought bubbles, no calendars, signs, books, screens, chalkboards, labels, letters or digits. Show talking with gestures and open mouths; show days and seasons with what happens in them (e.g. Monday: a sleepy office worker with a briefcase hurrying to work at dawn). Never show a number by counting things.`;
 
-/** Word and the meaning decided before (never the example), plus the user's details. */
+const INTRO = "You write the subject for a flashcard illustration that helps a language learner remember one word.";
+
+/**
+ * The scene LLM's system prompt. It also decides the kind of picture (a scene,
+ * digits cut from paper, or none), "kind" first so it is known before the
+ * scene streams. `always`: the user asked for a picture, so "none" is no option.
+ */
+export function sceneSystem(always = false): string {
+  if (always) return `${INTRO}\n${KINDS.replace(/\n- "none":[^\n]*/, "").replace("which kind", "which of two kinds")}\n${SCENE_RULES}\nReturn JSON: {"kind": "scene", "scene": "<the scene>"} or {"kind": "digits", "digits": "<the digits>"}`;
+  return `${INTRO}\n${KINDS}\n${SCENE_RULES}\nReturn JSON: {"kind": "scene", "scene": "<the scene>"}, {"kind": "digits", "digits": "<the digits>"} or {"kind": "none"}`;
+}
+
+/** Word and the meaning decided before (never the example), plus the user's details. With details the user wants a picture. */
 export function sceneMessages(r: PictureRequest, sense: string): { role: "system" | "user"; content: string }[] {
   const lines = [`Word: ${r.word}`, `Meaning: ${sense}`];
   if (r.details?.trim()) lines.push(`Details: ${r.details.trim()}`);
   return [
-    { role: "system", content: SCENE_SYSTEM },
+    { role: "system", content: sceneSystem(r.always || !!r.details?.trim()) },
     { role: "user", content: lines.join("\n") },
   ];
 }
 
-/** The scene LLM's reply (a JSON string, an object, or JSON in a code fence). */
-export function parseScene(reply: unknown, sense: string): string {
+/** What to draw: a scene, numerals cut from paper (`scene` describes them for the pencil), or nothing. */
+export type Plan = { kind: "scene"; scene: string } | { kind: "digits"; digits: string; scene: string } | { kind: "none" };
+
+/** A number, a time or a year: what may be drawn as numerals. "3." (FLUX drew "33.") and the like are left out. */
+const DIGITS_RE = /^\d{1,4}(?::\d{2})?$/;
+
+/** The scene LLM's reply (a JSON string, an object, or JSON in a code fence). `always`: never "none". */
+export function parsePlan(reply: unknown, sense: string, always = false): Plan {
   let v: unknown = reply;
   if (typeof v === "string") {
     const text = v.replace(/^\s*```(?:json)?/, "").replace(/```\s*$/, "").trim();
@@ -104,9 +129,18 @@ export function parseScene(reply: unknown, sense: string): string {
       v = { scene: text };
     }
   }
-  const o = (v ?? {}) as { scene?: unknown };
+  const o = (v ?? {}) as { kind?: unknown; scene?: unknown; digits?: unknown };
+  const digits = typeof o.digits === "string" || typeof o.digits === "number" ? String(o.digits).replace(/\s+/g, "") : "";
+  if (o.kind === "digits" && DIGITS_RE.test(digits)) return { kind: "digits", digits, scene: `the number ${digits}, cut from paper` };
   const text = typeof o.scene === "string" ? withoutQuotes(o.scene) : "";
-  return text || `A simple everyday scene that shows ${sense}.`;
+  if (o.kind === "none" && !always) return { kind: "none" };
+  return { kind: "scene", scene: text || `A simple everyday scene that shows ${sense}.` };
+}
+
+/** The scene alone (a reply without a kind is a scene). */
+export function parseScene(reply: unknown, sense: string): string {
+  const p = parsePlan(reply, sense, true);
+  return p.kind === "none" ? "" : p.scene;
 }
 
 const SPEECH_VERB = String.raw`(?:(?:and|while|as)\s+)?(?:says?|said|saying|asks?|asking|shouts?|shouting|reads?|reading|writes?|writing|showing|displaying|labell?ed|with the words?|the words?)(?:\s+(?:each other|him|her|them|out|loud))*,?\s*`;
@@ -136,6 +170,22 @@ export function imagePrompt(scene: string): string {
   return `${STYLE_LEAD} ${scene} ${STYLE}`;
 }
 
+/** Numerals: the one thing drawn with writing, since digits read the same in every language and the translation beside them says it anyway. */
+export function digitsPrompt(digits: string): string {
+  // Kept plain: spelling the characters out with their count ("exactly 2 characters: 1, 3") made FLUX draw 123,
+  // and "each in a different color, side by side" made one 7 into 7777.
+  const what =
+    digits.length === 1
+      ? `one single large numeral ${digits}, only one, cut from layered matte card stock in two colors, standing alone`
+      : `the numerals ${digits.split("").join(" ")} (reading ${digits}), large and bold, each cut from layered matte card stock in a different color, standing side by side`;
+  return `Cut-paper illustration: ${what}, centered on a plain white background and filling most of the frame. Nothing else: no other shapes, objects or writing. Irregular hand-cut outlines, plain white background showing around them. Paper colors: mustard yellow, terracotta, sage green, dusty blue. Crisp scissor-cut edges, soft drop shadows between the layers, photographed straight on in soft daylight.`;
+}
+
+/** The image prompt for a plan that draws something. */
+export function planPrompt(p: Exclude<Plan, { kind: "none" }>): string {
+  return p.kind === "digits" ? digitsPrompt(p.digits) : imagePrompt(p.scene);
+}
+
 /** UTC day for the daily neuron budget (Workers AI resets at 00:00 UTC). */
 export function budgetDay(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
@@ -152,9 +202,9 @@ export function secondsToReset(now: number): number {
 // POST /api/pictures with `stream: true` answers NDJSON, one object per line:
 // `{"sense"}` once the meaning is decided, `{"scene"}` (all of it so far) as
 // the scene LLM writes it, then `{"key","sense","scene"}` with the picture,
-// or `{"error"}`. The card shows the scene in pencil while the picture draws.
+// `{"none","sense"}` when no picture can show the word, or `{"error"}`. The card shows the scene in pencil while the picture draws.
 
-export type PictureLine = { sense: string } | { scene: string } | { key: string; sense: string; scene: string } | { error: string };
+export type PictureLine = { sense: string } | { scene: string } | { key: string; sense: string; scene: string } | { none: true; sense: string } | { error: string };
 
 /**
  * The scene so far from a reply still arriving (`{"scene": "a person stand`).

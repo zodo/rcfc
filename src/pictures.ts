@@ -8,7 +8,8 @@
 //   time it is shown in study, so pictures fill in gradually as you practice;
 // - a redraw on a card that already exists is the card editor's (sketcher/adopt);
 //   jobs marked force (older versions' redraws) are still drawn.
-// A word whose picture the user removed is never drawn automatically.
+// A word whose picture the user removed, or that no picture can show (the server
+// answers none: of, however), is never drawn automatically.
 import type { DraftPicture } from "./domain/cards";
 import type { AssetAttached } from "./domain/events";
 import type { EntityId } from "./domain/ids";
@@ -47,14 +48,17 @@ export interface SketchRequest {
   translation: string;
   example?: string;
   details?: string;
+  /** The user asked for a picture ("draw one"): the server never answers none. */
+  always?: boolean;
   /** Called as the meaning and the scene arrive, before the picture. */
   onText?: (t: SceneText) => void;
 }
 
-type Drawn = { ok: true; key: string; sense: string; scene: string } | { ok: false; reason: "offline" | "limit" | "failed" };
+/** `none`: no picture can show this word (of, however); the card gets none, as if removed. */
+type Drawn = { ok: true; key: string; sense: string; scene: string } | { ok: false; reason: "offline" | "limit" | "failed" | "none" };
 
 /** A drawing for the editor: the picture (stored on the device), or why there is none. `stale`: a newer drawing replaced it. */
-export type SketchResult = { ok: true; picture: DraftPicture } | { ok: false; reason: "offline" | "limit" | "failed" | "stale"; until?: number };
+export type SketchResult = { ok: true; picture: DraftPicture } | { ok: false; reason: "offline" | "limit" | "failed" | "none" | "stale"; until?: number };
 
 export interface Sketcher {
   draw(r: SketchRequest): Promise<SketchResult>;
@@ -166,7 +170,8 @@ export class Pictures {
     }
     if (!res.ok || !res.body) return { ok: false, reason: "failed" };
     if (!(res.headers.get("content-type") ?? "").includes("ndjson")) {
-      const j = (await res.json().catch(() => null)) as { key?: string; sense?: string; scene?: string } | null;
+      const j = (await res.json().catch(() => null)) as { key?: string; sense?: string; scene?: string; none?: boolean } | null;
+      if (j?.none) return { ok: false, reason: "none" };
       return j?.key ? { ok: true, key: j.key, sense: j.sense ?? "", scene: j.scene ?? "" } : { ok: false, reason: "failed" };
     }
     const text: SceneText = {};
@@ -187,6 +192,7 @@ export class Pictures {
             continue;
           }
           if ("error" in l) return { ok: false, reason: "failed" };
+          if ("none" in l) return { ok: false, reason: "none" };
           if ("key" in l) return { ok: true, key: l.key, sense: l.sense, scene: l.scene };
           if ("sense" in l) text.sense = l.sense;
           else text.scene = l.scene;
@@ -246,7 +252,7 @@ export class Pictures {
   private async sketch(r: SketchRequest): Promise<SketchResult> {
     if (this.pausedUntil > this.now()) return { ok: false, reason: "limit", until: this.pausedUntil };
     if (typeof navigator !== "undefined" && navigator.onLine === false) return { ok: false, reason: "offline" };
-    const d = await this.request({ word: r.word, translation: r.translation, example: r.example || undefined, details: r.details?.trim() || undefined }, r.onText);
+    const d = await this.request({ word: r.word, translation: r.translation, example: r.example || undefined, details: r.details?.trim() || undefined, always: r.always || undefined }, r.onText);
     if (!d.ok) return d.reason === "limit" ? { ok: false, reason: "limit", until: this.pausedUntil } : d;
     const { key, sense, scene } = d;
     try {
@@ -270,6 +276,10 @@ export class Pictures {
     const n = this.store.col.liveNote(noteId);
     if (r.ok && n && !n.noPicture && n.picture?.key === was) {
       await this.store.append([this.store.factory.make<AssetAttached>("asset_attached", { note_id: noteId, kind: "image", r2_key: r.picture.key, sense: r.picture.sense, details: r.picture.details, scene: r.picture.scene })]);
+    }
+    // Nothing to draw for this word: none, as if removed, so it isn't asked for again.
+    if (!r.ok && r.reason === "none" && n && !n.picture && !n.noPicture && was === undefined) {
+      await this.store.append([this.store.factory.make<AssetAttached>("asset_attached", { note_id: noteId, kind: "image", r2_key: null })]);
     }
     this.setState(noteId, undefined); // after the picture is attached, so listeners see it
     if (!r.ok && n && !n.picture && !n.noPicture && was === undefined) await this.ensure(noteId);
@@ -335,7 +345,7 @@ export class Pictures {
         continue;
       }
       this.setState(j.note_id, "drawing");
-      const d = await this.request({ word: n.fields.front, translation: n.fields.back, example: n.fields.example, sense: j.sense, details: j.details ?? n.fields.picture_details }, (t) => {
+      const d = await this.request({ word: n.fields.front, translation: n.fields.back, example: n.fields.example, sense: j.sense, details: j.details ?? n.fields.picture_details, always: j.force || undefined }, (t) => {
         this.texts.set(j.note_id, t);
         this.emit(j.note_id);
       });
@@ -343,6 +353,14 @@ export class Pictures {
       if (!d.ok && d.reason === "offline") {
         this.setState(j.note_id, "queued"); // offline: retried on reconnect
         return this.retryAt(this.now() + 60_000);
+      }
+      if (!d.ok && d.reason === "none") {
+        // No picture can show this word: none, as if removed, so it isn't queued again.
+        if (this.jobs.get(j.note_id) === j && this.store.col.liveNote(j.note_id)) {
+          await this.store.append([this.store.factory.make<AssetAttached>("asset_attached", { note_id: j.note_id, kind: "image", r2_key: null })]);
+        }
+        await this.finish(j.note_id);
+        continue;
       }
       if (!d.ok && d.reason === "limit") {
         for (const id of this.jobs.keys()) this.setState(id, "waiting");

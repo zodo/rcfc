@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AssetAttached, NoteCreatedPayload } from "../src/domain/events";
-import { budgetDay, imagePrompt, meanings, parseScene, parseSense, SCENE_MODEL, sceneMessages, sceneSoFar, secondsToReset, senseFor, senseMessages, takeLines, withoutQuotes, type PictureLine } from "../src/domain/pictures";
+import { budgetDay, digitsPrompt, imagePrompt, meanings, parsePlan, parseScene, parseSense, SCENE_MODEL, sceneMessages, sceneSoFar, sceneSystem, secondsToReset, senseFor, senseMessages, takeLines, withoutQuotes, type PictureLine } from "../src/domain/pictures";
 import { Pictures } from "../src/pictures";
 import { handlePictures, type AiRunner, type BlobStore, type PictureEnv } from "../worker/pictures";
 import { sqliteD1 } from "./support/d1";
@@ -41,16 +41,22 @@ class FakeAi implements AiRunner {
   calls: { model: string; input: unknown }[] = [];
   flagged = 0;
   fail = false;
+  /** The scene LLM's reply per word, when it isn't a scene. */
+  plans = new Map<string, unknown>();
+  /** What the image model was asked to draw. */
+  prompts: string[] = [];
   async run(model: string, input: unknown) {
     this.calls.push({ model, input });
     if (model === SCENE_MODEL) {
       const user = (input as { messages: { content: string }[] }).messages[1].content;
       if (user.includes("Meanings:")) return { response: JSON.stringify({ meaning: 2 }) };
       const word = /Word: (.*)/.exec(user)![1];
-      const reply = JSON.stringify({ scene: `A scene for ${word}.` });
+      const reply = JSON.stringify(this.plans.get(word) ?? { kind: "scene", scene: `A scene for ${word}.` });
       if ((input as { stream?: boolean }).stream) return sse(reply);
       return { response: reply };
     }
+    const mp = (input as { multipart?: { body: ReadableStream; contentType: string } }).multipart;
+    if (mp) this.prompts.push(/name="prompt"\r\n\r\n([^]*?)\r\n--/.exec(await new Response(mp.body).text())?.[1] ?? "");
     if (this.fail) throw new Error("5000: model down");
     if (this.flagged > 0) {
       this.flagged--;
@@ -111,6 +117,32 @@ describe("picture prompts", () => {
     expect(withoutQuotes("The friends' house and a person's dog.")).toBe("The friends' house and a person's dog.");
     expect(withoutQuotes("A person peers at an object, saying 'Aver, let's see what this is!' with a thoughtful expression")).toBe("A person peers at an object with a thoughtful expression");
     expect(parseScene({ scene: "'lunes'" }, "Monday")).not.toContain("lunes");
+  });
+
+  it("picks the kind of picture: a scene, digits, or none", () => {
+    expect(parsePlan('{"kind":"scene","scene":"A boat."}', "sail")).toEqual({ kind: "scene", scene: "A boat." });
+    expect(parsePlan({ kind: "digits", digits: "13" }, "thirteen")).toEqual({ kind: "digits", digits: "13", scene: "the number 13, cut from paper" });
+    expect(parsePlan({ kind: "digits", digits: 100 }, "a hundred")).toMatchObject({ kind: "digits", digits: "100" });
+    expect(parsePlan({ kind: "digits", digits: "7:30" }, "half past seven")).toMatchObject({ digits: "7:30" });
+    expect(parsePlan({ kind: "digits", digits: "3" }, "third")).toMatchObject({ digits: "3" });
+    expect(parsePlan({ kind: "digits", digits: "3.", scene: "A podium." }, "third")).toEqual({ kind: "scene", scene: "A podium." });
+    expect(parsePlan({ kind: "none" }, "however")).toEqual({ kind: "none" });
+    // Asked for by the user: never none.
+    expect(parsePlan({ kind: "none" }, "however", true)).toEqual({ kind: "scene", scene: "A simple everyday scene that shows however." });
+    // Digits that aren't digits (a word spelled out would give it away): a scene.
+    expect(parsePlan({ kind: "digits", digits: "trece", scene: "A cake." }, "thirteen")).toEqual({ kind: "scene", scene: "A cake." });
+    expect(parsePlan('{"scene":"A boat."}', "sail")).toEqual({ kind: "scene", scene: "A boat." });
+  });
+
+  it("no counting things for numbers; none is offered only when the user didn't ask for a picture", () => {
+    expect(sceneSystem()).not.toContain("apples");
+    expect(sceneSystem()).toContain('{"kind": "none"}');
+    expect(sceneSystem(true)).not.toContain('"none"');
+    expect(sceneMessages({ word: "pero", translation: "but" }, "but")[0].content).toContain('"none"');
+    expect(sceneMessages({ word: "pero", translation: "but", always: true }, "but")[0].content).not.toContain('"none"');
+    expect(sceneMessages({ word: "pero", translation: "but", details: "a fork in a road" }, "but")[0].content).not.toContain('"none"');
+    expect(digitsPrompt("13")).toContain("the numerals 1 3 (reading 13)");
+    expect(digitsPrompt("7")).toContain("one single large numeral 7, only one");
   });
 
   it("names the medium before the scene", () => {
@@ -196,6 +228,27 @@ describe("pictures API", () => {
     expect(last.key).toMatch(/^pics\/[0-9a-f-]{36}\.jpg$/);
     expect(last).toMatchObject({ sense: "bench", scene: "A scene for el banco." });
     expect(new Uint8Array(await (await s.fetch(`/api/media/${last.key}`)).arrayBuffer())).toEqual(JPEG);
+  });
+
+  it("numbers are drawn as numerals", async () => {
+    const s = server();
+    s.ai.plans.set("trece", { kind: "digits", digits: "13" });
+    const lines = (await (await s.fetch("/api/pictures", post({ word: "trece", translation: "thirteen", stream: true }))).text()).trim().split("\n").map((l) => JSON.parse(l) as PictureLine);
+    expect(lines.at(-1)).toMatchObject({ key: expect.stringMatching(/\.jpg$/), scene: "the number 13, cut from paper" });
+    expect(s.ai.prompts).toEqual([digitsPrompt("13")]);
+  });
+
+  it("a word no picture can show: none, nothing drawn, the drawing's neurons given back", async () => {
+    const s = server();
+    s.ai.plans.set("pero", { kind: "none" });
+    const lines = (await (await s.fetch("/api/pictures", post({ word: "pero", translation: "but", stream: true }))).text()).trim().split("\n").map((l) => JSON.parse(l) as PictureLine);
+    expect(lines.at(-1)).toEqual({ none: true, sense: "but" });
+    expect((await (await s.fetch("/api/pictures", post({ word: "pero", translation: "but" }))).json())).toEqual({ none: true, sense: "but" });
+    expect(s.ai.calls.some((c) => c.model.includes("flux"))).toBe(false);
+    const [row] = await s.env.DB.prepare("SELECT neurons FROM ai_budget").all().then((r) => r.results as { neurons: number }[]);
+    expect(row.neurons).toBe(4);
+    // Asked for: drawn anyway.
+    expect((await (await s.fetch("/api/pictures", post({ word: "pero", translation: "but", always: true }))).json())).toMatchObject({ key: expect.any(String) });
   });
 
   it("streamed: a picture that fails ends with an error line", async () => {
@@ -309,6 +362,22 @@ describe("Pictures (client)", () => {
     await pics.kick();
     expect(texts.filter(Boolean).at(-1)).toBe("A scene for la torre.");
     expect(pics.text(id)).toBeUndefined(); // gone once drawn
+    pics.stop();
+  });
+
+  it("a word no picture can show gets none, as if removed, and isn't queued again", async () => {
+    const { d, s, pics, add } = await client();
+    s.ai.plans.set("pero", { kind: "none" });
+    const id = await add("pero", "but");
+    await pics.ensure(id);
+    await pics.kick();
+    expect(d.store.col.notes.get(id)!.noPicture).toBe(true);
+    expect(await d.store.picJobs()).toEqual([]);
+    await pics.ensure(id);
+    expect(pics.state(id)).toBeUndefined();
+    // The editor: none, unless asked for.
+    expect(await pics.sketcher().draw({ word: "pero", translation: "but" })).toEqual({ ok: false, reason: "none" });
+    expect((await pics.sketcher().draw({ word: "pero", translation: "but", always: true })).ok).toBe(true);
     pics.stop();
   });
 
