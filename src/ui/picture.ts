@@ -33,9 +33,11 @@ export async function cutoutReady(key: string, tilt: "l" | "r" = "l", paper = fa
 /**
  * The picture of a card that has none yet (study): nothing until the queue
  * draws it; then the pencil writes what it will show, and the picture is
- * glued on when it comes.
+ * glued on when it comes. `covered`: the card lies under another one (study's
+ * peeked card): the picture is just put in its place, never brought in, since
+ * the flight would show over the card on top of it.
  */
-export function livePicture(noteId: EntityId, tilt: "l" | "r" = "l"): HTMLElement {
+export function livePicture(noteId: EntityId, tilt: "l" | "r" = "l", covered = false): HTMLElement {
   const el = h("div", { class: "pic-live" });
   let sketch: SketchNote | undefined;
   let seen = false;
@@ -49,7 +51,7 @@ export function livePicture(noteId: EntityId, tilt: "l" | "r" = "l"): HTMLElemen
       const key = n.picture.key;
       void cutoutReady(key, tilt).then(async (pic) => {
         if (!pic) return;
-        if (sketch && el.isConnected) await sketch.glue(pic);
+        if (sketch && el.isConnected && !covered) await sketch.glue(pic);
         sketch?.close();
         el.replaceChildren(pic);
       });

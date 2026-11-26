@@ -108,8 +108,10 @@ interface Faces {
  * One card per word, like a real one: the studied language on the white side
  * (word, pronunciation, example), the known language and the picture on the
  * cream side. A forward card lies white side up, a reverse card cream side up.
+ * `covered`: the card under the top one (its picture, if it comes now, is put
+ * in place, not brought in over the top card).
  */
-function faces(card: Card, note: Note, picTilt: "l" | "r"): Faces {
+function faces(card: Card, note: Note, picTilt: "l" | "r", covered = false): Faces {
   const lang = note.lang_pair;
   const forward = card.template === "forward";
   const say = () => void app.speech.say(note.fields.front, lang.from);
@@ -127,7 +129,7 @@ function faces(card: Card, note: Note, picTilt: "l" | "r"): Faces {
     example ? h("div", { class: "example", lang: lang.from }, example, speakBtn("Say the example", () => void app.speech.say(example, lang.from), "speak small")) : null,
     memo(note.fields.memo_target, lang.from),
   ];
-  const known = [note.picture ? cutout(note.picture.key, picTilt) : note.noPicture ? null : livePicture(note.id, picTilt), h("div", { class: "face", lang: lang.to }, note.fields.back), memo(note.fields.memo_known, lang.to)];
+  const known = [note.picture ? cutout(note.picture.key, picTilt) : note.noPicture ? null : livePicture(note.id, picTilt, covered), h("div", { class: "face", lang: lang.to }, note.fields.back), memo(note.fields.memo_known, lang.to)];
   const up = forward ? target : known;
   up.find((e) => e?.classList.contains("face"))!.classList.add("prompt");
   // The word's notes are tiny print on the answer side, whichever side that is (not physical:
@@ -334,7 +336,7 @@ class Table {
     const card = id === null ? undefined : app.store.col.cards.get(id);
     const note = card && app.store.col.notes.get(card.note_id);
     if (!card || !note) return;
-    const f = faces(card, note, "l").front;
+    const f = faces(card, note, "l", true).front;
     f.classList.add("peek");
     f.querySelector(".face")?.classList.remove("prompt"); // only the top card's prompt is "the prompt"
     sheet.append(f);
