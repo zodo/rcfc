@@ -261,9 +261,9 @@ function open(note?: Note, over?: { leave: () => void }): void {
       const says = problem === "offline" ? "it draws itself once you're online" : problem === "limit" ? "today's free pictures are used up; it comes tomorrow" : "it couldn't be drawn";
       body = [box(mirror(), h("span", { class: "ed-pic-says" }, says)), problem === "failed" ? h("button", { type: "button", class: "ed-caption", onclick: () => draw(true) }, "try again") : room()];
     } else if (both) {
-      body = [box(mirror(), h("span", { class: "ed-pic-says" }, "draws when you stop typing")), room()];
+      body = [box(mirror()), room()];
     } else {
-      body = [box(h("span", { class: "ed-pic-says" }, "the picture draws itself from the two words")), room()];
+      body = [box(), room()]; // its place, empty until both words are in
     }
     pic.classList.toggle("busy", !!pending || queued === "drawing" || queued === "queued");
     if (detailsOpen && !removed) {

@@ -60,7 +60,7 @@ function letters(text: string): string[] {
 const jitter = (n: number) => (Math.random() * 2 - 1) * n;
 
 /** A pencil dot: a few tight circles round (x, y), out a little and back in. */
-export function dot(x: number, y: number): { x: number; y: number }[] {
+function dot(x: number, y: number): { x: number; y: number }[] {
   const turns = 2.4 + Math.random() * 0.6, steps = 26, start = Math.random() * Math.PI * 2;
   return Array.from({ length: steps + 1 }, (_, i) => {
     const t = i / steps, a = start + t * turns * Math.PI * 2;

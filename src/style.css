@@ -2263,11 +2263,6 @@ header.top.sub .back svg {
   border: 2px dashed rgb(var(--shadow) / 0.2);
   border-radius: 4px;
 }
-/* too small for words: only the pencil's dots show (sketch.ts) */
-.sketch.small .sk-note,
-.sketch.small .sk-strikes {
-  visibility: hidden;
-}
 .sketch.glued::before,
 .sketch.glued .sk-note,
 .sketch.glued .ink-doodle {
@@ -2432,17 +2427,9 @@ header.top.ed-bar:has(+ .content .editor.folded) {
 .editor.folded .ed-side.tucked input {
   border-bottom-color: transparent;
 }
-/* the open cream side: its picture small, "+ how it looks" beside it */
-.editor.folded .ed-side.known.open .ed-pic {
-  flex-direction: row;
-  justify-content: center;
-  gap: 14px;
-  margin-top: 4px;
-}
-.editor.folded .ed-side.known.open .ed-pic > :first-child {
-  max-width: 108px;
-}
-.editor.folded .ed-side.known.open .ed-caption.room {
+/* folded, the picture waits for the keyboard to close (it is there all along, so nothing shifts when it comes);
+   unless its details are being typed */
+.editor.folded .ed-pic:not(:focus-within) {
   display: none;
 }
 /* in pencil on the tucked side, its first few times */
