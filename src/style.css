@@ -2368,10 +2368,21 @@ header.top.ed-bar {
   position: sticky;
   top: 0;
   z-index: 6;
-  margin: calc(-1 * env(safe-area-inset-top)) -18px 0;
-  padding: env(safe-area-inset-top) 18px 0;
+  /* the window's whole width, so its table texture lines up with the page's (both from the left edge) */
+  margin: calc(-1 * env(safe-area-inset-top)) calc(50% - 50vw) 0;
+  padding: env(safe-area-inset-top) calc(50vw - 50%) 0;
   background-color: var(--table);
   background-image: var(--fibre, none), var(--mottle, none);
+}
+/* room for the stickers stuck on the card's top edge; folded (keyboard open, no room) they wait for it to close */
+header.top.ed-bar {
+  margin-bottom: 12px;
+}
+header.top.ed-bar:has(+ .content .editor.folded) {
+  margin-bottom: 0;
+}
+.editor.folded .ed-stickers {
+  display: none;
 }
 .ed-bar .ed-add {
   margin-left: auto;
