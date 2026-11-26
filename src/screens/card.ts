@@ -328,7 +328,14 @@ function open(note?: Note, over?: { leave: () => void }): void {
       // Just brought in, the pencil comes once it lies flat; drawn again (details opened) it is there at once.
       const fresh = glued?.key === drawn.key && pencilFor !== drawn.key;
       pencilFor = drawn.key;
-      body = [glued?.key === drawn.key ? framed(glued.el, fresh) : framed(cutout(drawn.key, "l", true), false), room()];
+      // A redraw that didn't come: the picture stays, and the line under it says why.
+      const why =
+        !problem || problem === "none"
+          ? room()
+          : problem === "failed"
+            ? h("button", { type: "button", class: "ed-caption", onclick: () => draw(true) }, "couldn't redraw it, try again")
+            : h("span", { class: "ed-caption says" }, problem === "offline" ? "you're offline; redraw once you're back online" : "today's free pictures are used up; redraw tomorrow");
+      body = [glued?.key === drawn.key ? framed(glued.el, fresh) : framed(cutout(drawn.key, "l", true), false), why];
     } else if (pending) {
       body = [box(mirror(), h("span", { class: "ed-pic-says" }, "drawing…")), room()];
     } else if (queued) {

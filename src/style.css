@@ -2171,6 +2171,9 @@ header.top.sub .back svg {
 .ed-caption.room {
   visibility: hidden;
 }
+.ed-caption.says {
+  text-decoration: none;
+}
 /* pencil writing on the card (src/ui/ink.ts) */
 .ed-side input.inked {
   color: transparent;
