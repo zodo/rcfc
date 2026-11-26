@@ -263,7 +263,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     } else if (both) {
       body = [box(mirror()), room()];
     } else {
-      body = [box(), room()]; // its place, empty until both words are in
+      body = [box(h("span", { class: "ed-pic-says" }, "its picture goes here")), room()];
     }
     pic.classList.toggle("busy", !!pending || queued === "drawing" || queued === "queued");
     if (detailsOpen && !removed) {
@@ -788,6 +788,12 @@ function open(note?: Note, over?: { leave: () => void }): void {
   if (editing) arm();
   else root.addEventListener("input", arm);
   foldWhenTight(root, [white, cream], [front, back], bar, foldHint);
+  // Folded, a tap on the small picture closes the keyboard: the card lies whole, the picture full size.
+  pic.addEventListener("click", (e) => {
+    if (!root.classList.contains("folded") || (e.target as Element).closest("button, input, textarea")) return;
+    (document.activeElement as HTMLElement | null)?.blur();
+    window.visualViewport?.addEventListener("resize", () => requestAnimationFrame(() => pic.scrollIntoView({ block: "center", behavior: "smooth" })), { once: true });
+  });
 
   // Pictures arriving (the queue, a drawing adopted after Add) redraw what shows them.
   const off = pictures.subscribe((id) => {
