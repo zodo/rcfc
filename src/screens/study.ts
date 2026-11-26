@@ -210,7 +210,8 @@ class Table {
       ],
       { duration: MS, delay: DELAY, easing: "cubic-bezier(.45,.05,.55,.95)", fill: "backwards" },
     );
-    window.setTimeout(() => haptic("thud"), DELAY + MS * 0.8);
+    // It first touches down at keyframe 0.8, which the overall easing brings forward to 69.5% of the time.
+    window.setTimeout(() => haptic("thud"), DELAY + MS * 0.695);
     for (const e of this.el.children) if (e !== this.pile) e.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, delay: 120, fill: "backwards" });
   }
 
