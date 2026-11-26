@@ -141,7 +141,7 @@ export class SketchNote {
   private caughtUp = 0;
   private doodling: { stopped: boolean; anims: Animation[] } | undefined;
   /** Too small for words: the dots, drawn and rubbed out round after round. */
-  private dotting: { stopped: boolean; anims: Animation[] } | undefined;
+  private dotting: { stopped: boolean; anims: Animation[]; size: string } | undefined;
   /** The lines struck through so far, drawn by the frame clock. */
   private strikes: SVGSVGElement;
   private strike: { from: number; total: number; penFrom: { x: number; y: number }; items: Strike[] } | undefined;
@@ -280,6 +280,7 @@ export class SketchNote {
       return;
     }
     if (real < this.resumeAt) return;
+    if (!this.el.clientWidth) return; // not laid out (a tucked side): nothing to measure the middle by
     const small = this.el.clientWidth < SMALL_PX;
     this.el.classList.toggle("small", small);
     if (small) {
@@ -516,10 +517,15 @@ export class SketchNote {
 
   /** Three dots in the middle, a rest, rubbed out with the eraser (a smudge stays a moment), and again. */
   private dots(): void {
-    if (this.dotting) return;
-    const start = { x: this.el.clientWidth / 2 - 14, y: this.el.clientHeight / 2 + 5 };
+    // Started for another size (it changed under them): start again in the middle of this one.
+    const size = `${this.el.clientWidth}x${this.el.clientHeight}`;
+    if (this.dotting?.size === size) return;
+    this.stopDots();
+    // The three dots (4 px from the start, 9 apart, 5 above it) centred in the place.
+    const start = { x: this.el.clientWidth / 2 - 13, y: this.el.clientHeight / 2 + 5 };
     const pen = this.getPen(start);
-    const d = (this.dotting = { stopped: false, anims: [] as Animation[] });
+    pen.style.translate = `${start.x}px ${start.y}px`;
+    const d = (this.dotting = { stopped: false, anims: [] as Animation[], size });
     const at = () => {
       const [x, y] = pen.style.translate.split(" ").map(parseFloat);
       return { x: x || start.x, y: y || start.y };
