@@ -24,7 +24,7 @@ export const PILE_STEP = 5;
 export const PILE_MIN = 10;
 export const PILE_MAX = 50;
 /** Cards "more" deals. */
-export const MORE = 5;
+export const MORE = 10;
 /** A face is not drawn this soon after its twin was answered (its answer was just on screen). */
 export const TWIN_GAP_MS = 3_600_000;
 
@@ -72,7 +72,7 @@ export function pileSize(col: Collection, pile: string, clock: DayClock): number
   const done = doneFromPile(col, pile, clock.rolloverHour, days[0][0]);
   let size = PILE_START;
   for (const [day, { deal, more, all }] of days) {
-    const asked = more - all; // "5 more"; "All N" is a one-off
+    const asked = more - all; // "10 more"; "All N" is a one-off
     const unfinished = (done.get(day)?.size ?? 0) < deal + asked;
     size += (asked > 0 ? PILE_STEP : 0) - (unfinished ? PILE_STEP : 0);
     size = Math.max(PILE_MIN, Math.min(PILE_MAX, size));
@@ -96,7 +96,7 @@ export interface PileInput {
   notCounted?: ReadonlySet<string>;
   /**
    * Draw every word once, weakest first, due or not and done today or not
-   * (those last): a sticker pile after "5 more" or "All N". One face per word.
+   * (those last): a sticker pile after "10 more" or "All N". One face per word.
    */
   wide?: boolean;
   /** Words on top of another pile: not drawn here unless nothing else is left. */

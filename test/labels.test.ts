@@ -169,10 +169,10 @@ describe("sticker piles", () => {
     expect(await run(s)).toHaveLength(20);
   });
 
-  it("after 5 more a sticker's new words don't count toward the language", async () => {
+  it("after more a sticker's new words don't count toward the language", async () => {
     const d = await Device.open();
     await d.store.append([d.store.factory.preset({ ...d.store.preset(), new_per_day: 2 })]);
-    const w = await words(d, 30);
+    const w = await words(d, 40);
     const s = await sticker(d, "kitchen", w.es);
     await s.start();
     expect(await run(s)).toHaveLength(20); // the pile's size
@@ -180,12 +180,12 @@ describe("sticker piles", () => {
     await es.start();
     expect(es.next()).toBeNull(); // the sticker's 20 used up Spanish's 2
     await s.more();
-    expect(await run(s)).toHaveLength(5);
+    expect(await run(s)).toHaveLength(10);
     await es.start();
-    expect(await run(es)).toEqual(["palabra 25", "palabra 26"]); // Spanish gets its 2 again
+    expect(await run(es)).toEqual(["palabra 30", "palabra 31"]); // Spanish gets its 2 again
   });
 
-  it("5 more deals words that aren't due, those done today in other piles last", async () => {
+  it("more deals words that aren't due, those done today in other piles last", async () => {
     const clock = new Clock();
     const d = await Device.open(clock);
     const w = await words(d, 3);

@@ -7,8 +7,11 @@
 // The pile is real: every card has its own spot (a little off, a little
 // turned), so taking the top one moves nothing else. Its height is the number
 // of cards dealt and left (src/domain/piles.ts); the card under the top one is
-// the next card, fixed once shown (StudySession.peek). A finished pile goes
-// back to the table (src/screens/home.ts), where its spot shows the check.
+// the next card, fixed once shown (StudySession.peek). A finished pile ends on
+// the table here: its check is drawn (a blue second one, ×N, once more was
+// dealt today), and a handful of MORE cards lies aside; tapped, it drops onto
+// the table and studying goes on. The big button goes back to the table
+// (src/screens/home.ts), where the spot keeps the checks.
 import { app, errorText, fullScreen, go, setKeys } from "../app";
 import type { Card, Note } from "../domain/collection";
 import type { ReviewPayload } from "../domain/events";
@@ -18,6 +21,7 @@ import type { Draw } from "../domain/piles";
 import { AHEAD } from "../pictures";
 import { StudySession } from "../session";
 import { Body, type Pose } from "../ui/body";
+import { CHECK_DRAWN, checks } from "../ui/checks";
 import { h, ICON_PEN, ICON_SPEAK, toast } from "../ui/h";
 import { relight, startTilt, tiltNeedsTap } from "../ui/light";
 import { haptic, seeded } from "../ui/paper";
@@ -169,13 +173,79 @@ class Table {
     if (!this.el.isConnected) return; // closed while an answer was saving
     const n = this.s.next();
     if (!n) {
-      // The pile is finished: back to the table, where its spot shows it.
-      if (this.s.answered) app.cleared = this.s.pile;
-      void go.home();
+      if (this.s.answered) this.finish();
+      else void go.home(); // nothing to study here
       return;
     }
     this.n++;
     this.show(n.pick, n.left);
+  }
+
+  /**
+   * The pile is finished: its check is drawn where it lay, the way out is the
+   * big button, and more is a small handful lying aside (when there is more).
+   * Every handful finished draws the bonus check, ×N from the second.
+   */
+  private finish(): void {
+    const s = this.s;
+    const rounds = s.rounds();
+    const done = s.doneToday().length;
+    this.left = 0;
+    this.syncPile();
+    this.status.textContent = "";
+    this.recall.textContent = "";
+    const more = s.moreCount();
+    const fin = h(
+      "div",
+      { class: "finish" },
+      checks(rounds, true, this.seed),
+      h("div", { class: "finish-title" }, rounds ? "Bonus done" : "Done for today"),
+      h("div", { class: "finish-count" }, `${done} ${done === 1 ? "card" : "cards"} today`),
+    );
+    if (more) {
+      const hand = h(
+        "button",
+        { class: "handful", onclick: () => void this.handful(hand) },
+        h("span", { class: "handful-cards", "aria-hidden": "true" }, `+${more}`),
+        h("span", { class: "handful-note" }, rounds ? `another ${more}?` : `tap for ${more} more`),
+      );
+      fin.append(hand);
+    }
+    this.pile.append(fin);
+    setTimeout(() => haptic("double"), CHECK_DRAWN);
+    this.controls.replaceChildren(h("button", { class: "primary wide big", onclick: () => go.home() }, "Back to the table"));
+    setKeys((e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      go.home();
+    });
+  }
+
+  private dealing = false;
+
+  /** The handful is taken: dealt onto the table where it lay, and studying goes on. */
+  private async handful(from: HTMLElement): Promise<void> {
+    if (this.dealing) return;
+    this.dealing = true;
+    const at = from.getBoundingClientRect();
+    try {
+      await this.s.more();
+    } catch (e) {
+      toast(`Could not deal: ${errorText(e)}`);
+      return;
+    } finally {
+      this.dealing = false;
+    }
+    if (!this.el.isConnected) return;
+    this.pile.querySelector(".finish")?.remove();
+    this.shown = false; // the pile comes whole
+    this.next();
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Moved and turned only, never scaled (the pile's many layers lag on Android).
+    const box = this.pile.getBoundingClientRect();
+    const dx = at.left + at.width / 2 - (box.left + box.width / 2), dy = at.top + at.height / 2 - (box.top + box.height / 2);
+    this.pile.animate([{ transform: `translate(${dx}px, ${dy}px) rotate(-6deg)` }, { transform: "none" }], { duration: 420, easing: "cubic-bezier(.25,.8,.35,1)" });
+    window.setTimeout(() => haptic("thud"), 380);
   }
 
   /**

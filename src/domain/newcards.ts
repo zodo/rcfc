@@ -79,7 +79,7 @@ export function unseenCards(col: Collection, clock: DayClock, scope?: Scope): { 
  * it, so a big batch of known words doesn't crowd out new ones.
  */
 export function newQueue(col: Collection, clock: DayClock, limit: number | ((lang: string) => number), scope?: Scope, notCounted?: ReadonlySet<string>): Card[] {
-  // A limit may include today's extra words ("5 more" when the day's are done).
+  // A limit may include today's extra words ("10 more" when the day's are done).
   const limitOf = typeof limit === "number" ? () => limit : limit;
   const { fresh, second } = unseenCards(col, clock, scope);
   const used = new Map<string, { words: number; second: number }>();

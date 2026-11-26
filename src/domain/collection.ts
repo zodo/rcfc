@@ -74,10 +74,12 @@ export interface Label {
 export interface DayDeal {
   deal: number;
   more: number;
-  /** The part of `more` dealt by "All N" (which doesn't grow the next deal, unlike "5 more"). */
+  /** The part of `more` dealt by "All N" (which doesn't grow the next deal, unlike "10 more"). */
   all: number;
   /** When the latest "All N" was dealt. */
   allTs?: number;
+  /** How many times more was dealt ("10 more", a handful, "All N"): the bonus check's ×N. */
+  rounds: number;
 }
 
 export const DEFAULT_PRESET: Omit<Preset, "preset_id"> = {
@@ -198,9 +200,10 @@ export class Collection {
         const pile = pileKey(e.payload.pile);
         const days = this.deals.get(pile) ?? new Map<number, DayDeal>();
         this.deals.set(pile, days);
-        const d = days.get(day) ?? { deal: 0, more: 0, all: 0 };
+        const d = days.get(day) ?? { deal: 0, more: 0, all: 0, rounds: 0 };
         if (more) {
           d.more += n;
+          d.rounds++;
           if (e.payload.all) {
             d.all += n;
             d.allTs = Math.max(d.allTs ?? 0, e.ts);

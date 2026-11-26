@@ -240,7 +240,8 @@ Nov 24, 2026. Agreed and built, in the order of the plan at the end of this sect
 - A sticker with no words has its spot printed empty ("no words yet"); a tap opens Words on it, in Edit.
 - After the last pile, always, one more spot printed empty with a plus: New pile. It asks for a name, makes the sticker, and opens Words on it in Edit to stick it on words.
 - Looking at the table deals nothing: it shows the pile the dealer would deal. The deal is recorded when the pile is first studied that day.
-- A finished pile leaves its spot empty with a pencil check (drawn in one stroke when the user comes back from clearing it, with a few bits of coloured paper jumping off it). Tapping the spot offers "Deal 5 more", "Go through these N again" (the cards finished from that pile today) and, when nothing is left to learn, "Add words". A sticker's pile offers "Deal 5 more" (when it has more than 5 words), "Deal all N" (every word of the sticker once, one face each: going over a topic before a trip or a test) and "Go through these N again". Either refill drops the cards onto the spot as one handful (bottom card first, the top one last, face up as it lies); studying them takes a tap on the pile, like any pile. Gathered cards lie there until studied, for the rest of that day.
+- A finished pile ends in study, on the table where it lay: its pencil check is drawn in one stroke, with a few bits of coloured paper jumping off it, over "Done for today" and how many cards were done today. The way out is the big button, "Back to the table". More is a small handful lying aside ("+10", "tap for 10 more"), there while there is more to deal: tapped, it drops onto the table where the pile lay and studying goes on. A finished handful ends the same way, with a second, blue check ("Bonus done", "another 10?"); from the second handful a pencil ×N sits by that check (never more than two checks). The finish is first, the extra is quiet, so stopping after any handful is still finishing.
+- A finished pile leaves its spot empty with its checks (the same as study drew, ×N too, for the rest of the day). Tapping the spot offers "Deal 10 more", "Go through these N again" (the cards finished from that pile today) and, when nothing is left to learn, "Add words". A sticker's pile offers "Deal 10 more" (when it has more than 10 words), "Deal all N" (every word of the sticker once, one face each: going over a topic before a trip or a test) and "Go through these N again". Either refill drops the cards onto the spot as one handful (bottom card first, the top one last, face up as it lies); studying them takes a tap on the pile, like any pile. Gathered cards lie there until studied, for the rest of that day.
 
 **Piles**
 
@@ -254,14 +255,14 @@ What "needs the user most" means:
 | Pile | Cards it draws |
 | --- | --- |
 | Language | Words below target recall now, weakest first; then new words, only into space left after due words, at most 10 a day per studied language |
-| Sticker | The same from its words, any language; its new words aren't held back by the daily limit (the pile's size caps them) but count toward their language's 10, so that language's pile gets fewer that day. After "5 more" or "All N" that day: every word once, due or not, weakest first, words done today last, never-seen ones freely, and those new words don't count toward any language's limit |
+| Sticker | The same from its words, any language; its new words aren't held back by the daily limit (the pile's size caps them) but count toward their language's 10, so that language's pile gets fewer that day. After "10 more" or "All N" that day: every word once, due or not, weakest first, words done today last, never-seen ones freely, and those new words don't count toward any language's limit |
 
 - A face is not drawn within an hour of its twin being answered (it would be a free point and teach the model a false strength), unless nothing else is left. A new word's second face starts on a later day.
 - No two piles show the same word on top, unless the word is all a pile has left. If a pile's top card gets done in another pile, the next card comes up.
 - A card answered Again lies under that pile only: other piles don't draw it while it is one of that pile's words (peeled off, or its sticker deleted, it is free again).
-- "5 more" raises the new-word limit of a language's pile by what it deals.
-- Size: starts at 20; +5 for the next deal when the user took "5 more" ("All N" is a one-off and doesn't count); -5 when a pile was left unfinished at the rollover; between 10 and 50.
-- When a pile is empty, study goes back to the table; its spot offers "Go through these N again" (exactly the same cards once more) and "5 more" (from the same words).
+- "10 more" (a handful in study, or from the spot) raises the new-word limit of a language's pile by what it deals.
+- Size: starts at 20; +5 for the next deal when the user took "10 more" that day, however many times ("All N" is a one-off and doesn't count); -5 when a pile was left unfinished at the rollover; between 10 and 50.
+- When a pile is empty, study shows its finish with a handful of 10 more (from the same words); back on the table its spot offers "Go through these N again" (exactly the same cards once more) and "10 more".
 - Words marked known in the list need no rule: they no longer need the user, so they are not drawn.
 
 **Words screen**

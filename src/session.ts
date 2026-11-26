@@ -323,6 +323,11 @@ export class StudySession {
     return out.slice(0, n);
   }
 
+  /** How many times more was dealt onto this pile today (the bonus check's ×N). */
+  rounds(): number {
+    return this.store.col.deals.get(this.pile)?.get(this.view().today)?.rounds ?? 0;
+  }
+
   /** Cards answered right from this pile today, in the order they were answered. */
   doneToday(): EntityId[] {
     return [...this.view().completed].reverse();

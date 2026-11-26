@@ -45,7 +45,7 @@ describe("piles", () => {
     expect(s.next()!.left).toBe(10);
     expect(await run(s)).toHaveLength(10);
     expect(s.next()).toBeNull();
-    expect(deals(d)).toEqual([{ deal: 10, more: 0, all: 0 }]);
+    expect(deals(d)).toEqual([{ deal: 10, more: 0, all: 0, rounds: 0 }]);
     // Opening it again the same day deals nothing new.
     expect((await sitting(d)).next()).toBeNull();
     expect(deals(d)).toHaveLength(1);
@@ -111,32 +111,36 @@ describe("piles", () => {
     expect(back.takeTurned(top)).toBeUndefined();
   });
 
-  it("5 more deals from the same words, beyond the new-word limit; the next day's pile is bigger", async () => {
+  it("more deals from the same words, beyond the new-word limit; the next day's pile is bigger by 5, however many handfuls", async () => {
     const clock = new Clock();
     const d = await Device.open(clock);
     await newPerDay(d, 30);
     await d.deck(40);
     const s = await sitting(d);
     expect(await run(s)).toHaveLength(20);
-    expect(s.moreCount()).toBe(5);
+    expect(s.rounds()).toBe(0);
+    expect(s.moreCount()).toBe(10);
     await s.more();
-    expect(await run(s)).toHaveLength(5);
-    expect(deals(d)).toEqual([{ deal: 20, more: 5, all: 0 }]);
+    expect(await run(s)).toHaveLength(10);
+    await s.more();
+    expect(await run(s)).toHaveLength(10);
+    expect(s.rounds()).toBe(2);
+    expect(deals(d)).toEqual([{ deal: 20, more: 20, all: 0, rounds: 2 }]);
     clock.advance(DAY);
     expect((await sitting(d)).view()["i"].size).toBe(25);
   });
 
-  it("5 more after the day's new words deals 5 more new words, while there are any", async () => {
+  it("more after the day's new words deals more new words, while there are any", async () => {
     const d = await Device.open();
-    await d.deck(17);
+    await d.deck(27);
     const s = await sitting(d);
     expect(await run(s)).toHaveLength(10); // the day's 10 new words
-    expect(s.moreCount()).toBe(5);
+    expect(s.moreCount()).toBe(10);
     await s.more();
-    expect(await run(s)).toHaveLength(5);
-    expect(s.moreCount()).toBe(2);
+    expect(await run(s)).toHaveLength(10);
+    expect(s.moreCount()).toBe(7);
     await s.more();
-    expect(await run(s)).toHaveLength(2);
+    expect(await run(s)).toHaveLength(7);
     expect(s.moreCount()).toBe(0);
   });
 
@@ -300,7 +304,7 @@ describe("piles", () => {
     expect(edges).toHaveLength(9);
     expect(deals(d)).toEqual([]); // looking deals nothing
     const s = await sitting(d);
-    expect(deals(d)).toEqual([{ deal: 10, more: 0, all: 0 }]);
+    expect(deals(d)).toEqual([{ deal: 10, more: 0, all: 0, rounds: 0 }]);
     expect(s.next()!.pick.card).toBe(shown.pick.card);
     expect(s.faces(4)).toEqual(edges.slice(0, 4)); // the study screen shows fewer edges, same colours
     expect(new StudySession(d.store, ES).faces(9)).toEqual(edges); // and the table's deeper ones stay
@@ -348,7 +352,7 @@ describe("piles", () => {
     clock.advance(DAY);
     // Yesterday, as an older app recorded it: "more" on the pair's pile.
     await d.store.append([d.store.factory.make<PileDealt>("pile_dealt", { pile: "lang:es>en", day, n: 5, more: true })]);
-    expect(deals(d)).toEqual([{ deal: 10, more: 5, all: 0 }]);
+    expect(deals(d)).toEqual([{ deal: 10, more: 5, all: 0, rounds: 1 }]);
   });
 
   it("two devices dealing the same day offline count the deal once", async () => {
@@ -356,7 +360,7 @@ describe("piles", () => {
     await d.deck(3);
     const day = (await sitting(d)).view().today;
     await d.store.append([d.store.factory.make<PileDealt>("pile_dealt", { pile: "lang:es>en", day, n: 2, more: false })]);
-    expect(deals(d)).toEqual([{ deal: 3, more: 0, all: 0 }]);
+    expect(deals(d)).toEqual([{ deal: 3, more: 0, all: 0, rounds: 0 }]);
   });
 
 });

@@ -112,7 +112,7 @@ export interface ReviewPayload {
 
 /**
  * Cards dealt to a pile (src/domain/piles.ts): the day's deal (`more` false)
- * or "5 more". Only the count is recorded; cards are chosen when drawn.
+ * or "10 more". Only the count is recorded; cards are chosen when drawn.
  */
 export interface PileDealtPayload {
   pile: string;
@@ -120,7 +120,7 @@ export interface PileDealtPayload {
   day: number;
   n: number;
   more: boolean;
-  /** "All N" on a sticker pile: every word once more. Unlike "5 more" it doesn't grow tomorrow's deal. */
+  /** "All N" on a sticker pile: every word once more. Unlike "10 more" it doesn't grow tomorrow's deal. */
   all?: boolean;
 }
 

@@ -2,8 +2,9 @@
 // it with its pile for today: thickness = cards left, the top card face up, the
 // colours of the cards under it (fixed once shown, the same in study:
 // src/session.ts). Tap a pile to study it. A finished pile leaves its spot with
-// a check; tap the spot for more cards or the same ones again: they land on the
-// spot, and a tap on the pile studies them. A sticker with no words has its spot
+// its checks (src/ui/checks.ts; drawn in study when it was finished); tap the
+// spot for more cards or the same ones again: they land on the spot, and a tap
+// on the pile studies them. A sticker with no words has its spot
 // printed empty, and the last spot is always a new pile (a new sticker). First
 // launch asks which language to learn.
 import { launchToTable, launchToWelcome } from "../ui/launch";
@@ -13,6 +14,7 @@ import { labelPile } from "../domain/labels";
 import { languagePile, MORE } from "../domain/piles";
 import { AHEAD } from "../pictures";
 import { StudySession } from "../session";
+import { checks } from "../ui/checks";
 import { h, langName } from "../ui/h";
 import { haptic, seeded } from "../ui/paper";
 import { cutout } from "../ui/picture";
@@ -25,7 +27,6 @@ const EDGES = 30;
 const CARD_PX = 1.5;
 
 const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
-const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path pathLength="1" d="M5 12.5l4.5 4.5L19 7"/></svg>';
 
 export async function home(): Promise<void> {
   if (app.reloadPending) return location.reload();
@@ -52,16 +53,16 @@ export async function home(): Promise<void> {
     await refresh();
     if (gen !== drawn || app.current !== "home") return; // drawn again, or left, meanwhile
   }
-  const moved = { cleared: app.cleared, refilled: app.refilled };
-  app.cleared = app.refilled = null;
-  const spots = piles.map(({ s, label }) => spot(s, label, moved));
+  const refilled = app.refilled;
+  app.refilled = null;
+  const spots = piles.map(({ s, label }) => spot(s, label, refilled));
   page("home", "Study", h("div", { class: "table" }, ...spots.map((x) => x.el), newPile()));
   launchToTable(app.root); // at launch: the launch pile is dealt onto it
   if (!ready) return;
   await refresh();
   if (gen !== drawn || app.current !== "home") return;
   piles.forEach(({ s, label }, i) => {
-    const fresh = spot(s, label, { cleared: null, refilled: null });
+    const fresh = spot(s, label, null);
     if (fresh.key !== spots[i].key) spots[i].el.replaceWith(fresh.el);
   });
 }
@@ -69,19 +70,11 @@ export async function home(): Promise<void> {
 /** Draws of the table: a later one wins over an earlier one still waiting for predictions. */
 let drawn = 0;
 
-/** What just happened to a pile, for its spot to show it. */
-interface Moved {
-  cleared: string | null;
-  refilled: string | null;
-}
-
-/** When the check is drawn (ms after the spot appears; style.css .spot.fresh). */
-const CHECK_DRAWN = 780;
 /** How long the cards of a refilled pile take to land, all of them (style.css .spot.dealt). */
 const LANDING_MS = 420;
 
-/** One pile's spot (a language's or a sticker's): its pile, or the outline a finished pile leaves; `key` = what it shows. */
-function spot(s: StudySession, label: string, moved: Moved): { el: HTMLElement; key: string } {
+/** One pile's spot (a language's or a sticker's): its pile, or the outline a finished pile leaves; `key` = what it shows. `refilled`: the pile whose cards were just dealt onto its spot. */
+function spot(s: StudySession, label: string, refilled: string | null): { el: HTMLElement; key: string } {
   const name = h("div", { class: "pile-name" }, s.label === undefined ? label : stickerTag(app.store.col.liveLabel(s.label)!));
   const seed = derivedEntityId(s.pile) % 233280; // the pile's own poses, the same every time
   if (s.label !== undefined && s.allCount() === 0) {
@@ -92,14 +85,9 @@ function spot(s: StudySession, label: string, moved: Moved): { el: HTMLElement; 
   const n = s.next();
   if (!n) {
     const done = s.doneToday().length;
-    const fresh = moved.cleared === s.pile && done > 0;
-    const b = h("button", { class: `spot finished${fresh ? " fresh" : ""}`, "aria-label": `${label}: more cards`, onclick: () => sheet(label, s) });
-    if (done) b.innerHTML = ICON_CHECK;
-    if (fresh) {
-      b.append(...flecks(seed));
-      setTimeout(() => haptic("double"), CHECK_DRAWN);
-    }
-    return { el: h("div", { class: "pile-cell" }, askew(b, seed), name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due")), key: `finished:${done}` };
+    const rounds = s.rounds();
+    const b = h("button", { class: "spot finished", "aria-label": `${label}: more cards`, onclick: () => sheet(label, s) }, done ? checks(rounds) : null);
+    return { el: h("div", { class: "pile-cell" }, askew(b, seed), name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due")), key: `finished:${done}:${rounds}` };
   }
   const coming = s.upcoming(AHEAD);
   void app.pictures.ahead(coming);
@@ -113,7 +101,7 @@ function spot(s: StudySession, label: string, moved: Moved): { el: HTMLElement; 
     pile.appendChild(edge);
   }
   pile.appendChild(topCard(n.pick.card));
-  const dealt = moved.refilled === s.pile;
+  const dealt = refilled === s.pile;
   if (dealt) {
     // Dropped on the spot as one handful: the bottom card first, the top one last, nothing turned up on the way.
     const cards = [...pile.children] as HTMLElement[];
@@ -139,23 +127,6 @@ function askew(spot: HTMLElement, seed: number): HTMLElement {
   const deg = (r() < 0.5 ? -1 : 1) * (0.7 + r() * 1.2);
   spot.style.setProperty("--askew", `${deg.toFixed(2)}deg`);
   return spot;
-}
-
-/** Bits of coloured paper that jump off a check as it is drawn. */
-function flecks(seed: number): HTMLElement[] {
-  const r = seeded(seed + 7);
-  const colours = ["--again", "--good", "--easy", "--new", "--highlight"];
-  return Array.from({ length: 9 }, (_, i) => {
-    const a = -Math.PI / 2 + (i - 4) * 0.36 + (r() - 0.5) * 0.3; // a fan, upwards
-    const dist = 46 + r() * 34;
-    const f = h("span", { class: "fleck", "aria-hidden": "true" });
-    f.style.setProperty("--x", `${(Math.cos(a) * dist).toFixed(0)}px`);
-    f.style.setProperty("--y", `${(Math.sin(a) * dist).toFixed(0)}px`);
-    f.style.setProperty("--r", `${((r() - 0.5) * 540).toFixed(0)}deg`);
-    f.style.setProperty("--c", `var(${colours[i % colours.length]})`);
-    f.style.setProperty("--cut", `var(--cut-${1 + (i % 4)})`);
-    return f;
-  });
 }
 
 /** The top card as it lies: a forward card white side up (the word), a reverse one cream side up (picture and translation). */
