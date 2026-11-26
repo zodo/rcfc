@@ -121,7 +121,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
   /** The card as it was opened: what Undo puts back after leaving saved it. */
   const was = note ? structuredClone(note) : undefined;
   const front = input("front", { class: "ed-word", value: note?.fields.front ?? "", autocapitalize: "off", spellcheck: false, enterkeyhint: "next", "aria-label": "Word" });
-  const back = input("back", { class: "ed-trans", value: note?.fields.back ?? "", "aria-label": "Translation" });
+  // Words start in lower case on both sides (the keyboard capitalizes a field's first letter otherwise); a German noun is still typed with its capital.
+  const back = input("back", { class: "ed-trans", value: note?.fields.back ?? "", autocapitalize: "off", "aria-label": "Translation" });
   const example = input("example", { class: "ed-example", value: note?.fields.example ?? "", "aria-label": "Example" });
   const memoTarget = input(MEMO_TARGET, { class: "ed-memo", value: note?.fields[MEMO_TARGET] ?? "", placeholder: "a note of your own", "aria-label": "Your note on this side" });
   const memoKnown = input(MEMO_KNOWN, { class: "ed-memo", value: note?.fields[MEMO_KNOWN] ?? "", placeholder: "a note of your own", "aria-label": "Your note on this side" });
