@@ -20,7 +20,13 @@ fi
 
 if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   # OAuth mode: fail fast with a clear message instead of a mid-deploy auth error.
-  if ! wrangler whoami >/dev/null 2>&1; then
+  if ! out=$(wrangler whoami 2>&1); then
+    # A failed whoami is not always a lapsed login: Cloudflare's API can be down (e.g. 504 on /memberships).
+    api=$(grep -oE '(GET|POST) /[^ ]+ -> [0-9]{3}[A-Za-z ]*' <<<"$out" | head -1)
+    if [[ -n "$api" && "$api" != *" 401"* && "$api" != *" 403"* ]]; then
+      echo "cf.sh: Cloudflare's API failed ($api); the login is fine, try again later." >&2
+      exit 3
+    fi
     echo "cf.sh: not authenticated. Either run 'bunx wrangler login' in a terminal," >&2
     echo "       or create $f with CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (see CLAUDE.md)." >&2
     exit 2
