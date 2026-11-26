@@ -38,7 +38,7 @@
       // The app's home. Browser data is per origin, so users must stay on one address.
       "routes": [{ "pattern": "rcfc.220400.xyz", "custom_domain": true }],
       "workers_dev": true,
-      "vars": { "APP_ENV": "production", "PICTURE_NEURONS_PER_DAY": "9000", "AZURE_SPEECH_REGION": "francecentral", "TTS_CHARS_PER_MONTH": "100000" },
+      "vars": { "APP_ENV": "production", "PICTURE_NEURONS_PER_DAY": "50000", "AZURE_SPEECH_REGION": "francecentral", "TTS_CHARS_PER_MONTH": "100000" },
       "version_metadata": { "binding": "CF_VERSION_METADATA" },
       "d1_databases": [
         { "binding": "DB", "database_name": "rcfc", "database_id": "788d85c1-6e68-49d1-a3fe-cb53c4733263", "migrations_dir": "migrations" }

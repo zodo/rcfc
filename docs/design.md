@@ -210,7 +210,7 @@ Azure neural voices, one per language (Spanish, English, Russian and about 15 mo
 
 **Cost at this scale**
 
-- Pictures: Workers AI bills $0.011 per 1,000 neurons with 10,000 free per day ([pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)). A picture costs about 60 neurons; the Worker reserves them in D1 and answers 429 past the daily budget, and the client queue waits for the UTC reset. So about 160 pictures a day stay free.
+- Pictures: Workers AI bills $0.011 per 1,000 neurons with 10,000 free per day ([pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)). A picture costs about 60 neurons; the Worker reserves them in D1 and answers 429 past the daily budget, and the client queue waits for the UTC reset. So about 160 pictures a day stay free; production allows 50,000 neurons a day (about $0.44 over the free ones, ~800 pictures), shared with fills and word notes.
 - Speech: the key belongs to another app's free Azure resource (F0, 500k characters a month shared between both apps). This app is capped at 100k characters a month in D1; past it, 429 and the browser voice.
 
 ## Piles, labels and languages
