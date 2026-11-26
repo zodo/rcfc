@@ -68,6 +68,8 @@ function threw(dir: Dir): void {
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
+const ICON_AUTO_ON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 9h4l5-4v14l-5-4H3z"/><path d="M15 8.5c1.3 1 2 2.2 2 3.5s-.7 2.5-2 3.5M18 6c2 1.6 3 3.6 3 6s-1 4.4-3 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+const ICON_AUTO_OFF = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 9h4l5-4v14l-5-4H3z"/><path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 const ICON_CLOSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
 
 /** Study a pile: a sticker's (`label:7`), or a language's ("es"; default: the last one studied). */
@@ -156,6 +158,8 @@ class Table {
   private peekId: EntityId | null = null;
   /** The pile has been on screen: cards coming into view further down fade in from now on. */
   private shown = false;
+  /** Says the top card's word if its word side is up (when reading by itself is switched on). */
+  private sayUp: (() => void) | null = null;
 
   constructor(private s: StudySession) {
     const close = h("button", { class: "icon", "aria-label": "Close", onclick: () => go.home() });
@@ -164,11 +168,45 @@ class Table {
     this.recall = h("span", { class: "small recall" });
     this.pile = h("div", { class: "pile" }, this.pileShadow);
     this.controls = h("div", { class: "controls" });
-    this.el = h("section", { class: "study" }, h("div", { class: "glow", "data-light": "-3" }), h("div", { class: "study-top" }, close, this.status, this.recall), this.pile, this.controls);
+    this.el = h(
+      "section",
+      { class: "study" },
+      h("div", { class: "glow", "data-light": "-3" }),
+      h("div", { class: "study-top" }, close, this.status, h("div", { class: "study-top-end" }, this.recall, this.autoButton())),
+      this.pile,
+      this.controls,
+    );
     fullScreen(this.el);
     // iPhone asks for motion access, which needs a tap; elsewhere the light can start now.
     if (tiltNeedsTap()) this.el.addEventListener("click", () => startTilt(), { once: true });
     else startTilt();
+  }
+
+  /**
+   * The corner speaker: whether cards read their word by themselves (per device).
+   * It only switches; the speakers on the card say the word and the example.
+   */
+  private autoButton(): HTMLElement {
+    const b = h("button", { class: "icon auto-read" });
+    const draw = () => {
+      const on = app.speech.auto;
+      b.innerHTML = on ? ICON_AUTO_ON : ICON_AUTO_OFF;
+      b.classList.toggle("off", !on);
+      b.setAttribute("aria-pressed", String(on));
+      b.setAttribute("aria-label", "Read words aloud by themselves");
+      b.title = on ? "Reading aloud by itself" : "Not reading aloud by itself";
+    };
+    b.addEventListener("click", () => {
+      const on = !app.speech.auto;
+      app.speech.auto = on;
+      haptic("tap");
+      draw();
+      if (on) this.sayUp?.();
+      else app.speech.hush();
+      toast(on ? "Cards read aloud by themselves" : "Cards stay quiet until you tap a speaker");
+    });
+    draw();
+    return b;
   }
 
   next(): void {
@@ -193,6 +231,7 @@ class Table {
     const rounds = s.rounds();
     const done = s.doneToday().length;
     this.left = 0;
+    this.sayUp = null;
     this.syncPile();
     this.status.textContent = "";
     this.recall.textContent = "";
@@ -427,7 +466,7 @@ class Table {
       el.classList.add("turning");
       turn.to(angle, { done: () => (el.classList.add("noted"), settled()) });
       this.controls.replaceChildren(ratings);
-      if (!f.forward) f.say(); // the word side just came up
+      if (!f.forward) this.sayUp?.(); // the word side just came up
     };
 
     /** After the answer was shown: turn the card over again, onwards the same way. */
@@ -636,6 +675,9 @@ class Table {
       }
     };
     setKeys(onKey);
+    this.sayUp = () => {
+      if (app.speech.auto && (f.forward || revealed)) f.say();
+    };
     if (spent !== undefined) {
       // As it was left: turned over, the notes already read.
       revealed = true;
@@ -647,6 +689,6 @@ class Table {
       this.controls.replaceChildren(ratings);
       return;
     }
-    if (f.forward) f.say(); // a card lying word side up says its word
+    if (f.forward) this.sayUp(); // a card lying word side up says its word
   }
 }

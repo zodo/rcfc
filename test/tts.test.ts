@@ -164,4 +164,15 @@ describe("Speech (client)", () => {
     await Promise.all([slow, fast]);
     expect(c.played).toEqual(["es|el loro"]);
   });
+
+  it("switched off, cards stop reading by themselves and sound plays along with other apps' audio", async () => {
+    const c = await client();
+    const mixed: boolean[] = [];
+    c.speech.player.mix = (on) => mixed.push(on);
+    expect(c.speech.auto).toBe(true);
+    c.speech.auto = false;
+    expect(c.speech.auto).toBe(false);
+    c.speech.auto = true;
+    expect(mixed).toEqual([true, false]);
+  });
 });

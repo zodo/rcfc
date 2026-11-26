@@ -16,7 +16,15 @@ export interface Player {
   /** Plays the audio; false when it can't (not unlocked by a tap yet, undecodable). */
   play(key: string, data: ArrayBuffer): Promise<boolean>;
   stop(): void;
+  /**
+   * Whether to play along with other apps' audio (true) or take over (false).
+   * On iPhone, taking over plays through the silent switch but pauses other apps' music.
+   */
+  mix?(on: boolean): void;
 }
+
+/** A card reads its word by itself when it comes up, unless switched off on this device (study's corner speaker). */
+const AUTO_KEY = "rcfc:autoread";
 
 export class Speech {
   fetch: (url: string, init?: RequestInit) => Promise<Response> = (url, init) => fetch(url, init);
@@ -33,6 +41,8 @@ export class Speech {
   private running: Promise<void> | null = null;
   /** Bumped by every `say`, so a slow earlier one doesn't speak over it. */
   private turn = 0;
+  /** `auto` as set this run (storage may be unavailable). */
+  private autoNow: boolean | undefined;
 
   private constructor(
     private store: Store,
@@ -43,7 +53,31 @@ export class Speech {
   static async open(store: Store, code: () => string, player: Player): Promise<Speech> {
     const s = new Speech(store, code, player);
     for (const k of await store.ttsKeys()) s.have.add(k);
+    player.mix?.(!s.auto);
     return s;
+  }
+
+  /**
+   * Whether cards read their word by itself. Off is for studying while something
+   * else plays (music for a baby to sleep): sound then plays along with other
+   * apps' audio instead of pausing it, and only when a speaker is tapped.
+   */
+  get auto(): boolean {
+    if (this.autoNow !== undefined) return this.autoNow;
+    try {
+      return localStorage.getItem(AUTO_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  }
+  set auto(on: boolean) {
+    try {
+      localStorage.setItem(AUTO_KEY, on ? "1" : "0");
+    } catch {
+      /* storage unavailable: kept for this run only */
+    }
+    this.autoNow = on;
+    this.player.mix?.(!on);
   }
 
   /** Whether `say` can speak this language at all (a server voice, or the browser's). */
@@ -98,6 +132,13 @@ export class Speech {
     return false;
   }
 
+  /** Stop whatever is being said. */
+  hush(): void {
+    this.turn++;
+    this.player.stop();
+    if (canSpeak()) speechSynthesis.cancel();
+  }
+
   /** Say a text in a language: stored audio at once, else fetched briefly, else the browser's voice. */
   async say(text: string, lang: string): Promise<void> {
     const turn = ++this.turn;
@@ -138,9 +179,14 @@ export function webAudio(): Player {
   let ctx: AudioContext | undefined;
   let current: AudioBufferSourceNode | undefined;
   const decoded = new Map<string, AudioBuffer>();
-  // iOS mutes Web Audio on the silent switch unless the page says it plays media (Safari 17+).
+  // iOS mutes Web Audio on the silent switch unless the page says it plays media (Safari 17+);
+  // playing media pauses other apps' audio, so with cards reading by themselves switched off
+  // it plays along with them instead ("ambient", which the silent switch mutes).
   const session = (navigator as { audioSession?: { type: string } }).audioSession;
-  if (session) session.type = "playback";
+  const setMix = (on: boolean) => {
+    if (session) session.type = on ? "ambient" : "playback";
+  };
+  setMix(false);
   const unlock = () => {
     if (ctx?.state === "running") return;
     ctx ??= new AudioContext();
@@ -153,6 +199,7 @@ export function webAudio(): Player {
   };
   for (const ev of ["pointerdown", "keydown"]) document.addEventListener(ev, unlock, { capture: true, passive: true });
   return {
+    mix: setMix,
     async play(key, data) {
       if (!ctx || ctx.state !== "running") return false;
       try {

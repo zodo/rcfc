@@ -329,6 +329,15 @@ async function run(s: Browser, url: string) {
   await s.until("example said", `window.__rcfcSpoken.includes("¡Adiós, amigo!")`);
   await shot(s, "study-example");
   if (await s.js<boolean>(`return !document.querySelector(".flashcard:not(.leaving) .answer.hidden");`)) throw new Error("the example's speak button turned the card over");
+  log("the corner speaker switches reading by itself off (the card's speakers still say it) and on again (it says the word now)");
+  await s.click(".study-top .auto-read");
+  await s.until("switched off", `document.querySelector(".study-top .auto-read")?.getAttribute("aria-pressed") === "false"`);
+  await s.js(`window.__rcfcSpoken.length = 0;`);
+  await s.click(".flashcard:not(.leaving) .face.prompt .speak");
+  await s.until("word said on a tap", `window.__rcfcSpoken.includes("adiós")`);
+  await s.js(`window.__rcfcSpoken.length = 0;`);
+  await s.click(".study-top .auto-read");
+  await s.until("on again, the word said", `document.querySelector(".study-top .auto-read")?.getAttribute("aria-pressed") === "true" && window.__rcfcSpoken.includes("adiós")`);
   const answered = 1 + (await answerUntilDone(s, 10));
   if (answered < 2) throw new Error(`only ${answered} cards shown`);
   log("a finished pile draws its check in study; back to the table, its spot keeps it; tapped, it offers adding words or the same cards again");

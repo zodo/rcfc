@@ -1090,6 +1090,19 @@ header.top.sub .back svg {
   min-width: 38px;
   text-align: right;
 }
+.study-top-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* the corner speaker: cards read their word by themselves, or stay quiet until a speaker on the card is tapped */
+.study-top .auto-read svg {
+  width: 20px;
+  height: 20px;
+}
+.study-top .auto-read.off {
+  color: var(--muted);
+}
 /* a finished pile, on the study table (study.ts finish): its checks, then a
    handful of more cards lying aside */
 .finish {
