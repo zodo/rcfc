@@ -26,6 +26,8 @@ const SHOWN = 300;
 const FAINT = 0.42;
 /** Room on each side of the tiny print (px): its glyphs run a hair past the page's box. The same on both sides, so its centre stays the page's (where the zoom aims). */
 const PAD = 2;
+/** The paper grain's tile (src/ui/paper.ts --grain), px. */
+const GRAIN = 192;
 const ZOOM = { duration: 280, easing: "cubic-bezier(.2,.7,.3,1)" };
 const ZOOM_OUT = { duration: 300, easing: "cubic-bezier(.25,.6,.3,1)" };
 
@@ -166,7 +168,7 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   backBtn.innerHTML = ICON_BACK;
   let pg = page(what.note, what.summary, what.lang);
   const sheet = h("div", { class: "sum-sheet" }, pg);
-  sheet.style.backgroundSize = `${192 * S}px`; // the grain as big as on the zoomed card
+  sheet.style.backgroundSize = `${GRAIN * S}px`; // the grain as big as on the zoomed card (measured again when it lands)
   sheet.style.backgroundColor = getComputedStyle(side).backgroundColor; // its paper, white or cream
   scroller.append(sheet);
   view.append(backBtn);
@@ -253,8 +255,15 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   anim.onfinish = () => {
     if (closing) return;
     // The page lies exactly where the zoomed tiny print and the rest were; a quick fade over them hides
-    // the zoomed text sharpening into real text.
+    // the zoomed text sharpening into real text. Its grain is laid exactly over the zoomed card's: as big
+    // (the card's face sits a little forward in 3D, so a touch over 1/K) and from the same corner.
+    const face = copyFine.closest<HTMLElement>(".side")!;
+    const fr = face.getBoundingClientRect();
     document.body.append(view);
+    const sr = sheet.getBoundingClientRect();
+    const tile = (GRAIN * fr.width) / face.offsetWidth;
+    sheet.style.backgroundSize = `${tile}px`;
+    sheet.style.backgroundPosition = `${fr.left - sr.left}px ${fr.top - sr.top}px`;
     sheet.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: "ease-out" });
     for (const b of view.querySelectorAll("button")) b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, delay: 60, fill: "backwards" });
     document.addEventListener("keydown", onKey);
