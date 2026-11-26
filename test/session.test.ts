@@ -283,6 +283,17 @@ describe("piles", () => {
     expect(d.store.newQueue(deckId).filter((c) => known.has(c.note_id))).toEqual([]);
   });
 
+  it("words marked known with one face get the other one answered Easy, once per device", async () => {
+    const d = await Device.open();
+    const deckId = await d.deck(3);
+    const [n0] = d.store.col.liveNotes(deckId);
+    const fwd = d.store.col.cardsByNote.get(n0.id)!.map((c) => d.store.col.cards.get(c)!).find((c) => c.template === "forward")!;
+    await d.store.answer(fwd, 4, 2000); // "I know" before it covered both faces
+    expect(await d.store.repairKnown()).toBe(1);
+    expect(d.store.col.cardsByNote.get(n0.id)!.every((c) => d.store.col.cards.get(c)!.reviews === 1)).toBe(true);
+    expect(await d.store.repairKnown()).toBe(0);
+  });
+
   it("don't know: studied words come back due, unseen ones first among new words", async () => {
     const clock = new Clock();
     const d = await Device.open(clock);

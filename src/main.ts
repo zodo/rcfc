@@ -39,6 +39,8 @@ async function boot() {
       if (document.visibilityState === "hidden") void store.engine.flush();
     });
     if (store.col.reviews.length || store.col.notes.size) void requestPersistence();
+    const repaired = await store.repairKnown();
+    if (repaired) console.info("rcfc: marked the other face of known words", repaired);
     app.sync = await Sync.open(store);
     app.pictures = await Pictures.open(store, () => app.sync.code);
     app.filler = new Filler(() => app.sync.code);

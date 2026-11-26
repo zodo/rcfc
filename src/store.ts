@@ -9,7 +9,7 @@ import type { AppEvent, LabelColored, LabelCreated, LabelDeleted, LabelRenamed, 
 import { freshColor, labelIdFor, labelName } from "./domain/labels";
 import type { EntityId } from "./domain/ids";
 import { importEvents, type ReadyRow } from "./import/anything";
-import { knownCards, newQueue, unknownPlan, unseenCards, type DayClock, type Scope } from "./domain/newcards";
+import { halfKnownFaces, knownCards, newQueue, unknownPlan, unseenCards, type DayClock, type Scope } from "./domain/newcards";
 import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin } from "./domain/rows";
 import { needsReplay } from "./domain/sync";
 import { Engine, type EngineApi } from "./engine/client";
@@ -296,6 +296,22 @@ export class Store {
     for (const c of cards) await this.answer(c, 4, MARKED_DURATION_MS);
     await this.predict(cards); // the table draws from the last predictions
     return new Set(cards.map((c) => c.note_id)).size;
+  }
+
+  /**
+   * Once per device: words marked known when "I know" answered only the face
+   * seen get their other face answered Easy too (src/domain/newcards.ts
+   * `halfKnownFaces`). Left unseen, those faces were drawn as new cards and
+   * filled the piles. Returns how many faces were answered.
+   */
+  async repairKnown(): Promise<number> {
+    const KEY = "repair:known-both-faces";
+    if (await this.getMeta(KEY)) return 0;
+    const cards = halfKnownFaces(this.col);
+    for (const c of cards) await this.answer(c, 4, MARKED_DURATION_MS);
+    if (cards.length) await this.predict(cards);
+    await this.setMeta(KEY, true);
+    return cards.length;
   }
 
   /**

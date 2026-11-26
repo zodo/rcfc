@@ -115,6 +115,28 @@ export function knownCards(col: Collection, noteIds: Iterable<EntityId>): Card[]
 }
 
 /**
+ * Words marked known before "I know" covered both faces: answered Easy only,
+ * at least once outside any pile (a mark, an import, or study before piles),
+ * with a face never seen. Their unseen faces, to answer Easy once
+ * (`Store.repairKnown`).
+ */
+export function halfKnownFaces(col: Collection): Card[] {
+  const ratings = new Map<EntityId, { easy: boolean; marked: boolean }>();
+  for (const r of col.reviews) {
+    const k = ratings.get(r.payload.note_id) ?? { easy: true, marked: false };
+    k.easy &&= r.payload.rating === 4;
+    k.marked ||= r.payload.pile === undefined;
+    ratings.set(r.payload.note_id, k);
+  }
+  const out: Card[] = [];
+  for (const [id, k] of ratings) {
+    if (!k.easy || !k.marked || !col.liveNote(id)) continue;
+    out.push(...(col.cardsByNote.get(id) ?? []).map((c) => col.cards.get(c)!).filter((c) => c.reviews === 0));
+  }
+  return out;
+}
+
+/**
  * "I don't know these": studied cards get an Again answer (the model brings
  * them back soon); words never studied are queued to be learned next.
  */

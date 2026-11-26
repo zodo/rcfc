@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AppEvent, Review } from "../src/domain/events";
-import { introducedToday, knownCards, newQueue, unknownPlan, unseenCards, type DayClock } from "../src/domain/newcards";
+import { halfKnownFaces, introducedToday, knownCards, newQueue, unknownPlan, unseenCards, type DayClock } from "../src/domain/newcards";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -91,6 +91,21 @@ describe("knownCards", () => {
       [n1.id, "forward"],
       [n1.id, "reverse"],
     ]);
+  });
+});
+
+describe("halfKnownFaces", () => {
+  it("finds the unseen face of words answered only Easy outside a pile, not of words studied in one", () => {
+    const { col, f, deckId, answer } = setup(4);
+    const [n0, n1, n2, n3] = col.liveNotes();
+    const cardsOf = (id: number) => col.cardsByNote.get(id)!.map((c) => col.cards.get(c)!);
+    answer(cardsOf(n0.id)[0].id, T0, 4); // marked known the old way: one face
+    answer(cardsOf(n1.id)[0].id, T0, 4); // marked, then got wrong
+    answer(cardsOf(n1.id)[0].id, T0 + DAY, 1);
+    const c2 = cardsOf(n2.id)[0]; // Easy in study, from a pile
+    col.apply(f.make<Review>("review", { card_id: c2.id, note_id: n2.id, deck_id: deckId, preset_id: 0, rating: 4, duration_ms: 1, tz_offset_min: 0, pile: "lang:es" }));
+    for (const c of cardsOf(n3.id)) answer(c.id, T0, 4); // both faces already
+    expect(halfKnownFaces(col).map((c) => [c.note_id, c.template])).toEqual([[n0.id, "reverse"]]);
   });
 });
 
