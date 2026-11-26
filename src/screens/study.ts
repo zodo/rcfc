@@ -24,7 +24,7 @@ import { Body, type Pose } from "../ui/body";
 import { CHECK_DRAWN, checks } from "../ui/checks";
 import { autoReadScrap } from "../ui/autoread";
 import { h, ICON_PEN, ICON_SPEAK, toast } from "../ui/h";
-import { relight, startTilt, tiltNeedsTap } from "../ui/light";
+import { relight } from "../ui/light";
 import { haptic, seeded } from "../ui/paper";
 import { cutout, livePicture } from "../ui/picture";
 import { finePrint, zoomed, zoomInto } from "../ui/fineprint";
@@ -176,9 +176,7 @@ class Table {
       this.controls,
     );
     fullScreen(this.el);
-    // iPhone asks for motion access, which needs a tap; elsewhere the light can start now.
-    if (tiltNeedsTap()) this.el.addEventListener("click", () => startTilt(), { once: true });
-    else startTilt();
+    // Tilt light (startTilt) is off: the phone's motion sensor isn't read.
   }
 
   next(): void {
