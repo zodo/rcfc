@@ -6,10 +6,9 @@
 // page switches the notes between the studied and the known language.
 //
 // The tiny print is the zoomed page itself, laid out at reading width and
-// scaled down by K, so zooming by 1/K lands exactly on the page and the swap
-// to real text is invisible. It is faint, and inks in while zooming; the rest
-// of the page, below what the tiny print shows, fades in with it, so the
-// whole page is there when the zoom ends.
+// scaled down by K, so zooming by 1/K lands exactly on the page. It is faint,
+// and inks in while zooming; the page itself rides in on the card and fades in
+// during the zoom, so the whole page is there when the zoom ends.
 import { app, hold } from "../app";
 import type { Note } from "../domain/collection";
 import type { Summary } from "../domain/summary";
@@ -107,14 +106,20 @@ function onText(el: Element, x: number, y: number): boolean {
 }
 
 /**
- * Zoom into `fine` until it reads, then show the page. `cardTilt` is the
- * card's rotation in degrees (the camera turns with it, so the page comes out
+ * Zoom into `fine` until it reads, onto the page. `cardTilt` is the card's
+ * rotation in degrees (the camera turns with it, so the page comes out
  * straight).
  *
  * What zooms is a copy of the card (pose, pencil notes and all) laid over
  * it; the study screen itself never moves. Scaling the screen 1/K times made Chrome on
  * Android rasterize its many layers (pile, shadows, buttons) at that scale:
  * past the GPU's tile memory, with missing tiles and flashes on the way back.
+ *
+ * The page is there from the tap, carried along with the copy: its transform is
+ * the copy's followed by the inverse of where the copy ends, so it rides exactly
+ * on the card and is untransformed when the zoom ends. It fades in while both
+ * move; nothing is swapped when they stop (a swap showed every pixel of
+ * difference: sharper letters, a shifted grain, a white frame while it painted).
  */
 export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   const what = shown.get(fine);
@@ -131,44 +136,28 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   const stand = h("div", { class: "sum-stand", "aria-hidden": "true" }, copy);
   Object.assign(stand.style, { left: `${pb.left}px`, top: `${pb.top}px`, width: `${pb.width}px`, height: `${pb.height}px` });
   const clip = copyFine.querySelector<HTMLElement>(".fine-clip")!;
-  // The rest of the page, on the copy: lying exactly over the tiny print, shown only below the part it
-  // shows clearly (the masks add up), fading in while the camera comes down.
-  // Over the tiny print exactly: placed against the tiny print's own box (its padding, whole pixels).
-  const rest = h("div", { class: "fine-rest" });
-  rest.style.setProperty("--shown", `${SHOWN}px`);
-  copyFine.style.position = "relative";
-  const restPage = (n: Note, sm: Summary, l: string) => {
-    const p = page(n, sm, l);
-    p.style.transform = `scale(${K})`;
-    p.style.left = `${PAD}px`;
-    rest.replaceChildren(p);
-  };
-  restPage(what.note, what.summary, what.lang);
-  copyFine.append(rest);
   const S = 1 / K;
   const r = fine.querySelector(".fine-clip")!.getBoundingClientRect();
   const c = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   // The tiny print's centre lands where the page's top shows in the view.
   const t = { x: window.innerWidth / 2, y: PAGE_TOP + (SHOWN * K) / K / 2 };
-  // Around the box's own transform origin: its centre.
+  // Around the box's own transform origin: its centre (the page turns around the same point).
   const cx = c.x - mid.x, cy = c.y - mid.y;
   const step = (dx: number, dy: number, a: number, s: number) => `translate(${dx}px,${dy}px) translate(${cx}px,${cy}px) rotate(${a}deg) scale(${s}) translate(${-cx}px,${-cy}px)`;
-  document.documentElement.classList.add("sum-zoom"); // the zoomed copy must not make the page scroll
+  const dx = t.x - c.x, dy = t.y - c.y;
   const atRest = step(0, 0, 0, 1);
-  const zoomedIn = step(t.x - c.x, t.y - c.y, -cardTilt, S);
-  document.body.append(stand);
-  Object.assign(rest.style, { top: `${clip.offsetTop}px`, left: `${clip.offsetLeft}px` }); // laid out now, relative to copyFine
-  const anim = stand.animate([{ transform: atRest }, { transform: zoomedIn }], { ...ZOOM, fill: "forwards" });
-  const ink = clip.animate([{ opacity: FAINT }, { opacity: 1 }], { ...ZOOM, fill: "forwards" });
-  const more = rest.animate([{ opacity: 0 }, { opacity: 1 }], { ...ZOOM, fill: "forwards" });
+  const zoomedIn = step(dx, dy, -cardTilt, S);
+  // The inverse of zoomedIn: the same functions after it keep the lists alike, so both interpolate in step.
+  const undo = `translate(${cx}px,${cy}px) scale(${K}) rotate(${cardTilt}deg) translate(${-cx}px,${-cy}px) translate(${-dx}px,${-dy}px)`;
 
   const scroller = h("div", { class: "sum-scroll" });
   const view = h("div", { class: "sum-view", role: "dialog", "aria-label": "Word notes" }, scroller);
+  view.style.transformOrigin = `${mid.x}px ${mid.y}px`;
+  view.style.pointerEvents = "none"; // until it lands
   const backBtn = h("button", { class: "icon sum-back", "aria-label": "Back" });
   backBtn.innerHTML = ICON_BACK;
   let pg = page(what.note, what.summary, what.lang);
   const sheet = h("div", { class: "sum-sheet" }, pg);
-  sheet.style.backgroundSize = `${GRAIN * S}px`; // the grain as big as on the zoomed card (measured again when it lands)
   sheet.style.backgroundColor = getComputedStyle(side).backgroundColor; // its paper, white or cream
   scroller.append(sheet);
   view.append(backBtn);
@@ -192,7 +181,6 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
       app.summaries.setLang(what.note, want);
       print(fine, what.note, s, want); // the card's tiny print too, and the copy's, for zooming out onto it
       print(copyFine, what.note, s, want);
-      restPage(what.note, s, want);
       Object.assign(what, { summary: s, lang: want });
       const fresh = page(what.note, s, want);
       pg.replaceWith(fresh);
@@ -204,36 +192,69 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
     view.append(langBtn);
   }
 
+  document.documentElement.classList.add("sum-zoom"); // the zoomed copy must not make the page scroll
+  view.style.opacity = "0";
+  document.body.append(stand, view);
+  // The page's grain lies exactly on the zoomed card's: measured with the copy where it ends, as big
+  // (the card's face sits a little forward in 3D, so a touch over 1/K) and from the same corner.
+  stand.style.transform = zoomedIn;
+  const face = copyFine.closest<HTMLElement>(".side")!;
+  const fr = face.getBoundingClientRect();
+  const sr = sheet.getBoundingClientRect();
+  stand.style.transform = "";
+  sheet.style.backgroundSize = `${(GRAIN * fr.width) / face.offsetWidth}px`;
+  sheet.style.backgroundPosition = `${fr.left - sr.left}px ${fr.top - sr.top}px`;
+  view.style.opacity = "";
+
+  const anim = stand.animate([{ transform: atRest }, { transform: zoomedIn }], { ...ZOOM, fill: "forwards" });
+  const ink = clip.animate([{ opacity: FAINT }, { opacity: 1 }], { ...ZOOM, fill: "forwards" });
+  // Riding on the card; it fades in once the tiny print is big enough to meet it halfway.
+  const ride = view.animate(
+    [
+      { transform: `${atRest} ${undo}`, opacity: 0 },
+      { opacity: 0, offset: 0.25 },
+      { opacity: 1, offset: 0.85 },
+      { transform: `${zoomedIn} ${undo}`, opacity: 1 },
+    ],
+    { ...ZOOM, fill: "forwards" },
+  );
+  const buttons = [...view.querySelectorAll("button")].map((b) => b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, delay: ZOOM.duration, fill: "backwards" }));
+
   let closing = false;
   const close = () => {
     if (closing) return;
     closing = true;
     document.removeEventListener("keydown", onKey);
+    view.style.pointerEvents = "none";
     const done = () => {
       document.documentElement.classList.remove("sum-zoom");
       stand.remove();
+      view.remove();
       open = false;
     };
     if (anim.playState === "running") {
       // Closed while still zooming in: back the way it came.
-      view.remove();
-      anim.reverse();
-      ink.reverse();
-      more.reverse();
-      anim.onfinish = () => (anim.cancel(), ink.cancel(), more.cancel(), done());
+      for (const a of [anim, ink, ride, ...buttons]) a.reverse();
+      anim.onfinish = () => (anim.cancel(), ink.cancel(), done());
       return;
     }
-    // Unscrolled, the page lies exactly on the zoomed card: swap back at once. Scrolled, fade it.
-    if (scroller.scrollTop > 4) view.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: "forwards" }).onfinish = () => view.remove();
-    else view.remove();
     // Its own curve, not the zoom-in played backwards (that starts slow and stops hard):
-    // off at once, settling softly onto the table. The copy stayed under the page, drawn.
-    const back = stand.animate([{ transform: zoomedIn }, { transform: step(0, 0, 0, 1) }], ZOOM_OUT);
+    // off at once, settling softly onto the table. The page rides back on the card, fading out;
+    // scrolled, it no longer lies on the card, so it only fades.
+    const back = stand.animate([{ transform: zoomedIn }, { transform: atRest }], ZOOM_OUT);
     clip.animate([{ opacity: 1 }, { opacity: FAINT }], ZOOM_OUT);
-    rest.animate([{ opacity: 1 }, { opacity: 0 }], { ...ZOOM_OUT, fill: "forwards" });
+    if (scroller.scrollTop > 4) view.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: "forwards" });
+    else
+      view.animate(
+        [
+          { transform: `${zoomedIn} ${undo}`, opacity: 1 },
+          { opacity: 0, offset: 0.6 },
+          { transform: `${atRest} ${undo}`, opacity: 0 },
+        ],
+        { ...ZOOM_OUT, fill: "forwards" },
+      );
     anim.cancel();
     ink.cancel();
-    more.cancel();
     back.onfinish = done;
   };
   const leave = () => {
@@ -254,18 +275,8 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   });
   anim.onfinish = () => {
     if (closing) return;
-    // The page lies exactly where the zoomed tiny print and the rest were; a quick fade over them hides
-    // the zoomed text sharpening into real text. Its grain is laid exactly over the zoomed card's: as big
-    // (the card's face sits a little forward in 3D, so a touch over 1/K) and from the same corner.
-    const face = copyFine.closest<HTMLElement>(".side")!;
-    const fr = face.getBoundingClientRect();
-    document.body.append(view);
-    const sr = sheet.getBoundingClientRect();
-    const tile = (GRAIN * fr.width) / face.offsetWidth;
-    sheet.style.backgroundSize = `${tile}px`;
-    sheet.style.backgroundPosition = `${fr.left - sr.left}px ${fr.top - sr.top}px`;
-    sheet.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: "ease-out" });
-    for (const b of view.querySelectorAll("button")) b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, delay: 60, fill: "backwards" });
+    ride.cancel(); // it ends untransformed: dropping it changes nothing on screen
+    view.style.pointerEvents = "";
     document.addEventListener("keydown", onKey);
   };
 }
