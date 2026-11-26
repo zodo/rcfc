@@ -40,7 +40,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        navigateFallbackDenylist: [/^\/api\//],
+        // The Worker's own pages (the Claude connector's sign-in) must not be answered with the app shell.
+        navigateFallbackDenylist: [/^\/api\//, /^\/oauth\//, /^\/mcp/, /^\/\.well-known\//],
         // Activate new versions without waiting for a message from the page:
         // pages of older versions never send one. src/ui/update.ts offers the reload.
         skipWaiting: true,

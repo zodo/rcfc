@@ -1,6 +1,7 @@
 // Sync API (docs/design.md, "Sync"). The server is an ordered mailbox per user
 // code: push appends events it has not seen, pull pages through them by server
-// seq. It never interprets payloads.
+// seq. It never interprets payloads (the Claude connector does, worker/mcp.ts:
+// it reads and appends through `loadEvents` / `appendEvents`).
 //
 // Written against the small slice of D1 it uses (`SqlDb`), so tests run it on
 // bun:sqlite with the real migrations (test/support/d1.ts).
@@ -25,7 +26,7 @@ export const json = (data: unknown, status = 200) =>
     headers: { "content-type": "application/json", "cache-control": "no-store" },
   });
 
-interface WireEvent {
+export interface WireEvent {
   event_id: string;
   type: string;
   ts: number;
@@ -61,6 +62,11 @@ async function push(request: Request, db: SqlDb, code: string): Promise<Response
   if (!events.every(validEvent)) return json({ error: "malformed event" }, 400);
   if (!events.length) return json({ accepted: 0 });
 
+  return json({ accepted: await appendEvents(db, code, events) });
+}
+
+/** Store events for a user (those it has already are skipped); returns how many were new. */
+export async function appendEvents(db: SqlDb, code: string, events: WireEvent[]): Promise<number> {
   const stmts: SqlStatement[] = [];
   for (let i = 0; i < events.length; i += ROWS_PER_INSERT) {
     const chunk = events.slice(i, i + ROWS_PER_INSERT);
@@ -68,9 +74,21 @@ async function push(request: Request, db: SqlDb, code: string): Promise<Response
     const args = chunk.flatMap((e) => [code, e.event_id, Math.trunc(e.ts), JSON.stringify(e)]);
     stmts.push(db.prepare(sql).bind(...args));
   }
+  if (!stmts.length) return 0;
   const results = await db.batch(stmts);
-  const accepted = results.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
-  return json({ accepted });
+  return results.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
+}
+
+/** Every event of a user, in server order (the worker's own reads: the connector, worker/mcp.ts). */
+export async function loadEvents(db: SqlDb, code: string): Promise<unknown[]> {
+  const out: unknown[] = [];
+  const PAGE = 5000;
+  for (let after = 0; ; ) {
+    const { results } = await db.prepare("SELECT seq, body FROM events WHERE user_code = ? AND seq > ? ORDER BY seq LIMIT ?").bind(code, after, PAGE).all<{ seq: number; body: string }>();
+    for (const r of results) out.push(JSON.parse(r.body));
+    if (results.length < PAGE) return out;
+    after = results[results.length - 1].seq;
+  }
 }
 
 async function pull(url: URL, db: SqlDb, code: string): Promise<Response> {

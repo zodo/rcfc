@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke-test a deployment: page, PWA manifest, and /api/health (D1 + R2).
+# Smoke-test a deployment: page, PWA manifest, /api/health (D1 + R2), and the Claude connector.
 #   scripts/check-deploy.sh <url> [expected-env]
 #   scripts/check-deploy.sh preview      (uses the URL saved by the last deploy)
 set -euo pipefail
@@ -25,4 +25,7 @@ manifest=$(curl -sf "$url/manifest.webmanifest" || true)
 check "GET / serves the app"   '[[ "$page" == *"<title>rcfc</title>"* ]]'
 check "PWA manifest"           '[[ "$manifest" == *short_name* ]]'
 check "service worker"         'curl -sf -o /dev/null "$url/sw.js"'
+# The Claude connector: the whole sign-in and tool calls with a throwaway account, except on production (discovery only).
+if [[ "$want" == production || "$url" == *rcfc.220400.xyz* || "$url" == *//rcfc.zzodoo.* ]]; then bun scripts/check-connector.ts "$url" || fail=1
+else bun scripts/check-connector.ts "$url" --write || fail=1; fi
 exit $fail

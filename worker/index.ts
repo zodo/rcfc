@@ -1,6 +1,8 @@
-// API Worker. Static assets (the PWA) are served by the assets binding;
-// only /api/* reaches this code (see run_worker_first in wrangler.jsonc).
+// API Worker. Static assets (the PWA) are served by the assets binding; only
+// /api/* and the Claude connector's paths (/mcp, /oauth/*, OAuth discovery)
+// reach this code (see run_worker_first in wrangler.jsonc).
 import { handleFill } from "./fill";
+import { handleOAuth } from "./oauth";
 import { handlePictures, type AiRunner } from "./pictures";
 import { handleSummary } from "./summary";
 import { handleSync, json } from "./sync";
@@ -33,9 +35,11 @@ async function health(env: Env): Promise<Response> {
 }
 
 export default {
-  async fetch(request, env): Promise<Response> {
+  async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/health") return health(env);
+    const oauth = await handleOAuth(request, env, ctx);
+    if (oauth) return oauth;
     const budget = Number(env.PICTURE_NEURONS_PER_DAY) || undefined;
     return (
       (await handleSync(request, env.DB)) ??

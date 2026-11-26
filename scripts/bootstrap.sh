@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Idempotently create the D1 databases and R2 buckets for preview + production,
+# Idempotently create the D1 databases, R2 buckets and KV namespaces for preview + production,
 # and write the D1 ids into wrangler.jsonc. Run via: bun run cf:bootstrap
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -24,6 +24,12 @@ done
 existing=$(wrangler r2 bucket list 2>/dev/null | awk '/^name:/{print $2}')
 for b in rcfc-preview rcfc; do
   if grep -qx "$b" <<<"$existing"; then echo "R2 $b exists"; else echo "creating R2 $b"; wrangler r2 bucket create "$b" >/dev/null; fi
+done
+
+# OAuth grants of the Claude connector (worker/oauth.ts); their ids are in wrangler.jsonc.
+kvs=$(wrangler kv namespace list)
+for k in rcfc-preview-oauth rcfc-oauth; do
+  if grep -q "\"$k\"" <<<"$kvs"; then echo "KV $k exists"; else echo "creating KV $k: put its id in wrangler.jsonc"; wrangler kv namespace create "$k"; fi
 done
 
 echo "bootstrap done; commit wrangler.jsonc if ids changed: git diff wrangler.jsonc"

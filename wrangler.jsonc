@@ -10,10 +10,13 @@
   "account_id": "d3a7891a6e68b2acfeb352be27698849",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-11-01",
+  // The OAuth library fetches Client ID Metadata Documents; this keeps those fetches on the public Internet (SSRF).
+  "compatibility_flags": ["global_fetch_strictly_public"],
   "observability": { "enabled": true },
   "assets": {
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    // The Claude connector (worker/oauth.ts, worker/mcp.ts) lives at /mcp, /oauth/* and OAuth discovery.
+    "run_worker_first": ["/api/*", "/mcp", "/mcp/*", "/oauth/*", "/.well-known/oauth-*", "/.well-known/openid-configuration"]
   },
   "vars": { "APP_ENV": "dev", "PICTURE_NEURONS_PER_DAY": "9000", "AZURE_SPEECH_REGION": "francecentral", "TTS_CHARS_PER_MONTH": "100000" },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
@@ -21,16 +24,19 @@
     { "binding": "DB", "database_name": "rcfc-dev", "database_id": "local", "migrations_dir": "migrations" }
   ],
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "rcfc-dev" }],
+  // OAuth grants and tokens of the Claude connector (hashed; props encrypted).
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "local" }],
   "env": {
     "preview": {
       "name": "rcfc-preview",
       "workers_dev": true,
-      "vars": { "APP_ENV": "preview", "PICTURE_NEURONS_PER_DAY": "9000", "AZURE_SPEECH_REGION": "francecentral", "TTS_CHARS_PER_MONTH": "100000" },
+      "vars": { "APP_ENV": "preview", "PUBLIC_ORIGIN": "https://rcfc-preview.zzodoo.workers.dev", "PICTURE_NEURONS_PER_DAY": "9000", "AZURE_SPEECH_REGION": "francecentral", "TTS_CHARS_PER_MONTH": "100000" },
       "version_metadata": { "binding": "CF_VERSION_METADATA" },
       "d1_databases": [
         { "binding": "DB", "database_name": "rcfc-preview", "database_id": "9bef4555-1e67-4c35-b99c-90db3fe995df", "migrations_dir": "migrations" }
       ],
       "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "rcfc-preview" }],
+      "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "aea373ad9fbf43ebb27be37de7ebe6c6" }],
       "ai": { "binding": "AI", "remote": true }
     },
     "production": {
@@ -38,12 +44,13 @@
       // The app's home. Browser data is per origin, so users must stay on one address.
       "routes": [{ "pattern": "rcfc.220400.xyz", "custom_domain": true }],
       "workers_dev": true,
-      "vars": { "APP_ENV": "production", "PICTURE_NEURONS_PER_DAY": "50000", "AZURE_SPEECH_REGION": "francecentral", "TTS_CHARS_PER_MONTH": "100000" },
+      "vars": { "APP_ENV": "production", "PUBLIC_ORIGIN": "https://rcfc.220400.xyz", "PICTURE_NEURONS_PER_DAY": "50000", "AZURE_SPEECH_REGION": "francecentral", "TTS_CHARS_PER_MONTH": "100000" },
       "version_metadata": { "binding": "CF_VERSION_METADATA" },
       "d1_databases": [
         { "binding": "DB", "database_name": "rcfc", "database_id": "788d85c1-6e68-49d1-a3fe-cb53c4733263", "migrations_dir": "migrations" }
       ],
       "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "rcfc" }],
+      "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "cbd745bc4bda4f1b9c703e881d45a6c3" }],
       "ai": { "binding": "AI", "remote": true }
     }
   }

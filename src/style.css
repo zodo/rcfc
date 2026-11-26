@@ -1894,6 +1894,11 @@ header.top.sub .back svg {
     inset 0 0 0 0.5px rgb(var(--shadow) / 0.3);
   user-select: all;
 }
+.sync-code.connector {
+  font-size: 15px;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
 .qr {
   width: 180px;
   margin: 4px auto;
