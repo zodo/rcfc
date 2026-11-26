@@ -24,6 +24,8 @@ const K = 0.16;
 const SHOWN = 300;
 /** How faint the tiny print is until zoomed into. */
 const FAINT = 0.42;
+/** Room on each side of the tiny print (px): its glyphs run a hair past the page's box. The same on both sides, so its centre stays the page's (where the zoom aims). */
+const PAD = 2;
 const ZOOM = { duration: 280, easing: "cubic-bezier(.2,.7,.3,1)" };
 const ZOOM_OUT = { duration: 300, easing: "cubic-bezier(.25,.6,.3,1)" };
 
@@ -47,6 +49,7 @@ const shown = new WeakMap<HTMLElement, { note: Note; summary: Summary; lang: str
 function print(fine: HTMLElement, note: Note, summary: Summary, lang: string): void {
   const inner = page(note, summary, lang);
   inner.style.transform = `scale(${K})`;
+  inner.style.left = `${PAD}px`;
   fine.firstElementChild!.replaceChildren(inner);
   fine.classList.remove("empty");
   shown.set(fine, { note, summary, lang });
@@ -60,7 +63,8 @@ function print(fine: HTMLElement, note: Note, summary: Summary, lang: string): v
 export function finePrint(note: Note): HTMLElement {
   const w = pageWidth();
   const clip = h("div", { class: "fine-clip" });
-  clip.style.width = `${Math.ceil(w * K) + 1}px`; // never narrower than the page: a full line keeps its last letter
+  clip.style.width = `${w * K + 2 * PAD}px`;
+  clip.style.marginLeft = `${-PAD}px`; // the page lies where it did
   clip.style.height = `${(SHOWN * K).toFixed(1)}px`;
   clip.style.opacity = String(FAINT);
   const fine = h("div", { class: "fine empty", "aria-label": "Word notes" }, clip);
@@ -127,11 +131,14 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   const clip = copyFine.querySelector<HTMLElement>(".fine-clip")!;
   // The rest of the page, on the copy: lying exactly over the tiny print, shown only below the part it
   // shows clearly (the masks add up), fading in while the camera comes down.
+  // Over the tiny print exactly: placed against the tiny print's own box (its padding, whole pixels).
   const rest = h("div", { class: "fine-rest" });
   rest.style.setProperty("--shown", `${SHOWN}px`);
+  copyFine.style.position = "relative";
   const restPage = (n: Note, sm: Summary, l: string) => {
     const p = page(n, sm, l);
     p.style.transform = `scale(${K})`;
+    p.style.left = `${PAD}px`;
     rest.replaceChildren(p);
   };
   restPage(what.note, what.summary, what.lang);
@@ -148,7 +155,7 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   const atRest = step(0, 0, 0, 1);
   const zoomedIn = step(t.x - c.x, t.y - c.y, -cardTilt, S);
   document.body.append(stand);
-  Object.assign(rest.style, { top: `${clip.offsetTop}px`, left: `${clip.offsetLeft}px` }); // laid out now
+  Object.assign(rest.style, { top: `${clip.offsetTop}px`, left: `${clip.offsetLeft}px` }); // laid out now, relative to copyFine
   const anim = stand.animate([{ transform: atRest }, { transform: zoomedIn }], { ...ZOOM, fill: "forwards" });
   const ink = clip.animate([{ opacity: FAINT }, { opacity: 1 }], { ...ZOOM, fill: "forwards" });
   const more = rest.animate([{ opacity: 0 }, { opacity: 1 }], { ...ZOOM, fill: "forwards" });
@@ -245,8 +252,10 @@ export function zoomInto(fine: HTMLElement, cardTilt: number): void {
   });
   anim.onfinish = () => {
     if (closing) return;
-    // No fade: the page lies exactly where the zoomed tiny print and the rest were, so the swap doesn't show.
+    // The page lies exactly where the zoomed tiny print and the rest were; a quick fade over them hides
+    // the zoomed text sharpening into real text.
     document.body.append(view);
+    sheet.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: "ease-out" });
     for (const b of view.querySelectorAll("button")) b.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, delay: 60, fill: "backwards" });
     document.addEventListener("keydown", onKey);
   };
