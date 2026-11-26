@@ -108,6 +108,25 @@ function icon(ctx, k) {
   ctx.restore();
 }
 
+// Card colours on the dark table (style.css dark tokens).
+const DARK = { white: "#dcd8cf", ink: "#26302a", yellow: "#c9b264", pink: "#c4929a", blue: "#8aa8c0", mint: "#93b59c" };
+
+/** A pile of portrait cards centred at (cx, cy), `k` screen px per unit: coloured cards under, RCFC on top. */
+function pile(ctx, cx, cy, k, col) {
+  const r = rng(707), w = 440, h = 580;
+  const card = () => cut([[-w / 2 + 10, -h / 2], [w / 2 - 10, -h / 2], [w / 2, -h / 2 + 10], [w / 2, h / 2 - 10], [w / 2 - 10, h / 2], [-w / 2 + 10, h / 2], [-w / 2, h / 2 - 10], [-w / 2, -h / 2 + 10]], r, 2.5, 60);
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k);
+  for (const [c, dx, dy, rot] of [[col.mint, 10, 46, -5], [col.blue, -8, 33, 4], [col.pink, 6, 20, -3], [col.yellow, -4, 8, 2.5]])
+    at(ctx, dx, dy, rot, () => piece(ctx, card(), c, k, 0.5));
+  at(ctx, 0, -6, -1.2, () => {
+    piece(ctx, card(), col.white, k, 0.8);
+    ctx.fillStyle = col.ink; ctx.font = '700 118px "Balsamiq Sans"';
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.letterSpacing = "3px";
+    ctx.fillText("RCFC", 0, -20);
+  });
+  ctx.restore();
+}
+
 function roundedSquare(ctx, x, y, s) { ctx.beginPath(); ctx.roundRect(x, y, s, s, s * 0.224); }
 
 async function main() {
@@ -124,16 +143,11 @@ async function main() {
     if (KIND === "any") { roundedSquare(ctx, 0, 0, W); ctx.clip(); }
     ctx.drawImage(art, 0, 0, W, H);
   } else {
-    // Splash: the table (like body in style.css) with the icon as a card in the middle.
-    ctx.fillStyle = KIND === "dark" ? C.sageDark : C.sage; ctx.fillRect(0, 0, W, H);
+    // Splash: the table (like body in style.css) with a big pile on it, as on the table screen.
+    const dark = KIND === "dark";
+    ctx.fillStyle = dark ? C.sageDark : C.sage; ctx.fillRect(0, 0, W, H);
     texture(ctx, ["fibre", "grain"], 0.6);
-    const s = Math.round(W * 0.34), x = (W - s) / 2, y = Math.round(H * 0.45 - s / 2);
-    ctx.save();
-    roundedSquare(ctx, x, y, s);
-    ctx.shadowColor = "rgba(20,28,22,0.35)"; ctx.shadowBlur = s * 0.08; ctx.shadowOffsetY = s * 0.035;
-    ctx.fillStyle = C.mint; ctx.fill();
-    ctx.restore();
-    ctx.save(); roundedSquare(ctx, x, y, s); ctx.clip(); ctx.drawImage(art, x, y, s, s); ctx.restore();
+    pile(ctx, W / 2, H * 0.46, (W * 0.6) / 440, dark ? DARK : C);
   }
   document.title = "done";
 }
