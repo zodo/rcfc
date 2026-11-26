@@ -2463,9 +2463,6 @@ header.top.ed-bar:has(+ .content .editor.folded) {
 .editor.folded .ed-side.tucked > :not(.ed-word-line):not(input[name="back"]):not(.ed-fold-hint):not(.ink-layer) {
   display: none;
 }
-.editor.folded .ed-side.tucked input {
-  border-bottom-color: transparent;
-}
 /* the open cream side: its picture small, "+ how it looks" beside it; a tap on it lays the card out whole */
 .editor.folded .ed-side.known.open .ed-pic {
   flex-direction: row;
