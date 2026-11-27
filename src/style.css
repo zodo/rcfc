@@ -1037,17 +1037,24 @@ header.top.sub .back svg {
 }
 
 /* ---------- study ---------- */
+/* nothing in the page's flow under study: it lies fixed on the window */
+#app:has(> .study) {
+  min-height: 0;
+  padding: 0;
+}
 .study {
-  position: relative;
-  flex: 1;
   /* A drag that leaves the card would select the text it passes over. */
   user-select: none;
   -webkit-user-select: none;
   display: flex;
   flex-direction: column;
-  min-height: calc(100dvh - env(safe-area-inset-top));
-  margin: 0 -18px calc(-96px - env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
+  /* exactly the window, not 100dvh: with Android's gesture bar the app is drawn under it, and
+     100dvh came out taller than the window, so the finish (nothing to drag there) scrolled */
+  position: fixed;
+  inset: 0;
+  max-width: 596px; /* #app's width with its side padding */
+  margin: 0 auto;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
   overflow: clip; /* not hidden: that can still be scrolled (scrollIntoView), and a raised card spills over */
 }
 /* a soft pool of light on the table; moves against the shadows when the phone tilts */
