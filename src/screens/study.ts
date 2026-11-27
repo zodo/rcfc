@@ -204,7 +204,8 @@ class Table {
 
   /**
    * The pile is finished: its check is drawn where it lay, the way out is the
-   * big button, and more is a small handful lying aside (when there is more).
+   * big button, and more is a small handful lying aside (when there is more;
+   * a sticker's pile with more words than that: all of them beside it).
    * Every handful finished draws the bonus check, ×N from the second.
    */
   private finish(): void {
@@ -224,15 +225,28 @@ class Table {
       h("div", { class: "finish-title" }, rounds ? "Bonus done" : "Done for today"),
       h("div", { class: "finish-count" }, `${done} ${done === 1 ? "card" : "cards"} today`),
     );
+    // A sticker's pile also offers all its words, once there are more than a handful (as its spot's sheet does).
+    const all = s.allCount();
+    const hands: HTMLElement[] = [];
     if (more) {
       const hand = h(
         "button",
-        { class: "handful", onclick: () => void this.handful(hand) },
+        { class: "handful", onclick: () => void this.handful(hand, false) },
         h("span", { class: "handful-cards", "aria-hidden": "true" }, `+${more}`),
         h("span", { class: "handful-note" }, rounds ? `another ${more}?` : `tap for ${more} more`),
       );
-      fin.append(hand);
+      hands.push(hand);
     }
+    if (more && all > more) {
+      const hand = h(
+        "button",
+        { class: "handful all", onclick: () => void this.handful(hand, true) },
+        h("span", { class: "handful-cards", "aria-hidden": "true" }, `${all}`),
+        h("span", { class: "handful-note" }, `all ${all}`),
+      );
+      hands.push(hand);
+    }
+    if (hands.length) fin.append(h("div", { class: "handfuls" }, ...hands));
     this.pile.append(fin);
     setTimeout(() => haptic("double"), CHECK_DRAWN);
     this.controls.replaceChildren(h("button", { class: "primary wide big", onclick: () => go.home() }, "Back to the table"));
@@ -245,13 +259,13 @@ class Table {
 
   private dealing = false;
 
-  /** The handful is taken: dealt onto the table where it lay, and studying goes on. */
-  private async handful(from: HTMLElement): Promise<void> {
+  /** The handful is taken (`all`: the sticker's every word): dealt onto the table where it lay, and studying goes on. */
+  private async handful(from: HTMLElement, all: boolean): Promise<void> {
     if (this.dealing) return;
     this.dealing = true;
     const at = from.getBoundingClientRect();
     try {
-      await this.s.more();
+      await (all ? this.s.all() : this.s.more());
     } catch (e) {
       toast(`Could not deal: ${errorText(e)}`);
       return;

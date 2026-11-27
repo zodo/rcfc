@@ -724,6 +724,26 @@ async function run(s: Browser, url: string) {
   await s.click("button[aria-label=Back]");
   await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
 
+  log("a sticker's pile finished: +10 and all its words lie aside; all of them dealt");
+  await s.click(".chip.new-sticker");
+  await s.type(".pile-sheet input[name=sticker]", "big");
+  await s.click(".pile-sheet button[type=submit]", "Make sticker");
+  await s.until("Edit on big", `document.querySelector(".list.editing") && document.querySelector(".chip.sticker.on")?.textContent === "big"`);
+  for (let i = 0; i < 12; i++) await s.click(".list.editing button.word:not(.stuck)");
+  await s.until("12 stuck", `document.querySelectorAll(".list.editing .word.stuck").length === 12`);
+  await s.click(".select-info button.link", "Done");
+  await s.click("nav .nav-item", "Study");
+  await s.click("button[aria-label='Study big']");
+  await answerUntilDone(s, 40);
+  await s.until("two handfuls", `/^\\+\\d+$/.test(document.querySelector(".finish .handful:not(.all) .handful-cards")?.textContent ?? "") && document.querySelector(".finish .handful.all .handful-note")?.textContent === "all 12"`);
+  await s.js(`await new Promise((r) => setTimeout(r, 1700));`); // laid aside
+  await shot(s, "study-handfuls");
+  await s.click(".finish .handful.all");
+  await s.until("all 12 dealt", `!document.querySelector(".finish") && document.querySelector(".flashcard:not(.leaving)")`);
+  const left = await s.text(".study-top");
+  if (!/\b12 left/.test(left)) throw new Error(`after all 12: "${left}"`);
+  await s.click("button[aria-label=Close]");
+
   log("no uncaught errors");
   const errors = [...s.errors, ...(await s.js<string[]>("return window.__rcfcErrors ?? [];"))];
   if (errors.length) throw new Error(`page errors:\n${errors.join("\n")}`);

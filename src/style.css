@@ -1185,8 +1185,13 @@ header.top.sub .back svg {
   color: var(--on-table-muted);
   font-variant-numeric: tabular-nums;
 }
-.handful {
+.handfuls {
   margin-top: auto;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+.handful {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1217,6 +1222,23 @@ header.top.sub .back svg {
 .handful-note {
   font-size: 14px;
   font-style: italic;
+}
+/* all the sticker's words: a thicker handful, laid down a moment after the first */
+.handful.all {
+  animation-delay: 1.25s;
+}
+.handful.all .handful-cards {
+  rotate: 5deg;
+  box-shadow:
+    0 1.5px 0 var(--edge-known),
+    0 3px 0 var(--card),
+    0 4.5px 0 var(--edge-known),
+    0 6px 0 var(--card),
+    0 7.5px 0 var(--edge-known),
+    0 9px 0 var(--card),
+    0 10.5px 0 var(--edge-known),
+    0 12px 0 var(--card),
+    0 15px 10px rgb(var(--shadow) / 0.25);
 }
 @keyframes handful-in {
   from {
