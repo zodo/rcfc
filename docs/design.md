@@ -53,6 +53,7 @@ Entity ids (`note_id`, `card_id`, `deck_id`, `preset_id`, `label_id`) are random
 | `note_created` | `note_id, deck_id, fields{front, back, example?, memo_target?, memo_known?}, lang_pair{from, to}, source?` | Emits its forward and reverse cards in the same batch; `memo_*` are the user's own notes, one per side; `source` marks an import |
 | `card_created` | `card_id, note_id, template` | `forward` or `reverse` |
 | `note_edited` | `note_id, field, value` | One event per field; last write wins per field |
+| `note_lang_changed` | `note_id, to` | The translation's language (`lang_pair.to`); the studied language never changes (it decides the deck and pile); last write wins |
 | `note_deleted` | `note_id` | Tombstone only; history stays usable by RWKV |
 | `note_restored` | `note_id` | Undo of a delete; the later of `note_deleted` / `note_restored` wins |
 | `notes_prioritized` | `note_ids` | "Don't know" on unseen words: learn them before other new words, latest first |
@@ -123,7 +124,7 @@ The service worker does not need Background Sync; the loop above is enough at th
 **Conflict rules**
 
 - Reviews, creations, tombstones: no conflicts, set union.
-- `note_edited`, `deck_renamed`, `preset_updated`, `asset_attached`, `label_renamed`, `label_colored`, `notes_labeled`: last write wins, ordered by `(ts, device_id)`.
+- `note_edited`, `note_lang_changed`, `deck_renamed`, `preset_updated`, `asset_attached`, `label_renamed`, `label_colored`, `notes_labeled`: last write wins, ordered by `(ts, device_id)`.
 - Several presets can exist after pairing (each device makes a default one); the app picks deterministically: the lowest id among presets that decks use.
 - A deleted entity stays deleted; later edits to it are ignored.
 

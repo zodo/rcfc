@@ -2,7 +2,7 @@
 // a card being filled in is a draft; Add and Save turn it into events, and the
 // duplicate check compares it with the cards that exist.
 import type { EventFactory, Note } from "./collection";
-import type { AppEvent, AssetAttached, LangPair, NoteEdited, NoteFields, NotesLabeled } from "./events";
+import type { AppEvent, AssetAttached, LangPair, NoteEdited, NoteFields, NoteLangChanged, NotesLabeled } from "./events";
 import type { EntityId } from "./ids";
 import { noteKey } from "../import/anything";
 
@@ -88,6 +88,7 @@ export function saveEvents(f: EventFactory, note: Note, wears: EntityId[], d: Ca
     if ((k === "front" || k === "back") && !v) continue; // a card keeps its word and translation
     if (clean(note.fields[k]) !== v) events.push(f.make<NoteEdited>("note_edited", { note_id: note.id, field: k, value: v }));
   }
+  if (d.lang_pair.to !== note.lang_pair.to) events.push(f.make<NoteLangChanged>("note_lang_changed", { note_id: note.id, to: d.lang_pair.to }));
   const now = new Set(wears), want = new Set(d.labels);
   for (const id of want) if (!now.has(id)) events.push(f.make<NotesLabeled>("notes_labeled", { label_id: id, note_ids: [note.id], on: true }));
   for (const id of now) if (!want.has(id)) events.push(f.make<NotesLabeled>("notes_labeled", { label_id: id, note_ids: [note.id], on: false }));

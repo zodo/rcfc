@@ -85,6 +85,16 @@ export interface NoteDeletedPayload {
   note_id: EntityId;
 }
 
+/**
+ * The translation's language changed (the cream side's): `lang_pair.to`.
+ * The studied language never changes, since it decides the hidden deck and the pile.
+ * Last write wins.
+ */
+export interface NoteLangChangedPayload {
+  note_id: EntityId;
+  to: string;
+}
+
 /** Undo of a delete: the card is back, reviews and all. The later of the two wins. */
 export interface NoteRestoredPayload {
   note_id: EntityId;
@@ -188,6 +198,7 @@ export type DeckCreated = EventEnvelope<"deck_created", DeckCreatedPayload>;
 export type DeckRenamed = EventEnvelope<"deck_renamed", DeckRenamedPayload>;
 export type NoteCreated = EventEnvelope<"note_created", NoteCreatedPayload>;
 export type NoteEdited = EventEnvelope<"note_edited", NoteEditedPayload>;
+export type NoteLangChanged = EventEnvelope<"note_lang_changed", NoteLangChangedPayload>;
 export type NoteDeleted = EventEnvelope<"note_deleted", NoteDeletedPayload>;
 export type NoteRestored = EventEnvelope<"note_restored", NoteRestoredPayload>;
 export type NotesPrioritized = EventEnvelope<"notes_prioritized", NotesPrioritizedPayload>;
@@ -207,6 +218,7 @@ export type AppEvent =
   | DeckRenamed
   | NoteCreated
   | NoteEdited
+  | NoteLangChanged
   | NoteDeleted
   | NoteRestored
   | NotesPrioritized

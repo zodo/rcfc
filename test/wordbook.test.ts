@@ -164,6 +164,24 @@ describe("wordbook: changing", () => {
     expect(() => w.edit(id, { word: "" })).toThrow(WordbookError);
   });
 
+  it("translates a word into another language, progress and the pile kept", () => {
+    const w = book();
+    const id = w.find({ text: "perro" }).words[0].id;
+    const v = w.edit(id, { translation: "dog", translation_language: "English" });
+    expect(v).toMatchObject({ translation: "dog", language: "es", translation_language: "en", status: "learning" });
+    expect(w.made.map((e) => e.type)).toEqual(["note_edited", "note_lang_changed"]);
+    const col = replayed(w);
+    expect(col.liveNote(id)!.lang_pair).toEqual({ from: "es", to: "en" });
+    expect(col.liveNote(id)!.deck_id).toBe(11);
+    // The note_created event itself is untouched.
+    expect(LOG.find((e) => e.type === "note_created" && e.payload.note_id === id)!.payload).toMatchObject({ lang_pair: { from: "es", to: "ru" } });
+    // Same language again: nothing written.
+    w.edit(id, { translation_language: "en" });
+    expect(w.made).toHaveLength(2);
+    expect(() => w.edit(id, { translation_language: "es" })).toThrow(WordbookError);
+    expect(() => w.edit(id, { translation_language: "Klingon" })).toThrow(WordbookError);
+  });
+
   it("deletes and restores, progress kept", () => {
     const w = book();
     const id = w.find({ text: "perro" }).words[0].id;

@@ -104,7 +104,7 @@ export function wordsServer(db: SqlDb, code: string): McpServer {
     "edit_word",
     {
       title: "Edit a word",
-      description: "Change a word's text. Only the fields given change; an empty string clears an example or note. Its languages can't change: delete it and add it again.",
+      description: "Change a word's text or its translation's language. Only the fields given change; an empty string clears an example or note. To translate a word into another language, give translation and translation_language together (and translation_note in that language, if it has one). The studied language can't change: delete the word and add it again.",
       inputSchema: z.object({
         id: z.number().int().positive(),
         word: z.string().max(200).optional(),
@@ -112,6 +112,7 @@ export function wordsServer(db: SqlDb, code: string): McpServer {
         example: z.string().max(400).optional().describe("A sentence that holds the word (blanked out when recalled from the translation)"),
         note: z.string().max(400).optional(),
         translation_note: z.string().max(400).optional(),
+        translation_language: language.optional().describe("The translation's language, e.g. \"ru\""),
       }),
       annotations: { ...write, idempotentHint: true },
     },

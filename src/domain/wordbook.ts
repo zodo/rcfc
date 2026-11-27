@@ -6,7 +6,9 @@
 //
 // It writes the same events the app does (Add, Save, the bin, stickers, "I
 // know" / "Don't know", Import from anything), so the app needs nothing new:
-// the events arrive on its next sync like another device's.
+// the events arrive on its next sync like another device's. Changing the
+// translation's language (note_lang_changed) needs an app from Nov 2026 on;
+// an older one keeps the event and ignores it until it updates.
 import type { Collection, EventFactory, Note } from "./collection";
 import { draftOf, MEMO_KNOWN, MEMO_TARGET, saveEvents } from "./cards";
 import type { AppEvent, LabelCreated, LabelDeleted, LabelRenamed, LangPair, NoteDeleted, NoteRestored, NotesLabeled, NotesPrioritized, Review } from "./events";
@@ -72,6 +74,8 @@ export interface WordChanges {
   example?: string;
   note?: string;
   translation_note?: string;
+  /** The translation's language: a code or a name. */
+  translation_language?: string;
 }
 
 /**
@@ -224,7 +228,7 @@ export class Wordbook {
     };
   }
 
-  /** Change a word's text; what isn't given stays. The languages stay (delete and add it again to change them). */
+  /** Change a word's text and its translation's language; what isn't given stays. The studied language stays. */
   edit(id: EntityId, c: WordChanges): WordView {
     const n = this.note(id);
     const d = draftOf(n.lang_pair, n, this.col.labelsOf(n.id).map((l) => l.id));
@@ -233,6 +237,11 @@ export class Wordbook {
     if (c.example !== undefined) d.text.example = c.example;
     if (c.note !== undefined) d.text[MEMO_TARGET] = c.note;
     if (c.translation_note !== undefined) d.text[MEMO_KNOWN] = c.translation_note;
+    if (c.translation_language !== undefined) {
+      const to = this.language(c.translation_language);
+      if (to === n.lang_pair.from) throw new WordbookError("a translation can't be in the studied language");
+      d.lang_pair = { from: n.lang_pair.from, to };
+    }
     if (c.word !== undefined && !c.word.trim()) throw new WordbookError("a word can't be emptied");
     if (c.translation !== undefined && !c.translation.trim()) throw new WordbookError("a translation can't be emptied");
     this.emit(...saveEvents(this.f, n, d.labels, d));

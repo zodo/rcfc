@@ -145,6 +145,12 @@ export class Collection {
         if (n && !n.deleted && this.wins(`note:${n.id}:${e.payload.field}`, e)) n.fields[e.payload.field] = e.payload.value;
         break;
       }
+      case "note_lang_changed": {
+        const n = this.notes.get(e.payload.note_id);
+        // A new object: the old one is the note_created event's own payload.
+        if (n && !n.deleted && this.wins(`note:${n.id}:to`, e)) n.lang_pair = { from: n.lang_pair.from, to: e.payload.to };
+        break;
+      }
       case "note_deleted":
       case "note_restored": {
         // The later of a delete and its undo wins, whatever order they arrive in.

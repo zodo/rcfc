@@ -189,6 +189,25 @@ describe("undo", () => {
     ]);
   });
 
+  it("changes and puts back the translation's language; the later change wins in any order", () => {
+    const col = collection(["banco", "bench"]);
+    const id = col.liveNotes()[0].id;
+    const was = structuredClone(col.liveNote(id)!);
+    const d = { ...draftOf(ES_EN, was), lang_pair: ES_RU };
+    d.text.back = "скамейка";
+    const save = saveEvents(f, was, [], d);
+    expect(types(save)).toEqual(["note_edited", "note_lang_changed"]);
+    for (const e of save) col.apply(e);
+    expect(col.liveNote(id)!.lang_pair).toEqual(ES_RU);
+    const undo = undoEvents(f, col.liveNote(id)!, [], was, []);
+    expect(types(undo)).toEqual(["note_edited", "note_lang_changed"]);
+    const late = f.make("note_lang_changed", { note_id: id, to: "de" });
+    const early = { ...f.make("note_lang_changed", { note_id: id, to: "fr" }), ts: late.ts - 1 };
+    col.apply(late);
+    col.apply(early); // arrives later, but is older
+    expect(col.liveNote(id)!.lang_pair).toEqual({ from: "es", to: "de" });
+  });
+
   it("brings a deleted card back; the later of delete and restore wins in any order", () => {
     const col = collection(["banco", "bench"]);
     const id = col.liveNotes()[0].id;
