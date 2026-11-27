@@ -8,7 +8,7 @@ import { Collection, EventFactory, eventOrder, type Card, type Preset } from "./
 import type { AppEvent, LabelColored, LabelCreated, LabelDeleted, LabelRenamed, NotesLabeled, Review, ReviewPayload } from "./domain/events";
 import { freshColor, labelIdFor, labelName } from "./domain/labels";
 import type { EntityId } from "./domain/ids";
-import { importEvents, type ReadyRow } from "./import/anything";
+import { importEvents, mergeEdits, mergeOf, type ExistingRow, type ReadyRow } from "./import/anything";
 import { halfKnownFaces, knownCards, newQueue, unknownPlan, unseenCards, type DayClock, type Scope } from "./domain/newcards";
 import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin } from "./domain/rows";
 import { needsReplay } from "./domain/sync";
@@ -332,7 +332,7 @@ export class Store {
    * learning = learned before other new words (as "Don't know" on an unseen one).
    * `deckFor` gives a studied language's hidden deck (made when new).
    */
-  async importWords(rows: ReadyRow[], deckFor: (lang: string) => Promise<EntityId>): Promise<{ words: number; labels: EntityId[] }> {
+  async importWords(rows: ReadyRow[], deckFor: (lang: string) => Promise<EntityId>, existing: ExistingRow[] = []): Promise<{ words: number; updated: number; labels: EntityId[] }> {
     const decks = new Map<string, EntityId>();
     for (const r of rows) if (!decks.has(r.pair.from)) decks.set(r.pair.from, await deckFor(r.pair.from));
     const { events, noteIds } = importEvents(this.factory, rows, decks);
@@ -343,12 +343,24 @@ export class Store {
         const id = await this.makeLabel(name);
         byLabel.set(id, [...(byLabel.get(id) ?? []), noteIds[i]]);
       }
+    // Words already there get what the rows bring: stickers, an example or notes they lack.
+    let updated = 0;
+    for (const e of existing) {
+      const m = mergeOf(this.col, e);
+      if (!m.edits.length && !m.stickers.length) continue;
+      updated++;
+      if (m.edits.length) await this.append(mergeEdits(this.factory, e.noteId, m.edits));
+      for (const name of m.stickers) {
+        const id = await this.makeLabel(name);
+        byLabel.set(id, [...(byLabel.get(id) ?? []), e.noteId]);
+      }
+    }
     for (const [id, ids] of byLabel) await this.stick(id, ids, true);
     const learning = noteIds.filter((_, i) => rows[i].status === "learning");
     if (learning.length) await this.append([this.factory.make("notes_prioritized", { note_ids: learning })]);
     const known = noteIds.filter((_, i) => rows[i].status === "known");
     if (known.length) await this.markKnown(known);
-    return { words: noteIds.length, labels: [...byLabel.keys()] };
+    return { words: noteIds.length, updated, labels: [...byLabel.keys()] };
   }
 
   /** A sticker with this name: the one there is, else a new one. Returns its id. */

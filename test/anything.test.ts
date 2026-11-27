@@ -136,7 +136,7 @@ describe("readImport: more than the prompt asks for", () => {
     expect(fileLang("Spanish words.csv")).toBe("es");
     expect(fileLang("export.csv")).toBeUndefined();
     const read = readImport(fixture("duocards_es_export.csv"));
-    const plan = planImport(read, [{ fields: { front: "hola", back: "hello" }, lang_pair: ES_EN }], { from: fileLang("duocards_es_export.csv")!, to: "en" });
+    const plan = planImport(read, [{ id: 1, fields: { front: "hola", back: "hello" }, lang_pair: ES_EN }], { from: fileLang("duocards_es_export.csv")!, to: "en" });
     expect(plan.ready.map((r) => r.word)).toEqual(["too", "enrollarse", "ya", 'decir "hola"', "el columpio", "ponerse las pilas", "la torre", "sin fecha"]);
     expect(plan.skipped.map((x) => [x.word, x.reason])).toEqual([["Ya", "repeated"], ["hola", "exists"]]);
     expect(plan.errors).toEqual([{ line: 10, message: "no word" }]);
@@ -184,13 +184,14 @@ describe("readImport: more than the prompt asks for", () => {
 describe("planImport", () => {
   it("fills languages a row doesn't name, skips what exists or repeats, orders dated rows oldest first", () => {
     const read = readImport("word,translation,lang,to,date\nb,B,,,2026-02-01\na,A,,,2026-01-01\nperro,dog,es,en,\nc,C,de,,\nC,c,de,ru,\n");
-    const plan = planImport(read, [{ fields: { front: "Perro ", back: "Dog" }, lang_pair: ES_EN }], { from: "es", to: "ru" });
+    const plan = planImport(read, [{ id: 7, fields: { front: "Perro ", back: "Dog" }, lang_pair: ES_EN }], { from: "es", to: "ru" });
     expect(plan.ready.map((r) => [r.word, `${r.pair.from}>${r.pair.to}`])).toEqual([
       ["a", "es>ru"],
       ["b", "es>ru"],
       ["c", "de>ru"],
     ]);
     expect(plan.skipped.map((s) => s.reason)).toEqual(["exists", "repeated"]);
+    expect(plan.existing.map((e) => [e.row.word, e.noteId])).toEqual([["perro", 7]]);
     expect(plan.unnamed).toBe(3);
   });
 
@@ -248,5 +249,22 @@ describe("Store.importWords", () => {
     expect(note("la ventana").priority).toBeDefined();
     expect(note("el cajón").priority).toBeUndefined();
     expect(note("la cuenta").fields.picture_details).toBe("a restaurant bill, not a bank account");
+  });
+
+  it("pasted again with a sticker: the words already there wear it, nothing added", async () => {
+    const d = await Device.open();
+    const deck = d.store.factory.deck("Spanish", d.store.preset().preset_id, ES_EN);
+    await d.store.append([deck]);
+    const deckId = (deck.payload as { deck_id: number }).deck_id;
+    const first = planImport(readImport("word,translation,lang,to\nel perro,dog,es,en\nel gato,cat,es,en\n"), [], ES_EN);
+    await d.store.importWords(first.ready, async () => deckId);
+    const plan = planImport(readImport("word,translation,example,lang,to,stickers\nel perro,dog,El perro ladra.,es,en,Pets\nel gato,cat,,es,en,\n"), d.store.col.liveNotes(), ES_EN);
+    expect(plan.ready).toEqual([]);
+    const res = await d.store.importWords(plan.ready, async () => deckId, plan.existing);
+    expect(res).toMatchObject({ words: 0, updated: 1 });
+    const perro = d.store.col.liveNotes().find((n) => n.fields.front === "el perro")!;
+    expect(perro.fields.example).toBe("El perro ladra.");
+    expect(d.store.col.labelsOf(perro.id).map((l) => l.name)).toEqual(["Pets"]);
+    expect(d.store.col.liveNotes()).toHaveLength(2);
   });
 });

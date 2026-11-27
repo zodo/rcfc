@@ -705,6 +705,16 @@ async function run(s: Browser, url: string) {
   await s.click("button.link", "Import from anything");
   await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ${JSON.stringify(reply)}; t.dispatchEvent(new Event("input"));`);
   await s.until("nothing new", `document.querySelector(".import-preview")?.textContent.includes("3 already in your words") && document.querySelector(".import-preview button.primary")?.disabled`);
+  log("again with another sticker: the words there get it, nothing added");
+  const restuck = reply.replace(/,Smoke,/g, ",Smoke;Pets,");
+  await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ${JSON.stringify(restuck)}; t.dispatchEvent(new Event("input"));`);
+  await s.until("they get the sticker", `document.querySelector(".import-preview")?.textContent.includes("3 already in your words. They get new stickers.") && !document.querySelector(".import-preview button.primary")?.disabled`);
+  await s.click(".import-preview button.primary", "Update 3 words");
+  await s.until("updated, Words open on the sticker with those 3", `document.getElementById("toast")?.textContent === "Updated 3" && document.querySelector(".list button.word")`);
+  const pets = await s.js<string[]>(`return [...document.querySelectorAll(".list button.word .w-front")].map((e) => e.textContent).sort();`);
+  if (pets.join() !== "il cane,il gatto,la casa") throw new Error(`the Pets sticker shows ${pets.join(", ")}`);
+  await s.click("button.add-btn");
+  await s.click("button.link", "Import from anything");
   log("a raw Duocards export picked as a file: its language from the file name");
   await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ""; t.dispatchEvent(new Event("input"));`);
   const { root } = await s.send<{ root: { nodeId: number } }>("DOM.getDocument", {});

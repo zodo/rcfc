@@ -15,7 +15,7 @@ import { freshColor, labelIdFor, labelName } from "./labels";
 import { knownCards, unknownPlan } from "./newcards";
 import { languagePile } from "./piles";
 import { wordStatus, type WordStatus } from "./scheduler";
-import { IMPORT_LANGS, importEvents, langCode, noteKey, planImport, type ImportRow } from "../import/anything";
+import { IMPORT_LANGS, importEvents, langCode, mergeEdits, mergeOf, noteKey, planImport, type ImportRow } from "../import/anything";
 
 /** "I know" / "Don't know" answers take this long (as in the app's Store). */
 const MARKED_DURATION_MS = 2000;
@@ -170,10 +170,11 @@ export class Wordbook {
   // ---------------------------------------------------------------- words
 
   /**
-   * Add words. A word already there with the same translation (or twice in
-   * the list) is skipped, so adding a list again adds nothing.
+   * Add words. A word already there with the same translation isn't added
+   * again: it gets the stickers given, and the example and notes where it has
+   * none (`mergeOf`). Twice in the list = once. Adding a list again changes nothing.
    */
-  add(items: NewWord[]): { added: WordView[]; skipped: { word: string; translation: string; reason: "exists" | "repeated"; id?: EntityId }[] } {
+  add(items: NewWord[]): { added: WordView[]; updated: WordView[]; skipped: { word: string; translation: string; reason: "exists" | "repeated"; id?: EntityId }[] } {
     const rows: ImportRow[] = items.map((w, i) => {
       const word = w.word?.trim() ?? "", translation = w.translation?.trim() ?? "";
       if (!word || !translation) throw new WordbookError(`word ${i + 1}: both the word and its translation are needed`);
@@ -196,7 +197,18 @@ export class Wordbook {
         byLabel.set(id, [...(byLabel.get(id) ?? []), noteIds[i]]);
       }
     });
-    for (const [id, ids] of byLabel) this.emit(this.f.make<NotesLabeled>("notes_labeled", { label_id: id, note_ids: ids, on: true }));
+    const updated: EntityId[] = [];
+    for (const e of plan.existing) {
+      const m = mergeOf(this.col, e);
+      if (!m.edits.length && !m.stickers.length) continue;
+      if (!updated.includes(e.noteId)) updated.push(e.noteId);
+      this.emit(...mergeEdits(this.f, e.noteId, m.edits));
+      for (const name of m.stickers) {
+        const id = this.makeSticker(name);
+        byLabel.set(id, [...(byLabel.get(id) ?? []), e.noteId]);
+      }
+    }
+    for (const [id, ids] of byLabel) this.emit(this.f.make<NotesLabeled>("notes_labeled", { label_id: id, note_ids: [...new Set(ids)], on: true }));
     const learning = noteIds.filter((_, i) => plan.ready[i].status === "learning");
     if (learning.length) this.emit(this.f.make<NotesPrioritized>("notes_prioritized", { note_ids: learning }));
     const known = noteIds.filter((_, i) => plan.ready[i].status === "known");
@@ -204,6 +216,7 @@ export class Wordbook {
     const existing = (r: ImportRow) => this.col.liveNotes().find((n) => n.lang_pair.from === r.lang && n.lang_pair.to === r.to && noteKey(n.fields.front, n.fields.back) === noteKey(r.word, r.translation))?.id;
     return {
       added: noteIds.map((id) => this.view(this.col.notes.get(id)!)),
+      updated: updated.map((id) => this.view(this.col.notes.get(id)!)),
       skipped: plan.skipped.map((s) => {
         const r = rows[s.line - 1];
         return { word: r.word, translation: r.translation, reason: s.reason, ...(s.reason === "exists" ? { id: existing(r) } : {}) };

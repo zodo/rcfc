@@ -1,7 +1,7 @@
 // Import from anything (docs/design.md "Import from anything"): copy a prompt
 // for an AI chat, paste its answer (or pick a file), see what comes in, add it.
 import { app, go, requestPersistence, subPage } from "../app";
-import { fileLang, importPrompt, planImport, readImport, scriptLang, type ImportPlan, type ReadResult } from "../import/anything";
+import { fileLang, importPrompt, mergeOf, planImport, readImport, scriptLang, type ImportPlan, type ReadResult } from "../import/anything";
 import { labelPile } from "../domain/labels";
 import { append, clear, h, LANGS, langName, langSelect, toast } from "../ui/h";
 import { deckFor, languages, lastLanguage, rememberLanguage, rememberTranslation, setOpenChip, translationFor } from "./languages";
@@ -125,15 +125,21 @@ export function importScreen(): void {
     const stickers = [...new Set(plan.ready.flatMap((r) => r.stickers))];
     const exists = plan.skipped.filter((s) => s.reason === "exists").length;
     const repeated = plan.skipped.length - exists;
-    const add = h("button", { class: "primary", type: "button", disabled: n === 0 }, n === 1 ? "Add 1 word" : `Add ${n} words`);
+    // Words already there get the stickers, example and notes they lack.
+    const merges = plan.existing.map((e) => mergeOf(store.col, e)).filter((m) => m.edits.length || m.stickers.length);
+    const u = merges.length;
+    const label = n ? (n === 1 ? "Add 1 word" : `Add ${n} words`) : u === 1 ? "Update 1 word" : `Update ${u} words`;
+    const add = h("button", { class: "primary", type: "button", disabled: n === 0 && u === 0 }, label);
     add.addEventListener("click", async () => {
       add.disabled = true;
       for (const r of plan.ready) if (!studied.has(r.pair.from)) rememberTranslation(r.pair.from, r.pair.to);
-      const res = await store.importWords(plan.ready, deckFor);
+      const res = await store.importWords(plan.ready, deckFor, plan.existing);
       await requestPersistence();
-      rememberLanguage(plan.ready[0].pair.from);
-      toast(res.words === 1 ? "Added 1 word" : `Added ${res.words} words`);
-      setOpenChip(res.labels.length === 1 ? labelPile(res.labels[0]) : groups.size === 1 ? `lang:${plan.ready[0].pair.from}` : null);
+      const first = plan.ready[0] ?? plan.existing[0].row;
+      rememberLanguage(first.pair.from);
+      const said = [res.words ? (res.words === 1 ? "Added 1 word" : `Added ${res.words} words`) : "", res.updated ? (res.updated === 1 ? "updated 1" : `updated ${res.updated}`) : ""].filter(Boolean).join(", ");
+      toast(said.charAt(0).toUpperCase() + said.slice(1));
+      setOpenChip(res.labels.length === 1 ? labelPile(res.labels[0]) : groups.size === 1 ? `lang:${first.pair.from}` : null);
       go.words();
     });
     return h(
@@ -154,7 +160,7 @@ export function importScreen(): void {
       stickers.length ? h("p", { class: "muted small" }, `Stickers: ${stickers.slice(0, 8).join(", ")}${stickers.length > 8 ? ` and ${stickers.length - 8} more` : ""}`) : null,
       n ? h("ul", { class: "import-sample" }, ...plan.ready.slice(0, 5).map((r) => h("li", {}, h("strong", {}, r.word), ` ${r.translation}`))) : null,
       plan.unnamed && pickers ? h("div", { class: "row2" }, h("label", {}, plan.unnamed === read.rows.length ? "Words are in" : "Words without a language are in", pickers.from), h("label", {}, "Translations in", pickers.to)) : null,
-      exists ? h("p", { class: "muted small" }, `${exists} already in your words.`) : null,
+      exists ? h("p", { class: "muted small" }, `${exists} already in your words.${u ? ` ${u === exists ? (u === 1 ? "It gets" : "They get") : `${u} of them get`} ${gets(merges)}.` : ""}`) : null,
       repeated ? h("p", { class: "muted small" }, `${repeated} repeated in the paste.`) : null,
       errorLine(plan.errors),
       add,
@@ -174,6 +180,15 @@ export function importScreen(): void {
     h("div", { class: "card-box" }, paste, h("p", { class: "small center" }, pick), file),
     box,
   );
+}
+
+/** What words already there get from the paste, e.g. "their new stickers and missing examples". */
+function gets(merges: { edits: { field: string }[]; stickers: string[] }[]): string {
+  const parts: string[] = [];
+  if (merges.some((m) => m.stickers.length)) parts.push("new stickers");
+  if (merges.some((m) => m.edits.some((e) => e.field === "example"))) parts.push("missing examples");
+  if (merges.some((m) => m.edits.some((e) => e.field !== "example"))) parts.push("missing notes");
+  return parts.length < 2 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
 }
 
 function errorLine(errors: { line: number; message: string }[]): HTMLElement | null {

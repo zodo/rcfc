@@ -66,7 +66,7 @@ Never print, copy or commit credentials. If cf.sh reports "not authenticated", a
 ## Domain notes
 
 - Entity ids are random positive integers < 2^53 (`src/domain/ids.ts`), not full 64-bit: fit rwkv-srs `i64`, exact in JS, JSON-safe.
-- The importer is pure (text in, events out) and dedups on normalized word + translation + pair, so pasting twice is safe. Imported notes must not auto-queue enrichment at import time (pictures are queued when a word comes up: among a pile's next cards, or shown in study).
+- The importer is pure (text in, events out) and dedups on normalized word + translation + pair, so pasting twice is safe. A word already there is merged (`mergeOf`): it gets the row's stickers it doesn't wear and the example / notes it lacks, never anything written over, progress untouched (app import and the connector's `add_words` alike). Imported notes must not auto-queue enrichment at import time (pictures are queued when a word comes up: among a pile's next cards, or shown in study).
 
 ## UX notes
 

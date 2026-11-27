@@ -8,8 +8,8 @@
 // Pure: text in, rows and a plan out. The Store applies a plan (`importWords`).
 
 import { parseCsv, CsvError } from "./csv";
-import type { AppEvent, LangPair, NoteCreated, NoteFields } from "../domain/events";
-import type { EventFactory } from "../domain/collection";
+import type { AppEvent, LangPair, NoteCreated, NoteEdited, NoteFields } from "../domain/events";
+import type { Collection, EventFactory } from "../domain/collection";
 import type { EntityId } from "../domain/ids";
 
 export type WordStatus = "new" | "learning" | "known";
@@ -381,9 +381,17 @@ export interface SkippedRow {
   reason: "repeated" | "exists";
 }
 
+/** A row whose word is already there (same word, translation and languages): `merge` brings what it adds. */
+export interface ExistingRow {
+  row: ReadyRow;
+  noteId: EntityId;
+}
+
 export interface ImportPlan {
   ready: ReadyRow[];
   skipped: SkippedRow[];
+  /** The rows skipped as "exists", with the word each one is. */
+  existing: ExistingRow[];
   errors: RowError[];
   /** Rows that name no language (or only one side): the screen asks, and `fallback` fills them in. */
   unnamed: number;
@@ -402,12 +410,13 @@ const pairKey = (front: string, back: string, p: LangPair) => `${p.from}>${p.to}
  * already there or repeated, and orders them: dated rows oldest first, so new
  * words come up in the order they were met; undated keep their order after them.
  */
-export function planImport(read: ReadResult, existing: Iterable<{ fields: { front: string; back: string }; lang_pair: LangPair; deleted?: boolean }>, fallback: LangPair): ImportPlan {
-  const seen = new Set<string>();
-  for (const n of existing) if (!n.deleted) seen.add(pairKey(n.fields.front, n.fields.back, n.lang_pair));
+export function planImport(read: ReadResult, existing: Iterable<{ id: EntityId; fields: { front: string; back: string }; lang_pair: LangPair; deleted?: boolean }>, fallback: LangPair): ImportPlan {
+  const seen = new Map<string, EntityId | undefined>();
+  for (const n of existing) if (!n.deleted) seen.set(pairKey(n.fields.front, n.fields.back, n.lang_pair), n.id);
   const fromFile = new Set<string>();
   const ready: ReadyRow[] = [];
   const skipped: SkippedRow[] = [];
+  const there: ExistingRow[] = [];
   const errors = [...read.errors];
   let unnamed = 0;
   for (const r of read.rows) {
@@ -419,17 +428,47 @@ export function planImport(read: ReadResult, existing: Iterable<{ fields: { fron
     }
     const key = pairKey(r.word, r.translation, pair);
     if (seen.has(key)) {
-      skipped.push({ line: r.line, word: r.word, reason: fromFile.has(key) ? "repeated" : "exists" });
+      const id = seen.get(key);
+      skipped.push({ line: r.line, word: r.word, reason: id === undefined ? "repeated" : "exists" });
+      if (id !== undefined) there.push({ row: { ...r, pair }, noteId: id });
       continue;
     }
-    seen.add(key);
+    seen.set(key, undefined);
     fromFile.add(key);
     ready.push({ ...r, pair });
   }
   ready.sort((a, b) => (a.created ?? Infinity) - (b.created ?? Infinity));
   errors.sort((a, b) => a.line - b.line);
-  return { ready, skipped, errors, unnamed };
+  return { ready, skipped, existing: there, errors, unnamed };
 }
+
+/** The note fields a row fills in, by its column. */
+type MergedField = "example" | "memo_target" | "memo_known";
+const MERGED: ["example" | "note" | "translationNote", MergedField][] = [
+  ["example", "example"],
+  ["note", "memo_target"],
+  ["translationNote", "memo_known"],
+];
+
+/**
+ * What a word added again brings to the one already there: the stickers it
+ * doesn't wear yet (by name; new ones are made by the caller), and the example
+ * and notes where it has none. Nothing it has is written over; progress stays.
+ */
+export function mergeOf(col: Collection, e: ExistingRow): { edits: { field: MergedField; value: string }[]; stickers: string[] } {
+  const n = col.notes.get(e.noteId);
+  if (!n) return { edits: [], stickers: [] };
+  const edits = MERGED.filter(([k, f]) => e.row[k] && !n.fields[f]?.trim()).map(([k, f]) => ({ field: f, value: e.row[k] }));
+  const stickers = [...new Set(e.row.stickers)].filter((name) => {
+    const l = col.labelByName(name);
+    return !l || !col.wears(n.id, l.id);
+  });
+  return { edits, stickers };
+}
+
+/** The edits of `mergeOf` as events. */
+export const mergeEdits = (f: EventFactory, noteId: EntityId, edits: { field: string; value: string }[]): AppEvent[] =>
+  edits.map((x) => f.make<NoteEdited>("note_edited", { note_id: noteId, field: x.field, value: x.value }));
 
 /**
  * The words' creation events (a note and its two cards each), in the plan's

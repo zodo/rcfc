@@ -18,7 +18,7 @@ const INSTRUCTIONS = `rcfc is the user's flashcard app for learning languages. E
 
 How to use these tools:
 - Call overview first to see the languages and stickers.
-- Add words in their dictionary form, nouns with their article where the language has one ("el perro", "der Hund"), the translation short (a word or two, the common meaning), and an example sentence in the studied language that shows the word in use. Don't add a word the user already has; add_words skips exact repeats by itself.
+- Add words in their dictionary form, nouns with their article where the language has one ("el perro", "der Hund"), the translation short (a word or two, the common meaning), and an example sentence in the studied language that shows the word in use. add_words never adds a word twice: one the user already has gets the stickers given, and the example and notes it lacks.
 - The example is also a fill-in-the-blank: the word is studied both ways, and when the user sees the translation and recalls the word, the app shows the example with the word blanked out ("никакой" + "No tengo ___ problema." → ningún). So write an example that holds the word itself, in this or another regular form, where the translation and the sentence together leave only this word: they pin down which word, and the sentence pins down which form. That matters most for grammar words (ningún, por, sich). The app finds the word by its letters, so a form spelt differently (fue for ir) means that side shows no sentence. A fill-in-the-blank card is never a separate card: add the word with such an example.
 - Ids come from find_words or add_words. Act on the words the user means; ask before deleting many.
 - The app picks up changes on its next sync, usually within a minute while it's open.`;
@@ -93,7 +93,7 @@ export function wordsServer(db: SqlDb, code: string): McpServer {
     "add_words",
     {
       title: "Add words",
-      description: "Add words to study. Words the user already has with the same translation are skipped (and listed with their ids), so repeating a call adds nothing. Pictures, audio and notes are made by the app when the word comes up.",
+      description: "Add words to study. A word the user already has with the same translation isn't added again (it's listed under skipped with its id): it gets the stickers given, and the example and notes where it has none; nothing it has is written over and its progress stays (those changed are listed under updated). So repeating a call adds nothing, and adding words again with a sticker sticks it on. Pictures, audio and notes are made by the app when the word comes up.",
       inputSchema: z.object({ words: z.array(newWord).min(1).max(200) }),
       annotations: write,
     },

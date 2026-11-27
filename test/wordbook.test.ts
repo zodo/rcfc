@@ -93,6 +93,29 @@ describe("wordbook: adding", () => {
     expect(w.add([{ word: "el sol", translation: "солнце", language: "es" }]).added).toEqual([]);
   });
 
+  it("a word already there gets the stickers given and the example and notes it lacks, nothing written over", () => {
+    const w = book();
+    w.stick("Pets", [w.find({ text: "gato" }).words[0].id], true);
+    const { added, updated, skipped } = w.add([
+      { word: "el perro", translation: "собака", language: "es", example: "Mi perro duerme.", note: "masculine", stickers: ["Pets", "Home"] },
+      { word: "el gato", translation: "кошка", language: "es", example: "El gato come.", stickers: ["Pets"] },
+    ]);
+    expect(added).toEqual([]);
+    expect(skipped.map((s) => s.reason)).toEqual(["exists", "exists"]);
+    expect(updated.map((x) => x.word)).toEqual(["el perro", "el gato"]);
+    const col = replayed(w);
+    const note = (front: string) => col.liveNotes().find((n) => n.fields.front === front)!;
+    const wears = (front: string) => col.labelsOf(note(front).id).map((l) => l.name).sort();
+    expect(note("el perro").fields).toMatchObject({ example: "El perro ladra.", memo_target: "masculine" }); // its example stays
+    expect(wears("el perro")).toEqual(["Home", "Pets"]);
+    expect(note("el gato").fields.example).toBe("El gato come.");
+    expect(wears("el gato")).toEqual(["Pets"]);
+    // the same call again changes nothing
+    const again = book([...LOG, ...w.made]);
+    expect(again.add([{ word: "el gato", translation: "кошка", language: "es", example: "Otro.", stickers: ["Pets"] }]).updated).toEqual([]);
+    expect(again.made).toEqual([]);
+  });
+
   it("makes a new language's deck the way the app does, so devices agree", () => {
     const w = book();
     const [word] = w.add([{ word: "der Hund", translation: "dog", language: "German", translation_language: "English" }]).added;
