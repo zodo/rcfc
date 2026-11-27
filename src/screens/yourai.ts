@@ -126,17 +126,11 @@ export function openYourAi(): void {
   })();
   const share = h("button", { class: "secondary", type: "button", disabled: count === 0 }, canShare ? `Share my ${plural(count, "word")}` : `Download my ${plural(count, "word")}`);
   const shareNote = h("p", { class: "muted small ya-after" }, count ? "your chat gets all of them, the prompt inside" : "no words yet");
-  share.addEventListener("click", async () => {
+  // The file downloads, and the prompt goes on the clipboard too: a computer's
+  // way, and a phone's when the chat isn't in the share sheet (Android has no
+  // "save to Files" target there).
+  const download = async () => {
     const f = file();
-    if (canShare) {
-      try {
-        await navigator.share({ files: [f], text: "My flashcards. The instructions are at the top of the file." });
-      } catch (e) {
-        if ((e as Error).name !== "AbortError") toast("Couldn't share the file");
-      }
-      return;
-    }
-    // No share sheet (a computer): the file downloads, and the prompt goes on the clipboard too.
     const url = URL.createObjectURL(f);
     const a = h("a", { href: url, download: f.name });
     document.body.append(a);
@@ -144,7 +138,16 @@ export function openYourAi(): void {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
     if (await copyText(prompt(true))) shareNote.textContent = "Downloaded, and the prompt is copied. Attach the file in your chat.";
+  };
+  share.addEventListener("click", async () => {
+    if (!canShare) return download();
+    try {
+      await navigator.share({ files: [file()], text: "My flashcards. The instructions are at the top of the file." });
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") toast("Couldn't share the file");
+    }
   });
+  const save = canShare && count ? h("button", { class: "link small", type: "button", onclick: download }, "or download the file") : null;
 
   const paste = h("textarea", { class: "import-paste", rows: 3, placeholder: "Paste it here", "aria-label": "Its reply" });
   paste.spellcheck = false;
@@ -184,7 +187,7 @@ export function openYourAi(): void {
     h("span", { class: "ya-title" }, marks(32), "Your AI"),
     h("div", { class: "ya" },
       section("Add words", h("p", { class: "muted small" }, "From another app, a list or a topic."), h("div", { class: "ya-act" }, copy, copied)),
-      section("Change your words", h("p", { class: "muted small" }, "Translate, fix, sort into stickers, check."), h("div", { class: "ya-act" }, share, shareNote)),
+      section("Change your words", h("p", { class: "muted small" }, "Translate, fix, sort into stickers, check."), h("div", { class: "ya-act" }, share, shareNote), save && h("div", { class: "ya-pick" }, save)),
       section("Its reply", paste, h("div", { class: "ya-pick" }, pick), said, input),
       section(
         "Claude",
