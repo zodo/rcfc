@@ -32,6 +32,24 @@ function replayed(w: Wordbook, base = LOG): Collection {
 }
 
 describe("wordbook: reading", () => {
+  it("shows how each word has gone, and lists the hardest first", () => {
+    const { events, f } = userLog();
+    const gato = book(events).find({ text: "gato" }).words[0];
+    const card = book(events).find().words[1].id;
+    const col = new Collection();
+    for (const e of events) col.apply(e);
+    const cardB = col.cardsByNote.get(card)![0];
+    const fails = ([1, 1, 3] as const).map((rating) => f.make("review", { card_id: cardB, note_id: gato.id, deck_id: 11, preset_id: 7, rating, duration_ms: 3000, tz_offset_min: 180, pile: "lang:es" }));
+    const w = book([...events, ...fails]);
+    const perro = w.find({ text: "perro" }).words[0];
+    expect(perro).toMatchObject({ reviews: 1, again: 0 });
+    expect(perro.last_seen).toMatch(/^\d{4}-\d\d-\d\d$/);
+    expect(gato).toMatchObject({ reviews: 0, again: 0 });
+    expect(gato.last_seen).toBeUndefined();
+    expect(w.find({ order: "hardest" }).words.map((x) => [x.word, x.reviews, x.again])).toEqual([["el gato", 3, 2], ["el perro", 1, 0]]);
+    expect(w.find().words.map((x) => x.word)).toEqual(["el perro", "el gato"]);
+  });
+
   it("lists words with their languages, notes and status", () => {
     const w = book();
     const { total, words } = w.find();

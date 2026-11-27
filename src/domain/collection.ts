@@ -61,6 +61,8 @@ export interface Card {
   template: CardTemplate;
   order: number;
   reviews: number;
+  /** Reviews answered Again. */
+  again: number;
   /** ts of the first and last review. */
   first_review_ts?: number;
   /** Rating of the first review (4 = already known when first seen). */
@@ -184,7 +186,7 @@ export class Collection {
         }
         break;
       case "card_created": {
-        this.cards.set(e.payload.card_id, { id: e.payload.card_id, note_id: e.payload.note_id, template: e.payload.template, order: this.order++, reviews: 0 });
+        this.cards.set(e.payload.card_id, { id: e.payload.card_id, note_id: e.payload.note_id, template: e.payload.template, order: this.order++, reviews: 0, again: 0 });
         const list = this.cardsByNote.get(e.payload.note_id) ?? [];
         list.push(e.payload.card_id);
         this.cardsByNote.set(e.payload.note_id, list);
@@ -209,6 +211,7 @@ export class Collection {
         const c = this.cards.get(e.payload.card_id);
         if (c) {
           c.reviews++;
+          if (e.payload.rating === 1) c.again++;
           if (c.first_review_ts === undefined || e.ts < c.first_review_ts) {
             c.first_review_ts = e.ts;
             c.first_rating = e.payload.rating;
@@ -364,6 +367,23 @@ export class Collection {
   }
 
   /** The live stickers a word wears, by name. */
+  /**
+   * How a word has gone so far, both its cards together: answers, how many were
+   * Again, and when it was last answered. What the words file and the
+   * connector show a chat, to find the hard words.
+   */
+  practice(noteId: EntityId): { reviews: number; again: number; last_seen?: number } {
+    let reviews = 0, again = 0, last: number | undefined;
+    for (const id of this.cardsByNote.get(noteId) ?? []) {
+      const c = this.cards.get(id);
+      if (!c) continue;
+      reviews += c.reviews;
+      again += c.again;
+      if (c.last_review_ts !== undefined && (last === undefined || c.last_review_ts > last)) last = c.last_review_ts;
+    }
+    return { reviews, again, ...(last !== undefined ? { last_seen: last } : {}) };
+  }
+
   labelsOf(noteId: EntityId): Label[] {
     return this.liveLabels().filter((l) => this.stuck.get(l.id)?.has(noteId));
   }

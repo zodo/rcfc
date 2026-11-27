@@ -571,6 +571,10 @@ const LAST_LINE: Record<string, string> = {
 };
 
 export const IMPORT_HEADER = "id,word,translation,example,lang,to,note,translation_note,picture,stickers,status";
+/** Read-only columns the words file adds after those: how each word has gone (`Collection.practice`). Replies' copies are ignored. */
+export const PRACTICE_COLUMNS = "reviews,again,last_seen";
+/** A timestamp as the day it fell on, YYYY-MM-DD (UTC). */
+const day = (ts: number) => new Date(ts).toISOString().slice(0, 10);
 
 /** What the user's own AI is given besides the languages. */
 export interface PromptOptions {
@@ -601,7 +605,13 @@ export function importPrompt(pairs: LangPair[], known: string, name: (code: stri
   const ways = o.words
     ? `Below are all my cards, one per row, with their ids. Help me with them as I ask in the chat:
 translate, fix, add examples, sort them into stickers, delete, find what's missing, add
-new ones, anything. If I haven't said what I'd like, ask me first, in one short question.`
+new ones, find my hardest words, anything. If I haven't said what I'd like, ask me first,
+in one short question.
+
+The last columns show how each card has gone, for you to read: ${PRACTICE_COLUMNS}.
+reviews = times I've answered it (both directions), again = times I didn't remember it,
+last_seen = the day I last answered it (empty if never). Many agains, most of all for
+the reviews, mean a hard word. Never put these columns in your reply.`
     : `Please help me make cards. Either:
 - I give you an export or list from another app or source, and you convert it, keeping
   everything in it (tags, lessons, progress); or
@@ -767,11 +777,16 @@ const csvCell = (s: string) => (/[",\n\r]/.test(s) || /^\s|\s$/.test(s) ? `"${s.
  */
 export function exportWords(col: Collection, statusOf: (noteId: EntityId) => WordStatus, prompt: string): string {
   const lines = prompt.trimEnd().split("\n").map((l) => (l ? `# ${l}` : "#"));
-  lines.push(IMPORT_HEADER);
+  lines.push(`${IMPORT_HEADER},${PRACTICE_COLUMNS}`);
   for (const n of col.liveNotes()) {
     const f = n.fields;
     const stickers = col.labelsOf(n.id).map((l) => l.name).join("; ");
-    lines.push([String(n.id), f.front, f.back, f.example ?? "", n.lang_pair.from, n.lang_pair.to, f.memo_target ?? "", f.memo_known ?? "", f.picture_details ?? "", stickers, statusOf(n.id)].map(csvCell).join(","));
+    const p = col.practice(n.id);
+    lines.push(
+      [String(n.id), f.front, f.back, f.example ?? "", n.lang_pair.from, n.lang_pair.to, f.memo_target ?? "", f.memo_known ?? "", f.picture_details ?? "", stickers, statusOf(n.id), String(p.reviews), String(p.again), p.last_seen === undefined ? "" : day(p.last_seen)]
+        .map(csvCell)
+        .join(","),
+    );
   }
   return lines.join("\n") + "\n";
 }

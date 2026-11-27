@@ -36,6 +36,10 @@ export interface WordView {
   translation_language: string;
   stickers: string[];
   status: WordStatus;
+  /** How it has gone (`Collection.practice`), as the words file's last columns: answers, how many were Again, the day last answered. */
+  reviews: number;
+  again: number;
+  last_seen?: string;
   has_picture: boolean;
   deleted?: true;
 }
@@ -48,6 +52,8 @@ export interface WordQuery {
   text?: string;
   /** Deleted words instead of live ones (to restore them). */
   deleted?: boolean;
+  /** "oldest" (the default) or "hardest": most Again answers first, then the most Again per answer. */
+  order?: "oldest" | "hardest";
   limit?: number;
   offset?: number;
 }
@@ -131,12 +137,18 @@ export class Wordbook {
       translation_language: n.lang_pair.to,
       stickers: this.col.labelsOf(n.id).map((l) => l.name),
       status: this.status(n),
+      ...this.practice(n),
       has_picture: !!n.picture,
       ...(n.deleted ? { deleted: true as const } : {}),
     };
   }
 
-  /** The words matching, oldest first, and how many match in all. */
+  private practice(n: Note): { reviews: number; again: number; last_seen?: string } {
+    const p = this.col.practice(n.id);
+    return { reviews: p.reviews, again: p.again, ...(p.last_seen !== undefined ? { last_seen: new Date(p.last_seen).toISOString().slice(0, 10) } : {}) };
+  }
+
+  /** The words matching, oldest first (or hardest first), and how many match in all. */
   find(q: WordQuery = {}): { total: number; words: WordView[] } {
     const lang = q.language === undefined ? undefined : this.language(q.language);
     const label = q.sticker === undefined ? undefined : this.sticker(q.sticker);
@@ -148,6 +160,11 @@ export class Wordbook {
         (q.status === undefined || this.status(n) === q.status) &&
         (text === undefined || Object.values(n.fields).some((v) => v && fold(v).includes(text))),
     );
+    if (q.order === "hardest") {
+      const p = new Map(hits.map((n) => [n.id, this.col.practice(n.id)]));
+      const rate = (id: EntityId) => p.get(id)!.again / Math.max(1, p.get(id)!.reviews);
+      hits.sort((a, b) => p.get(b.id)!.again - p.get(a.id)!.again || rate(b.id) - rate(a.id));
+    }
     const offset = Math.max(0, q.offset ?? 0);
     const limit = Math.max(1, Math.min(q.limit ?? 50, 500));
     return { total: hits.length, words: hits.slice(offset, offset + limit).map((n) => this.view(n)) };

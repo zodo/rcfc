@@ -20,6 +20,7 @@ How to use these tools:
 - Call overview first to see the languages and stickers.
 - Add words in their dictionary form, nouns with their article where the language has one ("el perro", "der Hund"), the translation short (a word or two, the common meaning), and an example sentence in the studied language that shows the word in use. add_words never adds a word twice: one the user already has gets the stickers given, and the example and notes it lacks.
 - The example is also a fill-in-the-blank: the word is studied both ways, and when the user sees the translation and recalls the word, the app shows the example with the word blanked out ("никакой" + "No tengo ___ problema." → ningún). So write an example that holds the word itself, in this or another regular form, where the translation and the sentence together leave only this word: they pin down which word, and the sentence pins down which form. That matters most for grammar words (ningún, por, sich). The app finds the word by its letters, so a form spelt differently (fue for ir) means that side shows no sentence. A fill-in-the-blank card is never a separate card: add the word with such an example.
+- Words the user finds hard: find_words with order "hardest" (reviews / again / last_seen on each word).
 - Ids come from find_words or add_words. Act on the words the user means; ask before deleting many.
 - The app picks up changes on its next sync, usually within a minute while it's open.`;
 
@@ -74,13 +75,14 @@ export function wordsServer(db: SqlDb, code: string): McpServer {
     "find_words",
     {
       title: "Find words",
-      description: "List the user's words, oldest first, optionally narrowed by language, sticker, status or text. Returns the total matching and one page of words with their ids.",
+      description: "List the user's words, oldest first or hardest first, optionally narrowed by language, sticker, status or text. Returns the total matching and one page of words with their ids and how each has gone: reviews (times answered, both directions), again (times not remembered), last_seen (the day last answered).",
       inputSchema: z.object({
         language: language.optional(),
         sticker: z.string().max(30).optional().describe("Only words wearing this sticker"),
         status: status.optional(),
         text: z.string().max(200).optional().describe("Text anywhere in the word, translation, example or notes (case and accents ignored)"),
         deleted: z.boolean().optional().describe("List deleted words instead (to restore them)"),
+        order: z.enum(["oldest", "hardest"]).optional().describe('"hardest": most again answers first, to find the words the user struggles with; default "oldest"'),
         limit: z.number().int().min(1).max(500).optional().describe("Page size, default 50"),
         offset: z.number().int().min(0).optional(),
       }),

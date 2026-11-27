@@ -296,6 +296,27 @@ describe("Your AI: changing words", () => {
     expect(planChanges(read.changes, d.store.col, NEW)).toEqual({ changes: [], refused: [] });
   });
 
+  it("adds how each word has gone, read-only: the prompt says so, and a reply carrying them back changes nothing", async () => {
+    const { d, id } = await device();
+    const puerta = id("la puerta");
+    const card = d.store.col.cards.get(d.store.col.cardsByNote.get(puerta)![0])!;
+    await d.store.answer(card, 1, 2000);
+    await d.store.answer(card, 3, 2000);
+    const prompt = importPrompt([ES_EN], "en", (c) => c, { words: true });
+    expect(prompt).toContain("Never put these columns in your reply.");
+    const file = exportWords(d.store.col, NEW, prompt);
+    const lines = file.split("\n").filter((l) => l && !l.startsWith("#"));
+    expect(lines[0]).toBe(`${IMPORT_HEADER},reviews,again,last_seen`);
+    const row = lines.find((l) => l.startsWith(`${puerta},`))!;
+    expect(row).toMatch(/,new,2,1,\d{4}-\d\d-\d\d$/);
+    expect(lines.find((l) => l.includes("la calle"))).toMatch(/,new,0,0,$/);
+    // A chat echoing the columns, with one real change: only that change.
+    const reply = `${IMPORT_HEADER},reviews,again,last_seen\n${puerta},,the door,,,,,,,,,9,9,2020-01-01\n`;
+    const plan = planChanges(readImport(reply).changes, d.store.col, NEW);
+    expect(plan.changes).toHaveLength(1);
+    expect(plan.changes[0].fields).toEqual([{ field: "back", from: "door", to: "the door" }]);
+  });
+
   it("plans and applies a reply: text, translation language, stickers, deletion, status; Undo puts it back", async () => {
     const { d, id } = await device();
     const [puerta, calle, mesa] = [id("la puerta"), id("la calle"), id("la mesa")];
