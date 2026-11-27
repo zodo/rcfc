@@ -187,7 +187,7 @@ export class Wordbook {
       if (lang === to) throw new WordbookError(`"${word}": the word and its translation are in the same language (${lang})`);
       return { line: i + 1, word, translation, example: w.example?.trim() ?? "", note: w.note?.trim() ?? "", translationNote: w.translation_note?.trim() ?? "", picture: w.picture?.trim() ?? "", stickers: (w.stickers ?? []).map(labelName).filter(Boolean), status: w.status ?? "new", lang, to };
     });
-    const plan = planImport({ rows, errors: [], noTable: false }, this.col.notes.values(), { from: "es", to: "en" });
+    const plan = planImport({ rows, changes: [], errors: [], noTable: false }, this.col.notes.values(), { from: "es", to: "en" });
     const decks = new Map<string, EntityId>();
     for (const r of plan.ready) if (!decks.has(r.pair.from)) decks.set(r.pair.from, this.deckFor(r.pair));
     const { events, noteIds } = importEvents(this.f, plan.ready, decks);

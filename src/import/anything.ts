@@ -41,6 +41,8 @@ export interface RowError {
 
 export interface ReadResult {
   rows: ImportRow[];
+  /** Rows naming a word by its id: changes to words already there (`planChanges`). */
+  changes: ChangeRow[];
   errors: RowError[];
   /** Nothing in the text looked like a table of words. */
   noTable: boolean;
@@ -51,10 +53,11 @@ export const IMPORT_LANGS = ["es", "en", "ru", "uk", "de", "fr", "it", "pt", "pl
 
 // ---------------------------------------------------------------- columns
 
-type Col = "word" | "translation" | "example" | "lang" | "to" | "note" | "translationNote" | "picture" | "stickers" | "status" | "interval" | "created";
+type Col = "id" | "word" | "translation" | "example" | "lang" | "to" | "note" | "translationNote" | "picture" | "stickers" | "status" | "interval" | "created";
 
 /** Header names, squashed (`squash`): lower case, letters and digits only. */
 const COLUMN_NAMES: Record<Col, string[]> = {
+  id: ["id", "wordid", "noteid"],
   word: ["word", "words", "front", "frontside", "term", "phrase", "expression", "vocab", "vocabulary", "lemma", "sortfield", "question", "foreign", "original", "слово", "palabra", "wort", "mot", "parola", "palavra", "słowo", "woord", "kelime", "単語", "词", "단어"],
   translation: ["translation", "translations", "back", "backside", "meaning", "definition", "answer", "gloss", "перевод", "переклад", "traducción", "traduccion", "übersetzung", "traduction", "traduzione", "tradução", "traducao", "tłumaczenie", "vertaling", "çeviri", "翻訳", "翻译", "번역", "translationen"],
   example: ["example", "examples", "examplesentence", "sentence", "hint", "usage", "context", "sample", "пример", "приклад", "ejemplo", "beispiel", "exemple", "esempio", "exemplo", "przykład", "voorbeeld", "örnek"],
@@ -238,7 +241,12 @@ interface Chunk {
 /** The code blocks in a chat reply (``` or ~~~, the last one may be cut off), else the whole text. */
 function chunks(text: string): Chunk[] {
   // The prompt pasted back (with an export under it): its header line is no table.
-  const lines = text.replace(/\r\n?/g, "\n").replace(`Header exactly:\n${IMPORT_HEADER}\n`, "Header exactly:\n\n").split("\n");
+  // `#` lines are comments: the prompt at the top of a words file (`exportWords`), a chat's markdown headings.
+  const lines = text
+    .replace(/\r\n?/g, "\n")
+    .replace(`Header exactly:\n${IMPORT_HEADER}\n`, "Header exactly:\n\n")
+    .split("\n")
+    .map((l) => (/^\s*#/.test(l) ? "" : l));
   const out: Chunk[] = [];
   let open: { fence: string; start: number; body: string[] } | null = null;
   lines.forEach((l, i) => {
@@ -318,6 +326,7 @@ const clean = (s: string | undefined) => (s ?? "").normalize("NFC").replace(/\r\
 /** Every table of words in the text, read into rows. */
 export function readImport(text: string): ReadResult {
   const rows: ImportRow[] = [];
+  const changes: ChangeRow[] = [];
   const errors: RowError[] = [];
   let tables = 0;
   for (const c of chunks(text)) {
@@ -333,6 +342,19 @@ export function readImport(text: string): ReadResult {
       if (v.every((x) => !x.trim())) continue;
       // A row that repeats the header (blocks glued together) is not a word.
       if (mapHeader(v)) continue;
+      const id = at(v, "id").replace(/^#/, "");
+      if (/^\d{1,16}$/.test(id) && Number(id) > 0) {
+        const c: ChangeRow = { line: r.line, id: Number(id), word: at(v, "word"), translation: at(v, "translation"), example: at(v, "example"), note: at(v, "note"), translationNote: at(v, "translationNote"), stickers: at(v, "stickers"), status: at(v, "status") };
+        for (const k of ["lang", "to"] as const) {
+          const raw = at(v, k);
+          if (!raw) continue;
+          const code = langCode(raw);
+          if (code) c[k] = code;
+          else errors.push({ line: r.line, message: `unknown language "${raw}"` });
+        }
+        if (errors.at(-1)?.line !== r.line) changes.push(c);
+        continue;
+      }
       const word = at(v, "word");
       const translation = at(v, "translation");
       if (!word || !translation) {
@@ -365,7 +387,7 @@ export function readImport(text: string): ReadResult {
       rows.push(row);
     }
   }
-  return { rows, errors, noTable: tables === 0 };
+  return { rows, changes, errors, noTable: tables === 0 };
 }
 
 // ---------------------------------------------------------------- planning
@@ -548,14 +570,23 @@ const LAST_LINE: Record<string, string> = {
   cs: "Tady je můj export, nebo co se chci naučit:",
 };
 
-export const IMPORT_HEADER = "word,translation,example,lang,to,note,translation_note,picture,stickers,status";
+export const IMPORT_HEADER = "id,word,translation,example,lang,to,note,translation_note,picture,stickers,status";
+
+/** What the user's own AI is given besides the languages. */
+export interface PromptOptions {
+  /** The user's sticker names, for the AI to reuse. */
+  stickers?: string[];
+  /** The prompt sits on top of the user's words (`exportWords`): it changes them, and the user asks in the chat. */
+  words?: boolean;
+}
 
 /**
- * The prompt the Import screen copies. `pairs`: the languages studied and what
- * their translations are in (empty for a new user); `known`: the language the
- * last line is written in; `name(code)` → "Spanish".
+ * The prompt "Your AI" copies, or puts on top of the words file. `pairs`: the
+ * languages studied and what their translations are in (empty for a new
+ * user); `known`: the language the last line is written in; `name(code)` →
+ * "Spanish".
  */
-export function importPrompt(pairs: LangPair[], known: string, name: (code: string) => string): string {
+export function importPrompt(pairs: LangPair[], known: string, name: (code: string) => string, o: PromptOptions = {}): string {
   const lang = (c: string) => `${name(c)} (${c})`;
   let usual = "";
   if (pairs.length) {
@@ -566,21 +597,41 @@ export function importPrompt(pairs: LangPair[], known: string, name: (code: stri
         ? ` If my request doesn't say, I'm usually\nlearning ${list(pairs.map((p) => lang(p.from)))}, with translations in ${lang(tos[0])}.`
         : ` If my request doesn't say, I'm usually\nlearning ${list(pairs.map((p) => `${lang(p.from)} with translations in ${lang(p.to)}`))}.`;
   }
-  return `I use Really Cool Flashcards, a language-learning app. Each card has a word in the
-language I'm learning, its translation, an example sentence, and a picture the app
-draws by itself. Please help me make cards. Either:
+  const stickers = o.stickers?.length ? `\nMy stickers so far: ${o.stickers.join("; ")}. Reuse these names when they fit.` : "";
+  const ways = o.words
+    ? `Below are all my cards, one per row, with their ids. Help me with them as I ask in the chat:
+translate, fix, add examples, sort them into stickers, delete, find what's missing, add
+new ones, anything. If I haven't said what I'd like, ask me first, in one short question.`
+    : `Please help me make cards. Either:
 - I give you an export or list from another app or source, and you convert it, keeping
   everything in it (tags, lessons, progress); or
 - we talk about what I want to learn (a topic, a trip, a book, my level) and you suggest
   the words. If my request is vague (no topic or no amount), first ask me one or two
-  short questions, then make the cards.
+  short questions, then make the cards.`;
+  const reply = o.words
+    ? `Reply with only the rows you change or add, as CSV in one markdown code block (for a
+long reply, a .csv file to download is fine too). Same header:`
+    : `Give the cards as CSV in one markdown code block. No file needed, the block is enough.
+Header exactly:`;
+  const changes = o.words
+    ? `
+- id: keep a card's id to change it; leave it empty for a new card
+- a cell left empty keeps what the card has; "-" clears an example or a note
+- stickers on a changed card are its whole list: leave one out to take it off
+- status delete removes a card; known / learning mark what I know or don't
+- a card's word language (lang) can't change; its translation language (to) can`
+    : `
+- id: leave empty`;
+  const paste = "Words → Your AI → Its reply";
+  return `I use Really Cool Flashcards, a language-learning app. Each card has a word in the
+language I'm learning, its translation, an example sentence, and a picture the app
+draws by itself. ${ways}
 
 Languages: every row says its own, so one reply can mix pairs. Use what the words
-actually are, e.g. what an export contains.${usual}
+actually are, e.g. what an export contains.${usual}${stickers}
 
-Give the cards as CSV in one markdown code block. No file needed, the block is enough.
-Header exactly:
-${IMPORT_HEADER}
+${reply}
+${IMPORT_HEADER}${changes}
 - word: dictionary form, with the article for nouns where the language has one
 - translation: short
 - example: one short natural sentence that holds the word, in the word's language. The app also shows it with the word blanked out, to recall the word from its translation, so make it a sentence where only this word fits (most of all for small grammar words)
@@ -591,11 +642,136 @@ ${IMPORT_HEADER}
 - status: new, learning or known. known = I said I know it, or my source shows it's mastered (e.g. an interval over a month); learning = started but not mastered; else new
 Quote fields that contain commas. Nothing but CSV inside the block. For a long list, give every row; if needed, split it into several blocks with the same header.
 
-After the block, tell me in my language, in one line, to copy the block and paste it in the app under Words → Add → Import from anything (keep those three names in English, as the app shows them). If there are no stickers, also offer to add some to group the words.
+After the block, tell me in my language, in one line, to copy the block and paste it in the app under ${paste} (keep those names in English, as the app shows them).${o.words ? "" : " If there are no stickers, also offer to add some to group the words."}
 
 The app wrote this message in English, but I may not speak it: reply in the language
 we usually talk in, unless I write below in another one.
+${o.words ? "" : `\n${LAST_LINE[known] ?? LAST_LINE.en}\n`}`;
+}
 
-${LAST_LINE[known] ?? LAST_LINE.en}
-`;
+// ---------------------------------------------------------------- changes: rows with an id
+
+/** A row naming a word by its id, its cells as written: "" = not given (left as it is), "-" = cleared. */
+export interface ChangeRow {
+  line: number;
+  id: EntityId;
+  word: string;
+  translation: string;
+  example: string;
+  note: string;
+  translationNote: string;
+  stickers: string;
+  status: string;
+  lang?: string;
+  to?: string;
+}
+
+/** The note fields a change row can set, by its column. */
+const CHANGED: [keyof Pick<ChangeRow, "word" | "translation" | "example" | "note" | "translationNote">, string][] = [
+  ["word", "front"],
+  ["translation", "back"],
+  ["example", "example"],
+  ["note", "memo_target"],
+  ["translationNote", "memo_known"],
+];
+
+/** What one row changes on its word. Nothing in it is unchanged. */
+export interface WordChange {
+  line: number;
+  noteId: EntityId;
+  fields: { field: string; from: string; to: string }[];
+  /** The translation's language, from → to. */
+  lang?: { from: string; to: string };
+  /** Sticker names to stick on (made when new) and stickers to peel off. */
+  stickOn: string[];
+  peelOff: EntityId[];
+  /** "I know" / "Don't know". */
+  status?: "known" | "unknown";
+  /** Deleted (restorable). */
+  remove?: true;
+}
+
+export interface RefusedChange {
+  line: number;
+  noteId: EntityId;
+  word: string;
+  reason: string;
+}
+
+export interface ChangePlan {
+  changes: WordChange[];
+  refused: RefusedChange[];
+}
+
+const DELETE_WORDS = new Set(["delete", "deleted", "remove", "removed", "del", "удалить", "удалено", "видалити", "borrar", "eliminar", "löschen", "supprimer", "eliminare", "excluir", "usuń"]);
+const isClear = (s: string) => /^[-–—]$/.test(s);
+const same = (a: string, b: string) => a.normalize("NFC").trim().replace(/\s+/g, " ") === b.normalize("NFC").trim().replace(/\s+/g, " ");
+
+/**
+ * What change rows do to the words they name, against the words as they are
+ * now. A row echoed unchanged changes nothing and is left out; a row that
+ * can't be applied is refused whole, with the reason. `statusOf` is the
+ * word's status as the app shows it (it needs the model's predictions).
+ */
+export function planChanges(rows: ChangeRow[], col: Collection, statusOf: (noteId: EntityId) => WordStatus): ChangePlan {
+  const changes: WordChange[] = [];
+  const refused: RefusedChange[] = [];
+  const done = new Set<EntityId>();
+  for (const r of rows) {
+    const n = col.notes.get(r.id);
+    const refuse = (reason: string) => refused.push({ line: r.line, noteId: r.id, word: n?.fields.front ?? r.word, reason });
+    if (!n) { refuse("no word with this id"); continue; }
+    if (n.deleted) { refuse("deleted"); continue; }
+    if (done.has(n.id)) { refuse("this word is in the reply twice"); continue; }
+    done.add(n.id);
+    const status = squash(r.status);
+    if (DELETE_WORDS.has(status)) {
+      changes.push({ line: r.line, noteId: n.id, fields: [], stickOn: [], peelOff: [], remove: true });
+      continue;
+    }
+    if (r.lang && r.lang !== n.lang_pair.from) { refuse("its language can't change: add it again instead"); continue; }
+    if ((r.word && isClear(r.word)) || (r.translation && isClear(r.translation))) { refuse("a word and its translation can't be emptied"); continue; }
+    const to = r.to ?? n.lang_pair.to;
+    if (to === n.lang_pair.from) { refuse("the translation can't be in the word's language"); continue; }
+    const c: WordChange = { line: r.line, noteId: n.id, fields: [], stickOn: [], peelOff: [] };
+    for (const [k, field] of CHANGED) {
+      const cell = r[k];
+      if (!cell) continue;
+      const now = n.fields[field] ?? "";
+      const next = isClear(cell) ? "" : cell;
+      if (!same(now, next)) c.fields.push({ field, from: now, to: next });
+    }
+    if (to !== n.lang_pair.to) c.lang = { from: n.lang_pair.to, to };
+    if (r.stickers) {
+      const want = isClear(r.stickers) ? [] : [...new Set(r.stickers.split(/[;,|\n]/).map((s) => s.trim().replace(/\s+/g, " ")).filter(Boolean))];
+      const wears = col.labelsOf(n.id);
+      const wanted = new Set(want.map((w) => col.labelByName(w)?.id).filter((x) => x !== undefined));
+      c.stickOn = want.filter((w) => { const l = col.labelByName(w); return !l || !col.wears(n.id, l.id); });
+      c.peelOff = wears.filter((l) => !wanted.has(l.id)).map((l) => l.id);
+    }
+    if (status) {
+      const s = readStatus(r.status), now = statusOf(n.id);
+      if (s === "known" && now !== "known") c.status = "known";
+      else if (s !== "known" && now === "known") c.status = "unknown";
+    }
+    if (c.fields.length || c.lang || c.stickOn.length || c.peelOff.length || c.status) changes.push(c);
+  }
+  return { changes, refused };
+}
+
+const csvCell = (s: string) => (/[",\n\r]/.test(s) || /^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+
+/**
+ * The words file "Share my words" sends: the prompt as `#` lines on top (the
+ * reader skips them), then every word with its id. `statusOf` as in `planChanges`.
+ */
+export function exportWords(col: Collection, statusOf: (noteId: EntityId) => WordStatus, prompt: string): string {
+  const lines = prompt.trimEnd().split("\n").map((l) => (l ? `# ${l}` : "#"));
+  lines.push(IMPORT_HEADER);
+  for (const n of col.liveNotes()) {
+    const f = n.fields;
+    const stickers = col.labelsOf(n.id).map((l) => l.name).join("; ");
+    lines.push([String(n.id), f.front, f.back, f.example ?? "", n.lang_pair.from, n.lang_pair.to, f.memo_target ?? "", f.memo_known ?? "", f.picture_details ?? "", stickers, statusOf(n.id)].map(csvCell).join(","));
+  }
+  return lines.join("\n") + "\n";
 }

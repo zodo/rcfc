@@ -5,10 +5,10 @@
 import type { Summary } from "./domain/summary";
 import Dexie, { type DexieOptions, type Table } from "dexie";
 import { Collection, EventFactory, eventOrder, type Card, type Preset } from "./domain/collection";
-import type { AppEvent, LabelColored, LabelCreated, LabelDeleted, LabelRenamed, NotesLabeled, Review, ReviewPayload } from "./domain/events";
+import type { AppEvent, LabelColored, LabelCreated, LabelDeleted, LabelRenamed, NoteDeleted, NoteEdited, NoteLangChanged, NoteRestored, NotesLabeled, Review, ReviewPayload } from "./domain/events";
 import { freshColor, labelIdFor, labelName } from "./domain/labels";
 import type { EntityId } from "./domain/ids";
-import { importEvents, mergeEdits, mergeOf, type ExistingRow, type ReadyRow } from "./import/anything";
+import { importEvents, mergeEdits, mergeOf, type ExistingRow, type ReadyRow, type WordChange } from "./import/anything";
 import { halfKnownFaces, knownCards, newQueue, unknownPlan, unseenCards, type DayClock, type Scope } from "./domain/newcards";
 import { RowBuilder, ROWS_VERSION, ROW_WIDTH, localTzOffsetMin } from "./domain/rows";
 import { needsReplay } from "./domain/sync";
@@ -332,7 +332,7 @@ export class Store {
    * learning = learned before other new words (as "Don't know" on an unseen one).
    * `deckFor` gives a studied language's hidden deck (made when new).
    */
-  async importWords(rows: ReadyRow[], deckFor: (lang: string) => Promise<EntityId>, existing: ExistingRow[] = []): Promise<{ words: number; updated: number; labels: EntityId[] }> {
+  async importWords(rows: ReadyRow[], deckFor: (lang: string) => Promise<EntityId>, existing: ExistingRow[] = []): Promise<{ words: number; updated: number; labels: EntityId[]; noteIds: EntityId[] }> {
     const decks = new Map<string, EntityId>();
     for (const r of rows) if (!decks.has(r.pair.from)) decks.set(r.pair.from, await deckFor(r.pair.from));
     const { events, noteIds } = importEvents(this.factory, rows, decks);
@@ -360,7 +360,54 @@ export class Store {
     if (learning.length) await this.append([this.factory.make("notes_prioritized", { note_ids: learning })]);
     const known = noteIds.filter((_, i) => rows[i].status === "known");
     if (known.length) await this.markKnown(known);
-    return { words: noteIds.length, updated, labels: [...byLabel.keys()] };
+    return { words: noteIds.length, updated, labels: [...byLabel.keys()], noteIds };
+  }
+
+  /**
+   * A reply's changes to words already there (Your AI, `planChanges`): text,
+   * the translation's language, stickers, deletions, "I know" / "Don't know".
+   * Returns what puts them back, made when called (so its events are the
+   * latest): all but "I know" / "Don't know", whose answers stay.
+   */
+  async applyChanges(changes: WordChange[]): Promise<() => Promise<void>> {
+    const f = this.factory;
+    const events: AppEvent[] = [];
+    for (const c of changes) {
+      if (c.remove) {
+        events.push(f.make<NoteDeleted>("note_deleted", { note_id: c.noteId }));
+        continue;
+      }
+      for (const x of c.fields) events.push(f.make<NoteEdited>("note_edited", { note_id: c.noteId, field: x.field, value: x.to }));
+      if (c.lang) events.push(f.make<NoteLangChanged>("note_lang_changed", { note_id: c.noteId, to: c.lang.to }));
+    }
+    if (events.length) await this.append(events);
+    const on = new Map<EntityId, EntityId[]>(), off = new Map<EntityId, EntityId[]>();
+    const add = (m: Map<EntityId, EntityId[]>, id: EntityId, note: EntityId) => m.set(id, [...(m.get(id) ?? []), note]);
+    for (const c of changes) {
+      if (c.remove) continue;
+      for (const name of c.stickOn) add(on, await this.makeLabel(name), c.noteId);
+      for (const id of c.peelOff) add(off, id, c.noteId);
+    }
+    for (const [id, ids] of on) await this.stick(id, ids, true);
+    for (const [id, ids] of off) await this.stick(id, ids, false);
+    const known = changes.filter((c) => c.status === "known").map((c) => c.noteId);
+    const unknown = changes.filter((c) => c.status === "unknown").map((c) => c.noteId);
+    if (known.length) await this.markKnown(known);
+    if (unknown.length) await this.markUnknown(unknown);
+    return async () => {
+      const back: AppEvent[] = [];
+      for (const c of changes) {
+        if (c.remove) {
+          back.push(f.make<NoteRestored>("note_restored", { note_id: c.noteId }));
+          continue;
+        }
+        for (const x of c.fields) back.push(f.make<NoteEdited>("note_edited", { note_id: c.noteId, field: x.field, value: x.from }));
+        if (c.lang) back.push(f.make<NoteLangChanged>("note_lang_changed", { note_id: c.noteId, to: c.lang.from }));
+      }
+      for (const [id, ids] of on) back.push(f.make<NotesLabeled>("notes_labeled", { label_id: id, note_ids: ids, on: false }));
+      for (const [id, ids] of off) back.push(f.make<NotesLabeled>("notes_labeled", { label_id: id, note_ids: ids, on: true }));
+      if (back.length) await this.append(back);
+    };
   }
 
   /** A sticker with this name: the one there is, else a new one. Returns its id. */

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "bun:test";
 import { parseCsv } from "../src/import/csv";
-import { fileLang, IMPORT_HEADER, importEvents, importPrompt, intervalStatus, langCode, planImport, readDate, readImport, readStatus, scriptLang } from "../src/import/anything";
+import { exportWords, fileLang, IMPORT_HEADER, importEvents, importPrompt, intervalStatus, langCode, planChanges, planImport, readDate, readImport, readStatus, scriptLang } from "../src/import/anything";
 import { EventFactory } from "../src/domain/collection";
 import type { NoteCreated } from "../src/domain/events";
 import { Device } from "./support/harness";
@@ -57,7 +57,7 @@ describe("readImport: what the prompt asks for", () => {
 
   it("joins several blocks and skips a header repeated inside one", () => {
     const block = (rows: string) => "```csv\n" + IMPORT_HEADER + "\n" + rows + "\n```";
-    const text = `Part 1:\n${block("uno,one,,es,en,,,,,new")}\nPart 2:\n${block("dos,two,,es,en,,,,,new\n" + IMPORT_HEADER + "\ntres,three,,es,en,,,,,new")}`;
+    const text = `Part 1:\n${block(",uno,one,,es,en,,,,,new")}\nPart 2:\n${block(",dos,two,,es,en,,,,,new\n" + IMPORT_HEADER + "\n,tres,three,,es,en,,,,,new")}`;
     expect(words(text)).toEqual(["uno", "dos", "tres"]);
   });
 
@@ -266,5 +266,107 @@ describe("Store.importWords", () => {
     expect(perro.fields.example).toBe("El perro ladra.");
     expect(d.store.col.labelsOf(perro.id).map((l) => l.name)).toEqual(["Pets"]);
     expect(d.store.col.liveNotes()).toHaveLength(2);
+  });
+});
+
+describe("Your AI: changing words", () => {
+  async function device() {
+    const d = await Device.open();
+    const deck = d.store.factory.deck("Spanish", d.store.preset().preset_id, ES_EN);
+    await d.store.append([deck]);
+    const deckId = (deck.payload as { deck_id: number }).deck_id;
+    const plan = planImport(readImport('word,translation,example,stickers\nla puerta,door,"Cierra la puerta, por favor.",House\nla calle,street,,\nla mesa,table,,House\n'), [], ES_EN);
+    await d.store.importWords(plan.ready, async () => deckId);
+    const id = (w: string) => d.store.col.liveNotes().find((n) => n.fields.front === w)!.id;
+    return { d, id };
+  }
+  const NEW = () => "new" as const;
+
+  it("exports every word with its id under the prompt, and reads it back as changing nothing", async () => {
+    const { d } = await device();
+    const prompt = importPrompt([ES_EN], "en", (c) => c, { words: true, stickers: ["House"] });
+    const file = exportWords(d.store.col, NEW, prompt);
+    expect(file.startsWith("# I use Really Cool Flashcards")).toBe(true);
+    expect(file).toContain("My stickers so far: House.");
+    expect(file).toContain('"Cierra la puerta, por favor."');
+    const read = readImport(file);
+    expect(read.rows).toEqual([]);
+    expect(read.changes).toHaveLength(3);
+    // An echo of the whole file changes nothing.
+    expect(planChanges(read.changes, d.store.col, NEW)).toEqual({ changes: [], refused: [] });
+  });
+
+  it("plans and applies a reply: text, translation language, stickers, deletion, status; Undo puts it back", async () => {
+    const { d, id } = await device();
+    const [puerta, calle, mesa] = [id("la puerta"), id("la calle"), id("la mesa")];
+    const reply = [
+      "Here you go:",
+      "```csv",
+      IMPORT_HEADER,
+      `${puerta},,дверь,-,,ru,,,,House; Doors,`,
+      `${calle},,,,,,,,,,delete`,
+      `${mesa},,,,,,,,,-,known`,
+      `999,el gato,cat,,,,,,,,`,
+      `${mesa},,,,es,,,,,,`,
+      ",el lápiz,pencil,,es,en,,,,,new",
+      "```",
+    ].join("\n");
+    const read = readImport(reply);
+    expect(read.rows.map((r) => r.word)).toEqual(["el lápiz"]);
+    const plan = planChanges(read.changes, d.store.col, NEW);
+    expect(plan.refused.map((r) => [r.noteId, r.reason])).toEqual([
+      [999, "no word with this id"],
+      [mesa, "this word is in the reply twice"],
+    ]);
+    const byId = new Map(plan.changes.map((c) => [c.noteId, c]));
+    expect(byId.get(puerta)).toMatchObject({
+      fields: [
+        { field: "back", from: "door", to: "дверь" },
+        { field: "example", from: "Cierra la puerta, por favor.", to: "" },
+      ],
+      lang: { from: "en", to: "ru" },
+      stickOn: ["Doors"],
+      peelOff: [],
+    });
+    expect(byId.get(calle)).toMatchObject({ remove: true });
+    const house = d.store.col.labelByName("House")!.id;
+    expect(byId.get(mesa)).toMatchObject({ peelOff: [house], status: "known" });
+
+    const undo = await d.store.applyChanges(plan.changes);
+    const col = d.store.col;
+    expect(col.liveNote(puerta)!).toMatchObject({ fields: { back: "дверь", example: "" }, lang_pair: { from: "es", to: "ru" } });
+    expect(col.labelsOf(puerta).map((l) => l.name).sort()).toEqual(["Doors", "House"]);
+    expect(col.liveNote(calle)).toBeUndefined();
+    expect(col.labelsOf(mesa)).toEqual([]);
+    expect((col.cardsByNote.get(mesa) ?? []).every((c) => col.cards.get(c)!.last_rating === 4)).toBe(true);
+
+    await undo();
+    expect(col.liveNote(puerta)!).toMatchObject({ fields: { back: "door", example: "Cierra la puerta, por favor." }, lang_pair: { from: "es", to: "en" } });
+    expect(col.labelsOf(puerta).map((l) => l.name)).toEqual(["House"]);
+    expect(col.liveNote(calle)).toBeDefined();
+    expect(col.labelsOf(mesa).map((l) => l.name)).toEqual(["House"]);
+  });
+
+  it("refuses a changed studied language, an emptied word, a translation in the word's language, a deleted word", async () => {
+    const { d, id } = await device();
+    const [puerta, calle, mesa] = [id("la puerta"), id("la calle"), id("la mesa")];
+    await d.store.append([d.store.factory.make("note_deleted", { note_id: mesa })]);
+    const read = readImport([IMPORT_HEADER, `${puerta},,,,de,,,,,,`, `${calle},-,,,,,,,,,`, `${id("la puerta")}x,,,,,,,,,,`, `${mesa},,mesa,,,,,,,,`].join("\n"));
+    const plan = planChanges(read.changes, d.store.col, NEW);
+    expect(plan.changes).toEqual([]);
+    expect(plan.refused.map((r) => r.reason)).toEqual(["its language can't change: add it again instead", "a word and its translation can't be emptied", "deleted"]);
+    const read2 = readImport([IMPORT_HEADER, `${calle},,,,,es,,,,,`].join("\n"));
+    expect(planChanges(read2.changes, d.store.col, NEW).refused[0].reason).toBe("the translation can't be in the word's language");
+  });
+
+  it("asks only for the prompt's own things: stickers to reuse, and no word list when only adding", () => {
+    const p = importPrompt([ES_EN], "ru", (c) => c, { stickers: ["Kitchen", "Trip"] });
+    expect(p).toContain("My stickers so far: Kitchen; Trip.");
+    expect(p).toContain("Words → Your AI → Its reply");
+    expect(p).not.toContain("Below are all my cards");
+    expect(p.trim().endsWith("Вот мой экспорт или то, что я хочу выучить:")).toBe(true);
+    const w = importPrompt([ES_EN], "ru", (c) => c, { words: true });
+    expect(w).toContain("Below are all my cards");
+    expect(w).toContain("Reply with only the rows you change or add");
   });
 });
