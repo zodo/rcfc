@@ -2923,10 +2923,10 @@ html.sum-zoom body {
   --cut: var(--cut-3);
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   margin-top: 6px;
-  padding: 7px 13px 7px 9px;
-  font-size: 15px;
+  padding: 5px 10px 5px 7px;
+  font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
   rotate: -1.2deg;
@@ -2939,7 +2939,7 @@ html.sum-zoom body {
   display: block;
 }
 .marks canvas + canvas {
-  margin-left: -8px;
+  margin-left: -0.28em;
 }
 .ya-title {
   display: flex;

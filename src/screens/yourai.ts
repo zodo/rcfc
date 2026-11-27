@@ -65,7 +65,7 @@ async function copyText(text: string): Promise<boolean> {
 
 /** The slip on the Words title line: the chats' marks and "Your AI". */
 export function yourAiSlip(): HTMLElement {
-  return h("button", { class: "secondary your-ai", type: "button", "aria-label": "Your AI: ChatGPT, Claude, Gemini", onclick: () => openYourAi() }, marks(28), h("span", {}, "Your AI"));
+  return h("button", { class: "secondary your-ai", type: "button", "aria-label": "Your AI: ChatGPT, Claude, Gemini", onclick: () => openYourAi() }, marks(20), h("span", {}, "Your AI"));
 }
 
 // ---------------------------------------------------------------- the sheet
