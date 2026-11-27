@@ -70,6 +70,27 @@ export function yourAiSlip(): HTMLElement {
 
 // ---------------------------------------------------------------- the sheet
 
+let openNext = false;
+let openedEmpty = false;
+
+/**
+ * Other places point here (the card editor's hint): they leave the way they
+ * always do (a card not added yet is asked about first), then Words opens
+ * with the sheet up.
+ */
+export function yourAiOnWords(): void {
+  openNext = true;
+  go.words();
+}
+
+/** Called by Words once drawn: the sheet comes up if asked for, or once a launch while there are no words. */
+export function openIfAsked(empty: boolean): void {
+  const asked = openNext || (empty && !openedEmpty);
+  openNext = false;
+  if (empty) openedEmpty = true;
+  if (asked) openYourAi();
+}
+
 /** Opens the sheet over whatever screen is showing (Words, the card editor). */
 export function openYourAi(): void {
   const { store } = app;

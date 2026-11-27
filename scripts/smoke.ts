@@ -249,6 +249,13 @@ async function run(s: Browser, url: string) {
   await s.until("welcome", `document.querySelector("header.top h1")?.textContent === "Welcome"`, 60_000);
   log("the launch pile turns over into the welcome card and goes");
   await s.until("launch screen gone", `!document.getElementById("launch") && getComputedStyle(document.querySelector(".welcome-card")).opacity === "1"`);
+  log("Words with no words brings Your AI up by itself, once");
+  await s.click("nav .nav-item", "Words");
+  await s.until("the sheet up", `document.querySelector(".pile-sheet .ya") && document.querySelector(".card-box")?.textContent.includes("No words yet.")`);
+  await s.js(`history.back();`);
+  await s.until("closed", `!document.querySelector(".pile-sheet") && document.querySelector(".card-box")`);
+  await s.click("nav .nav-item", "Study");
+  await s.until("welcome", `document.querySelector(".welcome-card")`);
 
   log("pick a language: lands on adding its first word");
   await s.click("button", "Start");
@@ -660,8 +667,18 @@ async function run(s: Browser, url: string) {
   log("emptying what was typed takes back what was filled in");
   await s.js(`const b = document.querySelector("input[name=back]"); b.value = ""; b.dispatchEvent(new Event("input"));`);
   await s.until("a blank card again", `document.querySelector("input[name=front]").value === "" && document.querySelector("input[name=example]").value === ""`);
-  await s.click("button[aria-label=Back]");
-  await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
+  log("the editor's hint brings Your AI up on Words; a card typed first is asked about, and Keep editing keeps it");
+  await s.js(`const f = document.querySelector("input[name=front]"); f.value = "la mesa"; f.dispatchEvent(new Event("input"));`);
+  await s.click(".ed-ai button.link", "use your AI");
+  await s.until("asked about the card", `document.querySelector(".pile-sheet h2")?.textContent.startsWith("la mesa")`);
+  await s.click(".pile-sheet button.secondary", "Keep editing");
+  await s.until("still there", `!document.querySelector(".pile-sheet") && document.querySelector("header.sub") && document.querySelector("input[name=front]").value === "la mesa"`);
+  await s.js(`const f = document.querySelector("input[name=front]"); f.value = ""; f.dispatchEvent(new Event("input"));`);
+  await s.until("a blank card again", `document.querySelector("input[name=back]").value === "" && document.querySelector("input[name=example]").value === ""`);
+  await s.click(".ed-ai button.link", "use your AI");
+  await s.until("Words with the sheet up", `!document.querySelector("header.sub") && document.querySelector(".list button.word") && document.querySelector(".pile-sheet .ya")`);
+  await s.js(`history.back();`);
+  await s.until("back closes the sheet, Words stays", `!document.querySelector(".pile-sheet") && document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
 
   log("Your AI: Copy prompt copies; a chat's reply lies on the list in pencil; Apply adds its words with their sticker and progress");
   const paste = async (text: string) => {

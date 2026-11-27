@@ -14,7 +14,7 @@ import { refreshStatuses, statusOf } from "../statuses";
 import { append, clear, h, ICON_PEN, langName, toast } from "../ui/h";
 import { editSticker, languageForm, languages, openChip, rememberLanguage, setOpenChip, takeEditNext } from "./languages";
 import { newStickerSheet, paint, pencilSheet, stickersSheet, wordsTarget } from "./stickers";
-import { applyProposal, fallbackPickers, openYourAi, previewRows, proposal, proposalCount, proposalNotes, throwAway, yourAiSlip, type Proposal } from "./yourai";
+import { applyProposal, fallbackPickers, openIfAsked, openYourAi, previewRows, proposal, proposalCount, proposalNotes, throwAway, yourAiSlip, type Proposal } from "./yourai";
 
 /** Rows added at a time as the list scrolls into view. */
 const CHUNK = 150;
@@ -309,6 +309,7 @@ export function words(): void {
   const on = stickRow.querySelector<HTMLElement>(".on");
   if (on) stickRow.scrollLeft = on.offsetLeft - 40;
   void refresh();
+  openIfAsked(!!empty);
 }
 
 /**
