@@ -14,6 +14,7 @@ import { refreshStatuses, statusOf } from "../statuses";
 import { append, clear, h, ICON_PEN, langName, toast } from "../ui/h";
 import { editSticker, languageForm, languages, openChip, rememberLanguage, setOpenChip, takeEditNext } from "./languages";
 import { newStickerSheet, paint, pencilSheet, stickersSheet, wordsTarget } from "./stickers";
+import { joinNext } from "./sync";
 import { applyProposal, fallbackPickers, openIfAsked, openYourAi, previewRows, proposal, proposalCount, proposalNotes, throwAway, yourAiSlip, type Proposal } from "./yourai";
 
 /** Rows added at a time as the list scrolls into view. */
@@ -260,6 +261,8 @@ export function words(): void {
         h("p", {}, "No words yet."),
         h("button", { class: "primary", onclick: () => go.add() }, "Add a word"),
         h("button", { class: "secondary", onclick: () => openYourAi() }, "Use your AI"),
+        // A reinstall (or a new phone) starts empty: the words are on the account the other device uses.
+        h("p", { class: "muted small" }, "Words on another device? ", h("button", { class: "link", type: "button", onclick: () => (joinNext(), go.settings()) }, "Get them here")),
       );
   // + adds to the open language, else to the last one used; with a sticker open, the word gets it.
   const addWord = () => (openLang && rememberLanguage(openLang), go.add());

@@ -254,7 +254,12 @@ async function run(s: Browser, url: string) {
   await s.until("the sheet up", `document.querySelector(".pile-sheet .ya") && document.querySelector(".card-box")?.textContent.includes("No words yet.")`);
   await s.js(`history.back();`);
   await s.until("closed", `!document.querySelector(".pile-sheet") && document.querySelector(".card-box")`);
-  await s.click("nav .nav-item", "Study");
+  log("empty Words: words on another device leads to Settings, its code field open");
+  await shot(s, "words-empty");
+  await s.click(".card-box button.link", "Get them here");
+  await s.until("Settings on the code field", `document.querySelector("header.top h1")?.textContent === "Settings" && document.querySelector("details:has(input[name=code])")?.open && document.activeElement?.name === "code"`);
+  await shot(s, "settings-join");
+  await s.js(`history.back();`); // tabs replace each other: back is Study
   await s.until("welcome", `document.querySelector(".welcome-card")`);
 
   log("pick a language: lands on adding its first word");

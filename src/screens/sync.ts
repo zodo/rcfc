@@ -17,6 +17,12 @@ function syncStatusText(st: SyncStatus): string {
   return `Synced ${sameDay ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}.`;
 }
 
+let joinAsked = false;
+/** The next Settings opens on the code field, to join another device's account (empty Words asks). */
+export function joinNext(): void {
+  joinAsked = true;
+}
+
 /** Sync status, pairing (QR, link) and joining: the top of "Your data" in Settings. */
 export function syncParts(): { status: HTMLElement; pairing: Node[]; code: HTMLElement } {
   const { sync } = app;
@@ -50,6 +56,24 @@ export function syncParts(): { status: HTMLElement; pairing: Node[]; code: HTMLE
     h("button", { class: "secondary", type: "submit" }, "Join"),
   );
 
+  const code = h(
+    "details",
+    { class: "stack" },
+    h("summary", {}, "Sync code"),
+    h("code", { class: "sync-code" }, formatSyncCode(sync.code)),
+    h("p", { class: "muted small" }, "Whoever has this code can read and change your words, so keep it private."),
+    join,
+  );
+  if (joinAsked) {
+    joinAsked = false;
+    code.open = true;
+    hint.textContent = "It's in Settings on the other device, under Sync code.";
+    requestAnimationFrame(() => {
+      input.scrollIntoView({ block: "center" });
+      input.focus();
+    });
+  }
+
   return {
     status,
     pairing: [
@@ -76,14 +100,7 @@ export function syncParts(): { status: HTMLElement; pairing: Node[]; code: HTMLE
         h("button", { class: "secondary", type: "button", onclick: () => void sync.now() }, "Sync now"),
       ),
     ],
-    code: h(
-      "details",
-      { class: "stack" },
-      h("summary", {}, "Sync code"),
-      h("code", { class: "sync-code" }, formatSyncCode(sync.code)),
-      h("p", { class: "muted small" }, "Whoever has this code can read and change your words, so keep it private."),
-      join,
-    ),
+    code,
   };
 }
 
