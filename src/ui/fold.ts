@@ -42,6 +42,16 @@ export function foldWhenTight(editor: HTMLElement, sides: [HTMLElement, HTMLElem
   let open = 0;
   /** The whole card's height with the bar, measured while it lies unfolded. */
   let full = 0;
+  /** Until when a focus's own scrolling is being corrected (iOS scrolls the field to the very top, under the bar). */
+  let settleUntil = 0;
+  let settleTimer = 0;
+  /** Folded, the card fits: its top lies just under the bar, not under it. */
+  const settle = () => {
+    settleTimer = 0;
+    if (!folded || !editor.isConnected) return;
+    const over = bar.getBoundingClientRect().bottom + 8 - editor.getBoundingClientRect().top;
+    if (over > 1) window.scrollBy({ top: -over });
+  };
   const sideOf = (el: EventTarget | null) => sides.findIndex((s) => el instanceof Node && s.contains(el));
 
   const apply = () => {
@@ -83,11 +93,17 @@ export function foldWhenTight(editor: HTMLElement, sides: [HTMLElement, HTMLElem
     }
     // The browser may shift the whole page up under the keyboard: the bar stays where it shows.
     bar.style.translate = vv.offsetTop > 0 ? `0 ${vv.offsetTop}px` : "";
+    // After a focus, once the browser's own scrolling stops, the card comes down from under the bar.
+    if (folded && performance.now() < settleUntil) {
+      clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(settle, 120);
+    }
   };
 
   const onFocus = (e: FocusEvent) => {
     const s = sideOf(e.target);
     if (s < 0) return;
+    settleUntil = performance.now() + 900;
     if (folded && s !== open) swap(s);
     else open = s;
     // Focusing may open the keyboard: check once it has (the resize comes then), and now.
