@@ -127,7 +127,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
   const memoTarget = input(MEMO_TARGET, { class: "ed-memo", value: note?.fields[MEMO_TARGET] ?? "", placeholder: "a note of your own", "aria-label": "Your note on this side" });
   const memoKnown = input(MEMO_KNOWN, { class: "ed-memo", value: note?.fields[MEMO_KNOWN] ?? "", placeholder: "a note of your own", "aria-label": "Your note on this side" });
 
-  // The languages, as words in the arrow notes: pickers on a new card, plain pencil on a saved one.
+  // The languages, as words in the arrow notes: pickers on a new card; on a saved one the studied language is plain pencil
+  // (it decides the card's pile), the translation's still a picker (picking one translates the side into it).
   const fromSel = h("select", { name: "language" });
   const fillFrom = () => {
     fromSel.replaceChildren(...[...new Set([...languages(), from!])].map((l) => h("option", { value: l, selected: l === from }, langName(l))), h("option", { value: NEW_LANG }, "Add a language…"));
@@ -158,6 +159,8 @@ function open(note?: Note, over?: { leave: () => void }): void {
    */
   const setTo = (l: string, typing = false) => {
     if (l === to) return;
+    // Never the studied language: a card in one language twice teaches nothing.
+    if (l === from) return void (toSel.value = to);
     to = l;
     if (![...toSel.options].some((o) => o.value === to)) toSel.prepend(h("option", { value: to }, langName(to)));
     toSel.value = to;
@@ -555,7 +558,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   // ---- the arrow notes follow what is filled in ----
   const update = () => {
     const word = editing ? plain(from!) : fromWord.el;
-    const trans = editing ? plain(to) : toWord.el;
+    const trans = toWord.el;
     fromWord.text.textContent = langName(from!);
     toWord.text.textContent = langName(to);
     wordNote.text.replaceChildren(...(clean(front.value) ? [word] : ["the ", word, " word goes here"]));
@@ -583,7 +586,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
     el.addEventListener("input", () => {
       typed(el === front ? "front" : "back");
       // A translation typed in other letters (Cyrillic on an English side) is in another language: the side says so.
-      if (el === back && !editing) {
+      if (el === back) {
         const l = languageOfText(back.value, to, known());
         if (l !== to) setTo(l, true);
       }
@@ -625,7 +628,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   const draft = (): CardDraft => {
     const d = draftOf({ from: from!, to }, note, labels);
     d.text = { front: front.value, back: back.value, example: example.value, memo_target: memoTarget.value, memo_known: memoKnown.value };
-    d.lang_pair = note?.lang_pair ?? { from: from!, to };
+    d.lang_pair = { from: note?.lang_pair.from ?? from!, to };
     d.labels = labels;
     const current = picKey(front.value, back.value, details);
     d.picture = removed || (problem === "none" && !pending && drawnFor === current) ? null : !pending && drawn && drawnFor === current ? drawn : undefined;

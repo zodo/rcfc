@@ -17,7 +17,7 @@ import { freshColor, labelIdFor, labelName } from "./labels";
 import { knownCards, unknownPlan } from "./newcards";
 import { languagePile } from "./piles";
 import { wordStatus, type WordStatus } from "./scheduler";
-import { IMPORT_LANGS, importEvents, langCode, mergeEdits, mergeOf, noteKey, planImport, type ImportRow } from "../import/anything";
+import { IMPORT_LANGS, importEvents, langCode, mergeEdits, mergeOf, planImport, type ImportRow } from "../import/anything";
 
 /** "I know" / "Don't know" answers take this long (as in the app's Store). */
 const MARKED_DURATION_MS = 2000;
@@ -217,13 +217,12 @@ export class Wordbook {
     if (learning.length) this.emit(this.f.make<NotesPrioritized>("notes_prioritized", { note_ids: learning }));
     const known = noteIds.filter((_, i) => plan.ready[i].status === "known");
     if (known.length) this.markKnown(known);
-    const existing = (r: ImportRow) => this.col.liveNotes().find((n) => n.lang_pair.from === r.lang && n.lang_pair.to === r.to && noteKey(n.fields.front, n.fields.back) === noteKey(r.word, r.translation))?.id;
     return {
       added: noteIds.map((id) => this.view(this.col.notes.get(id)!)),
       updated: updated.map((id) => this.view(this.col.notes.get(id)!)),
       skipped: plan.skipped.map((s) => {
         const r = rows[s.line - 1];
-        return { word: r.word, translation: r.translation, reason: s.reason, ...(s.reason === "exists" ? { id: existing(r) } : {}) };
+        return { word: r.word, translation: r.translation, reason: s.reason, ...(s.reason === "exists" ? { id: plan.existing.find((e) => e.row.line === s.line)?.noteId } : {}) };
       }),
     };
   }
@@ -246,6 +245,18 @@ export class Wordbook {
     if (c.translation !== undefined && !c.translation.trim()) throw new WordbookError("a translation can't be emptied");
     this.emit(...saveEvents(this.f, n, d.labels, d));
     return this.view(n);
+  }
+
+  /** Several edits at once, in order; one that can't be made makes none (nothing is written: the caller appends `made` only on success). */
+  editAll(changes: (WordChanges & { id: EntityId })[]): WordView[] {
+    return changes.map(({ id, ...c }) => {
+      try {
+        return this.edit(id, c);
+      } catch (e) {
+        if (e instanceof WordbookError && !e.message.includes(String(id))) throw new WordbookError(`word ${id}: ${e.message}`);
+        throw e;
+      }
+    });
   }
 
   /** Delete words (they can be restored, progress and all). Returns those deleted. */

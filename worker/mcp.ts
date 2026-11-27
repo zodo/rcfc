@@ -101,22 +101,30 @@ export function wordsServer(db: SqlDb, code: string): McpServer {
   );
 
   server.registerTool(
-    "edit_word",
+    "edit_words",
     {
-      title: "Edit a word",
-      description: "Change a word's text or its translation's language. Only the fields given change; an empty string clears an example or note. To translate a word into another language, give translation and translation_language together (and translation_note in that language, if it has one). The studied language can't change: delete the word and add it again.",
+      title: "Edit words",
+      description:
+        "Change words' text or their translation's language, many in one call. Per word only the fields given change; an empty string clears an example or note. To translate a word into another language, give translation and translation_language together (and translation_note in that language, if it has one). The studied language can't change: delete the word and add it again. If one edit can't be made, none is made.",
       inputSchema: z.object({
-        id: z.number().int().positive(),
-        word: z.string().max(200).optional(),
-        translation: z.string().max(200).optional(),
-        example: z.string().max(400).optional().describe("A sentence that holds the word (blanked out when recalled from the translation)"),
-        note: z.string().max(400).optional(),
-        translation_note: z.string().max(400).optional(),
-        translation_language: language.optional().describe("The translation's language, e.g. \"ru\""),
+        words: z
+          .array(
+            z.object({
+              id: z.number().int().positive(),
+              word: z.string().max(200).optional(),
+              translation: z.string().max(200).optional(),
+              example: z.string().max(400).optional().describe("A sentence that holds the word (blanked out when recalled from the translation)"),
+              note: z.string().max(400).optional(),
+              translation_note: z.string().max(400).optional(),
+              translation_language: language.optional().describe('The translation\'s language, e.g. "ru"'),
+            }),
+          )
+          .min(1)
+          .max(200),
       }),
       annotations: { ...write, idempotentHint: true },
     },
-    async ({ id, ...changes }) => call(db, code, (w) => w.edit(id, changes)),
+    async ({ words }) => call(db, code, (w) => w.editAll(words)),
   );
 
   server.registerTool(

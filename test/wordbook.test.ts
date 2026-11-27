@@ -182,6 +182,28 @@ describe("wordbook: changing", () => {
     expect(() => w.edit(id, { translation_language: "Klingon" })).toThrow(WordbookError);
   });
 
+  it("takes a word by what it was before it was translated: the old list again adds nothing", () => {
+    const w = book();
+    const id = w.find({ text: "perro" }).words[0].id;
+    w.edit(id, { translation: "dog", translation_language: "en", translation_note: "a pet" });
+    const again = w.add([{ word: "el perro", translation: "собака", language: "es", translation_language: "ru", translation_note: "питомец", stickers: ["Pets"] }]);
+    expect(again.added).toEqual([]);
+    expect(again.skipped).toEqual([{ word: "el perro", translation: "собака", reason: "exists", id }]);
+    // Its stickers still go on; its Russian note doesn't land on the English side.
+    expect(again.updated[0]).toMatchObject({ id, stickers: ["Pets"], translation_note: "a pet" });
+    // Once another word is that word now, the row is that one.
+    const fresh = w.add([{ word: "el perro", translation: "собака", language: "es", translation_language: "ru" }]);
+    expect(fresh.added).toEqual([]);
+  });
+
+  it("edits many at once, or none when one can't be made", () => {
+    const w = book();
+    const [a, b] = w.find().words.map((x) => x.id);
+    expect(() => w.editAll([{ id: a, translation: "dog", translation_language: "en" }, { id: b, translation: "" }])).toThrow(new RegExp(`word ${b}`));
+    const w2 = book();
+    expect(w2.editAll([{ id: a, translation: "dog", translation_language: "en" }, { id: b, translation: "cat", translation_language: "en" }]).map((v) => v.translation_language)).toEqual(["en", "en"]);
+  });
+
   it("deletes and restores, progress kept", () => {
     const w = book();
     const id = w.find({ text: "perro" }).words[0].id;

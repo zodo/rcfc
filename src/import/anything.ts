@@ -410,9 +410,20 @@ const pairKey = (front: string, back: string, p: LangPair) => `${p.from}>${p.to}
  * already there or repeated, and orders them: dated rows oldest first, so new
  * words come up in the order they were met; undated keep their order after them.
  */
-export function planImport(read: ReadResult, existing: Iterable<{ id: EntityId; fields: { front: string; back: string }; lang_pair: LangPair; deleted?: boolean }>, fallback: LangPair): ImportPlan {
+export function planImport(
+  read: ReadResult,
+  existing: Iterable<{ id: EntityId; fields: { front: string; back: string }; lang_pair: LangPair; deleted?: boolean; former?: { front: string; back: string; to: string }[] }>,
+  fallback: LangPair,
+): ImportPlan {
   const seen = new Map<string, EntityId | undefined>();
-  for (const n of existing) if (!n.deleted) seen.set(pairKey(n.fields.front, n.fields.back, n.lang_pair), n.id);
+  const live = [...existing].filter((n) => !n.deleted);
+  for (const n of live) seen.set(pairKey(n.fields.front, n.fields.back, n.lang_pair), n.id);
+  // What a word was before it was edited (another translation, another translation language) still names it, unless a word is that now.
+  for (const n of live)
+    for (const f of n.former ?? []) {
+      const k = pairKey(f.front, f.back, { from: n.lang_pair.from, to: f.to });
+      if (!seen.has(k)) seen.set(k, n.id);
+    }
   const fromFile = new Set<string>();
   const ready: ReadyRow[] = [];
   const skipped: SkippedRow[] = [];
@@ -458,7 +469,9 @@ const MERGED: ["example" | "note" | "translationNote", MergedField][] = [
 export function mergeOf(col: Collection, e: ExistingRow): { edits: { field: MergedField; value: string }[]; stickers: string[] } {
   const n = col.notes.get(e.noteId);
   if (!n) return { edits: [], stickers: [] };
-  const edits = MERGED.filter(([k, f]) => e.row[k] && !n.fields[f]?.trim()).map(([k, f]) => ({ field: f, value: e.row[k] }));
+  // A row naming the word as it was in another translation language: its translation-side note is in that language, not the card's.
+  const otherTo = e.row.pair.to !== n.lang_pair.to;
+  const edits = MERGED.filter(([k, f]) => e.row[k] && !n.fields[f]?.trim() && !(otherTo && f === "memo_known")).map(([k, f]) => ({ field: f, value: e.row[k] }));
   const stickers = [...new Set(e.row.stickers)].filter((name) => {
     const l = col.labelByName(name);
     return !l || !col.wears(n.id, l.id);

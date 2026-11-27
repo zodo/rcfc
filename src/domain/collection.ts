@@ -38,6 +38,19 @@ export interface Note {
   order: number;
   /** ts of the latest "learn these next" (notes_prioritized): new words go out latest first. */
   priority?: number;
+  /**
+   * Word, translation and translation language it had before they were edited:
+   * the importer and add_words take a row matching one of them as this word, so
+   * pasting the old list again after translating the cards adds nothing.
+   */
+  former?: { front: string; back: string; to: string }[];
+}
+
+/** Keeps the note's word, translation and translation language as they are now in `former`, before one of them changes. */
+function remember(n: Note): void {
+  const now = { front: n.fields.front, back: n.fields.back, to: n.lang_pair.to };
+  const list = (n.former ??= []);
+  if (!list.some((f) => f.front === now.front && f.back === now.back && f.to === now.to)) list.push(now);
 }
 
 export type Picture = Omit<AssetAttachedPayload, "note_id" | "kind" | "r2_key"> & { key: string };
@@ -142,13 +155,19 @@ export class Collection {
         break;
       case "note_edited": {
         const n = this.notes.get(e.payload.note_id);
-        if (n && !n.deleted && this.wins(`note:${n.id}:${e.payload.field}`, e)) n.fields[e.payload.field] = e.payload.value;
+        if (n && !n.deleted && this.wins(`note:${n.id}:${e.payload.field}`, e)) {
+          if (e.payload.field === "front" || e.payload.field === "back") remember(n);
+          n.fields[e.payload.field] = e.payload.value;
+        }
         break;
       }
       case "note_lang_changed": {
         const n = this.notes.get(e.payload.note_id);
         // A new object: the old one is the note_created event's own payload.
-        if (n && !n.deleted && this.wins(`note:${n.id}:to`, e)) n.lang_pair = { from: n.lang_pair.from, to: e.payload.to };
+        if (n && !n.deleted && this.wins(`note:${n.id}:to`, e)) {
+          remember(n);
+          n.lang_pair = { from: n.lang_pair.from, to: e.payload.to };
+        }
         break;
       }
       case "note_deleted":

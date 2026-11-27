@@ -158,7 +158,7 @@ describe("Claude connector", () => {
     expect(init.body.result.serverInfo.name).toBe("rcfc");
     expect(init.body.result.instructions).toContain("dictionary form");
     const list = await rpc(w, tok.access_token, "tools/list", {}, 2);
-    expect(list.body.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(["add_words", "delete_sticker", "delete_words", "edit_word", "find_words", "mark_known", "mark_unknown", "overview", "rename_sticker", "restore_words", "stick", "unstick"]);
+    expect(list.body.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(["add_words", "delete_sticker", "delete_words", "edit_words", "find_words", "mark_known", "mark_unknown", "overview", "rename_sticker", "restore_words", "stick", "unstick"]);
 
     expect((await tool(w, tok.access_token, "overview", {})).data).toMatchObject({ words: 2, languages: [{ language: "es", words: 2 }] });
     const added = await tool(w, tok.access_token, "add_words", { words: [{ word: "la casa", translation: "house", language: "Spanish", example: "Mi casa es tu casa.", stickers: ["Home"] }, { word: "el perro", translation: "dog", language: "es" }] });
@@ -168,12 +168,21 @@ describe("Claude connector", () => {
     expect(found.data.total).toBe(1);
     const err = await tool(w, tok.access_token, "find_words", { sticker: "nothing" });
     expect(err).toMatchObject({ isError: true, data: expect.stringContaining('no sticker named "nothing"') });
+    const casa = added.data.added[0].id;
+    const bad = await tool(w, tok.access_token, "edit_words", { words: [{ id: casa, translation: "дом", translation_language: "ru" }, { id: 1, translation: "x" }] });
+    expect(bad).toMatchObject({ isError: true, data: expect.stringContaining("no word with id 1") });
+    const edited = await tool(w, tok.access_token, "edit_words", { words: [{ id: casa, translation: "дом", translation_language: "Russian" }] });
+    expect(edited.data[0]).toMatchObject({ translation: "дом", translation_language: "ru" });
+    // The old list again: the translated word is still that word.
+    const again = await tool(w, tok.access_token, "add_words", { words: [{ word: "la casa", translation: "house", language: "es", translation_language: "en" }] });
+    expect(again.data).toMatchObject({ added: [], skipped: [{ reason: "exists", id: casa }] });
 
     // What the app pulls on its next sync folds into the same words.
     const pulled = await (await import("../worker/sync")).loadEvents(w.db, code);
     const col = new Collection();
     for (const e of pulled) col.apply(e as AppEvent);
     expect(col.liveNotes().map((n) => n.fields.front)).toEqual(["el perro", "el gato", "la casa"]);
+    expect(col.liveNote(casa)!.lang_pair).toEqual({ from: "es", to: "ru" });
     expect(col.labelsOf(found.data.words[0].id).map((l) => l.name)).toEqual(["Home"]);
     expect((pulled as AppEvent[]).filter((e) => e.device_id === "claude").length).toBeGreaterThan(0);
   });

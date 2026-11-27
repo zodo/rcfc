@@ -101,6 +101,8 @@ if (flag === "--write") {
   const perro = added.skipped?.[0]?.id;
   check("find_words by sticker", (await tool(tok.access_token, "find_words", { sticker: "connector check" })).total === 1);
   check("mark_known", (await tool(tok.access_token, "mark_known", { ids: [perro] })).marked?.[0]?.status === "known");
+  const ru = await tool(tok.access_token, "edit_words", { words: [{ id: perro, translation: "собака", translation_language: "ru" }] });
+  check("edit_words translates into another language", ru?.[0]?.translation_language === "ru", ru);
   check("delete_words", (await tool(tok.access_token, "delete_words", { ids: [casa] })).deleted?.length === 1);
   const next = await (await go(as.token_endpoint, form({ grant_type: "refresh_token", refresh_token: tok.refresh_token, client_id: reg.client_id }))).json();
   check("refresh", typeof next.access_token === "string", next);
@@ -112,7 +114,7 @@ if (flag === "--write") {
   const col = new Collection();
   for (const e of pulled.events) col.apply(e);
   const p = col.liveNotes().find((n) => n.fields.front === "el perro");
-  check("the app's pull folds the changes", col.liveNotes().length === 1 && !!p && (col.cardsByNote.get(p.id) ?? []).every((c) => col.cards.get(c)!.last_rating === 4) && col.notes.get(casa)?.deleted === true);
+  check("the app's pull folds the changes", col.liveNotes().length === 1 && !!p && p.lang_pair.to === "ru" && (col.cardsByNote.get(p.id) ?? []).every((c) => col.cards.get(c)!.last_rating === 4) && col.notes.get(casa)?.deleted === true);
 }
 
 if (failed) process.exit(1);
