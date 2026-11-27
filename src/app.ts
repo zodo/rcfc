@@ -77,8 +77,6 @@ export const app = {
   current: "home" as ScreenName,
   /** The model needs a full replay; reload at the next safe moment (home). */
   reloadPending: false,
-  /** The pile just dealt more or gathered again from the table: its cards land on its spot. */
-  refilled: null as string | null,
   /** A pile tapped on the table, where it lay and a copy of it: study lifts the copy away, then drops its own pile in. */
   opening: null as { pile: string; rect: DOMRect; copy: HTMLElement } | null,
 };

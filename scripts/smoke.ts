@@ -341,22 +341,19 @@ async function run(s: Browser, url: string) {
   await s.until("on again, the word said", `document.querySelector(".study-top .auto-read")?.getAttribute("aria-pressed") === "true" && window.__rcfcSpoken.includes("adiós")`);
   const answered = 1 + (await answerUntilDone(s, 10));
   if (answered < 2) throw new Error(`only ${answered} cards shown`);
-  log("a finished pile draws its check in study; back to the table, its spot keeps it; tapped, it offers adding words or the same cards again");
+  log("a finished pile draws its check in study, with today's cards lying aside and Add words; back to the table, its spot keeps the check");
   await s.until("pile done", `document.querySelector(".finish .checks.fresh svg") && document.querySelector(".finish-title")?.textContent === "Done for today"`);
+  await s.until("today's 2 aside, Add words", `document.querySelector(".finish .handful.again .handful-note")?.textContent === "today's 2 again" && !document.querySelector(".finish .handful.more") && [...document.querySelectorAll(".controls button")].some((b) => b.textContent === "Add words")`);
   await s.js(`await new Promise((r) => setTimeout(r, 1500));`); // the check draws itself in
   await shot(s, "study-done");
   await s.click("button", "Back to the table");
   await s.until("spot done", `document.querySelector(".pile-count")?.textContent === "done for today" && document.querySelector(".spot.finished .checks svg")`);
   await shot(s, "table-done");
+  log("the finished spot opens the same finish (its check already drawn); today's cards taken, studying goes on");
   await s.click("button.spot.finished");
-  await s.until("Add words", `[...document.querySelectorAll(".pile-sheet button")].some((b) => b.textContent === "Add words")`);
-  await s.click(".pile-sheet button", "Go through these 2 again");
-  log("the same cards land on the spot; a tap on the pile studies them");
-  await s.until("pile refilled", `!document.querySelector(".pile-sheet") && document.querySelector(".spot.dealt") && document.querySelector(".pile-count")?.textContent === "2 cards"`);
-  await s.js(`await new Promise((r) => setTimeout(r, 700));`); // the cards land
-  await shot(s, "table-refilled");
-  await s.click("button.spot");
-  await s.until("studying them", `document.querySelector(".flashcard") && !document.querySelector(".table")`);
+  await s.until("the finish again", `document.querySelector(".finish .checks:not(.fresh) svg") && document.querySelector(".finish .handful.again")`);
+  await s.click(".finish .handful.again");
+  await s.until("studying them", `document.querySelector(".flashcard:not(.leaving)") && !document.querySelector(".finish")`);
   if ((await answerUntilDone(s, 4)) !== 2) throw new Error("going through them again did not show the same 2 cards");
   await s.until("pile done again", `document.querySelector(".finish .checks svg")`);
   await s.click("button", "Back to the table");
@@ -475,10 +472,10 @@ async function run(s: Browser, url: string) {
     const state = await s.until<string>("a card or the end", `document.querySelector(".flashcard:not(.leaving)") ? "card" : document.querySelector(".finish") ? "done" : ""`);
     if (state === "done") {
       // The finish screen: a handful of more cards lies aside; taken, studying goes on.
-      if (!(await s.js<boolean>(`return !!document.querySelector(".finish .handful");`))) throw new Error("pile done without the new word, and nothing more to deal");
+      if (!(await s.js<boolean>(`return !!document.querySelector(".finish .handful.more");`))) throw new Error("pile done without the new word, and nothing more to deal");
       await s.js(`await new Promise((r) => setTimeout(r, 1600));`); // the handful is laid aside
       await shot(s, "study-handful");
-      await s.click(".finish .handful");
+      await s.click(".finish .handful.more");
       await s.until("more on the table", `document.querySelector(".flashcard:not(.leaving)") && !document.querySelector(".finish")`);
       continue;
     }
@@ -735,7 +732,7 @@ async function run(s: Browser, url: string) {
   await s.click("nav .nav-item", "Study");
   await s.click("button[aria-label='Study big']");
   await answerUntilDone(s, 40);
-  await s.until("two handfuls", `/^\\+\\d+$/.test(document.querySelector(".finish .handful:not(.all) .handful-cards")?.textContent ?? "") && document.querySelector(".finish .handful.all .handful-note")?.textContent === "all 12"`);
+  await s.until("two handfuls", `/^\\+\\d+$/.test(document.querySelector(".finish .handful.more .handful-cards")?.textContent ?? "") && document.querySelector(".finish .handful.all .handful-note")?.textContent === "all 12"`);
   await s.js(`await new Promise((r) => setTimeout(r, 1700));`); // laid aside
   await shot(s, "study-handfuls");
   await s.click(".finish .handful.all");

@@ -9,9 +9,10 @@
 // of cards dealt and left (src/domain/piles.ts); the card under the top one is
 // the next card, fixed once shown (StudySession.peek). A finished pile ends on
 // the table here: its check is drawn (a blue second one, ×N, once more was
-// dealt today), and a handful of MORE cards lies aside; tapped, it drops onto
-// the table and studying goes on. The big button goes back to the table
-// (src/screens/home.ts), where the spot keeps the checks.
+// dealt today), and handfuls lie aside (more cards, a sticker's every word,
+// today's cards again); tapped, one drops onto the table and studying goes on.
+// The big button goes back to the table (src/screens/home.ts), where the spot
+// keeps the checks; tapping that spot opens this screen again.
 import { app, errorText, fullScreen, go, setKeys } from "../app";
 import type { Card, Note } from "../domain/collection";
 import type { ReviewPayload } from "../domain/events";
@@ -30,12 +31,14 @@ import { haptic, seeded } from "../ui/paper";
 import { cutout, livePicture } from "../ui/picture";
 import { finePrint, zoomed, zoomInto } from "../ui/fineprint";
 import { EDGE, Turn } from "../ui/turn";
-import { languages, lastLanguage, rememberLanguage } from "./languages";
+import { languages, lastLanguage, rememberLanguage, setOpenLanguage } from "./languages";
 
 /** Cards drawn under the top one; the pile's shadow stands in for the rest. */
 const SHOWN = 6;
 
 type Rating = ReviewPayload["rating"];
+/** What a handful on a finished pile deals: more cards, all of a sticker's words, or today's cards again. */
+type Deal = "more" | "all" | "again";
 /** Where a card goes: -1 Again (left), 1 Got it (right), 2 Easy (up). */
 type Dir = -1 | 1 | 2;
 const RATING: Record<Dir, Rating> = { [-1]: 1, 1: 3, 2: 4 };
@@ -194,8 +197,7 @@ class Table {
     if (!this.el.isConnected) return; // closed while an answer was saving
     const n = this.s.next();
     if (!n) {
-      if (this.s.answered) this.finish();
-      else void go.home(); // nothing to study here
+      this.finish(); // finished now, or opened from its finished spot
       return;
     }
     this.n++;
@@ -203,53 +205,58 @@ class Table {
   }
 
   /**
-   * The pile is finished: its check is drawn where it lay, the way out is the
-   * big button, and more is a small handful lying aside (when there is more;
-   * a sticker's pile with more words than that: all of them beside it).
-   * Every handful finished draws the bonus check, ×N from the second.
+   * The pile is finished (just now, or when opened from its spot on the
+   * table): its check is drawn where it lay, the way out is the big button,
+   * and what else there is lies aside as handfuls: more cards, all of a
+   * sticker's words (when there are more than the handful), today's cards from
+   * this pile once more. Nothing left to learn: Add words. Every handful
+   * finished draws the bonus check, ×N from the second.
    */
   private finish(): void {
     const s = this.s;
     const rounds = s.rounds();
-    const done = s.doneToday().length;
+    const doneIds = s.doneToday();
+    const done = doneIds.length;
     this.left = 0;
     this.sayUp = null;
     this.syncPile();
     this.status.textContent = "";
     this.recall.textContent = "";
-    const more = s.moreCount();
+    const fresh = s.answered > 0; // finished just now: the check is drawn in
     const fin = h(
       "div",
       { class: "finish" },
-      checks(rounds, true, this.seed),
-      h("div", { class: "finish-title" }, rounds ? "Bonus done" : "Done for today"),
-      h("div", { class: "finish-count" }, `${done} ${done === 1 ? "card" : "cards"} today`),
+      done ? checks(rounds, fresh, this.seed) : null,
+      h("div", { class: "finish-title" }, !done ? "Nothing due" : rounds ? "Bonus done" : "Done for today"),
+      done ? h("div", { class: "finish-count" }, `${done} ${done === 1 ? "card" : "cards"} today`) : null,
     );
-    // A sticker's pile also offers all its words, once there are more than a handful (as its spot's sheet does).
+    const more = s.moreCount();
     const all = s.allCount();
-    const hands: HTMLElement[] = [];
-    if (more) {
-      const hand = h(
-        "button",
-        { class: "handful", onclick: () => void this.handful(hand, false) },
-        h("span", { class: "handful-cards", "aria-hidden": "true" }, `+${more}`),
-        h("span", { class: "handful-note" }, rounds ? `another ${more}?` : `tap for ${more} more`),
-      );
-      hands.push(hand);
+    const offers: { kind: Deal; cards: string; note: string; long: string }[] = [];
+    if (more) offers.push({ kind: "more", cards: `+${more}`, note: `${more} more`, long: rounds ? `another ${more}?` : `tap for ${more} more` });
+    if (more && all > more) offers.push({ kind: "all", cards: `${all}`, note: `all ${all}`, long: `all ${all}` });
+    if (done) offers.push({ kind: "again", cards: `${done}`, note: done === 1 ? "today's card" : `today's ${done}`, long: done === 1 ? "today's card again" : `today's ${done} again` });
+    if (offers.length) {
+      const hands = offers.map((o) => {
+        const hand: HTMLElement = h(
+          "button",
+          { class: `handful ${o.kind}`, onclick: () => void this.handful(hand, o.kind, doneIds) },
+          h("span", { class: "handful-cards", "aria-hidden": "true" }, o.cards),
+          h("span", { class: "handful-note" }, offers.length === 1 ? o.long : o.note),
+        );
+        return hand;
+      });
+      fin.append(h("div", { class: "handfuls" }, ...hands));
     }
-    if (more && all > more) {
-      const hand = h(
-        "button",
-        { class: "handful all", onclick: () => void this.handful(hand, true) },
-        h("span", { class: "handful-cards", "aria-hidden": "true" }, `${all}`),
-        h("span", { class: "handful-note" }, `all ${all}`),
-      );
-      hands.push(hand);
-    }
-    if (hands.length) fin.append(h("div", { class: "handfuls" }, ...hands));
     this.pile.append(fin);
-    setTimeout(() => haptic("double"), CHECK_DRAWN);
-    this.controls.replaceChildren(h("button", { class: "primary wide big", onclick: () => go.home() }, "Back to the table"));
+    if (fresh && done) setTimeout(() => haptic("double"), CHECK_DRAWN);
+    const back = h("button", { class: "primary wide big", onclick: () => go.home() }, "Back to the table");
+    const lang = s.lang;
+    const addWords =
+      lang !== undefined && !more && !s.unseenLeft()
+        ? h("button", { class: "secondary wide", onclick: () => (setOpenLanguage(lang), go.add()) }, "Add words")
+        : null;
+    this.controls.replaceChildren(...(addWords ? [h("div", { class: "finish-controls" }, addWords, back)] : [back]));
     setKeys((e) => {
       if (e.key !== "Enter") return;
       e.preventDefault();
@@ -259,13 +266,14 @@ class Table {
 
   private dealing = false;
 
-  /** The handful is taken (`all`: the sticker's every word): dealt onto the table where it lay, and studying goes on. */
-  private async handful(from: HTMLElement, all: boolean): Promise<void> {
+  /** A handful is taken: dealt onto the table where it lay, and studying goes on. */
+  private async handful(from: HTMLElement, kind: Deal, done: EntityId[]): Promise<void> {
     if (this.dealing) return;
     this.dealing = true;
     const at = from.getBoundingClientRect();
     try {
-      await (all ? this.s.all() : this.s.more());
+      if (kind === "again") this.s.againThese(done);
+      else await (kind === "all" ? this.s.all() : this.s.more());
     } catch (e) {
       toast(`Could not deal: ${errorText(e)}`);
       return;
