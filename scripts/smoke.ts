@@ -341,18 +341,18 @@ async function run(s: Browser, url: string) {
   await s.until("on again, the word said", `document.querySelector(".study-top .auto-read")?.getAttribute("aria-pressed") === "true" && window.__rcfcSpoken.includes("adiós")`);
   const answered = 1 + (await answerUntilDone(s, 10));
   if (answered < 2) throw new Error(`only ${answered} cards shown`);
-  log("a finished pile draws its check in study, with today's cards lying aside and Add words; back to the table, its spot keeps the check");
+  log("a finished pile draws its check in study, today's cards crosswise under it, nothing else; back to the table, its spot keeps both");
   await s.until("pile done", `document.querySelector(".finish .checks.fresh svg") && document.querySelector(".finish-title")?.textContent === "Done for today"`);
-  await s.until("today's 2 aside, Add words", `document.querySelector(".finish .handful.again .handful-note")?.textContent === "today's 2 again" && !document.querySelector(".finish .handful.more") && [...document.querySelectorAll(".controls button")].some((b) => b.textContent === "Add words")`);
+  await s.until("today's 2 crosswise, no handful, no Add words", `document.querySelector(".finish .cross-note")?.textContent === "tap for today's 2 again" && document.querySelectorAll(".crossed .cross-sheet").length === 2 && !document.querySelector(".finish .handful") && ![...document.querySelectorAll(".controls button")].some((b) => b.textContent === "Add words")`);
   await s.js(`await new Promise((r) => setTimeout(r, 1500));`); // the check draws itself in
   await shot(s, "study-done");
   await s.click("button", "Back to the table");
-  await s.until("spot done", `document.querySelector(".pile-count")?.textContent === "done for today" && document.querySelector(".spot.finished .checks svg")`);
+  await s.until("spot done", `document.querySelector(".pile-count")?.textContent === "done for today" && document.querySelector(".spot.finished .checks svg") && document.querySelector(".spot.finished .spot-cross")`);
   await shot(s, "table-done");
-  log("the finished spot opens the same finish (its check already drawn); today's cards taken, studying goes on");
+  log("the finished spot opens the same finish (its check already drawn); today's cards tapped stand up into the pile");
   await s.click("button.spot.finished");
-  await s.until("the finish again", `document.querySelector(".finish .checks:not(.fresh) svg") && document.querySelector(".finish .handful.again")`);
-  await s.click(".finish .handful.again");
+  await s.until("the finish again", `document.querySelector(".finish .checks:not(.fresh) svg") && document.querySelector(".finish .cross-tap")`);
+  await s.click(".finish .cross-tap");
   await s.until("studying them", `document.querySelector(".flashcard:not(.leaving)") && !document.querySelector(".finish")`);
   if ((await answerUntilDone(s, 4)) !== 2) throw new Error("going through them again did not show the same 2 cards");
   await s.until("pile done again", `document.querySelector(".finish .checks svg")`);
@@ -721,7 +721,7 @@ async function run(s: Browser, url: string) {
   await s.click("button[aria-label=Back]");
   await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
 
-  log("a sticker's pile finished: +10 and all its words lie aside; all of them dealt");
+  log("a sticker's pile: answered cards go crosswise under it; finished, the words left lie aside as one handful, all of them");
   await s.click(".chip.new-sticker");
   await s.type(".pile-sheet input[name=sticker]", "big");
   await s.click(".pile-sheet button[type=submit]", "Make sticker");
@@ -731,14 +731,19 @@ async function run(s: Browser, url: string) {
   await s.click(".select-info button.link", "Done");
   await s.click("nav .nav-item", "Study");
   await s.click("button[aria-label='Study big']");
+  await answerUntilDone(s, 3); // the third answered Got it too
+  await s.until("crosswise under the pile", `document.querySelectorAll(".crossed .cross-sheet").length >= 2`);
+  await s.js(`await new Promise((r) => setTimeout(r, 800));`); // the last one slides in
+  await shot(s, "study-crossed");
   await answerUntilDone(s, 40);
-  await s.until("two handfuls", `/^\\+\\d+$/.test(document.querySelector(".finish .handful.more .handful-cards")?.textContent ?? "") && document.querySelector(".finish .handful.all .handful-note")?.textContent === "all 12"`);
+  const lefts = await s.until<string>("all left, one handful", `!document.querySelector(".finish .handful.rest") && document.querySelector(".finish .cross-tap") && /^all \\d+ left$/.test(document.querySelector(".finish .handful.more .handful-note")?.textContent ?? "") && document.querySelector(".finish .handful.more .handful-note").textContent`);
+  const rest = Number(lefts.split(" ")[1]);
   await s.js(`await new Promise((r) => setTimeout(r, 1700));`); // laid aside
   await shot(s, "study-handfuls");
-  await s.click(".finish .handful.all");
-  await s.until("all 12 dealt", `!document.querySelector(".finish") && document.querySelector(".flashcard:not(.leaving)")`);
+  await s.click(".finish .handful.more");
+  await s.until("dealt", `!document.querySelector(".finish") && document.querySelector(".flashcard:not(.leaving)")`);
   const left = await s.text(".study-top");
-  if (!/\b12 left/.test(left)) throw new Error(`after all 12: "${left}"`);
+  if (!new RegExp(`\\b${rest} left|New word`).test(left)) throw new Error(`after all ${rest} left: "${left}"`);
   await s.click("button[aria-label=Close]");
 
   log("no uncaught errors");

@@ -9,8 +9,10 @@
 // of cards dealt and left (src/domain/piles.ts); the card under the top one is
 // the next card, fixed once shown (StudySession.peek). A finished pile ends on
 // the table here: its check is drawn (a blue second one, ×N, once more was
-// dealt today), and handfuls lie aside (more cards, a sticker's every word,
-// today's cards again); tapped, one drops onto the table and studying goes on.
+// dealt today), today's cards lie crosswise where it was (they went under the
+// pile as they were answered: src/ui/crossed.ts; tapped, they are gone through
+// again), and handfuls of words not done today lie aside; tapped, one drops
+// onto the table and studying goes on.
 // The big button goes back to the table (src/screens/home.ts), where the spot
 // keeps the checks; tapping that spot opens this screen again.
 import { app, errorText, fullScreen, go, setKeys } from "../app";
@@ -24,6 +26,7 @@ import { AHEAD } from "../pictures";
 import { StudySession } from "../session";
 import { Body, type Pose } from "../ui/body";
 import { CHECK_DRAWN, checks } from "../ui/checks";
+import { type CrossCard, Crossed } from "../ui/crossed";
 import { autoReadScrap } from "../ui/autoread";
 import { h, ICON_PEN, ICON_SPEAK, toast } from "../ui/h";
 import { relight } from "../ui/light";
@@ -31,14 +34,14 @@ import { haptic, seeded } from "../ui/paper";
 import { cutout, livePicture } from "../ui/picture";
 import { finePrint, zoomed, zoomInto } from "../ui/fineprint";
 import { EDGE, Turn } from "../ui/turn";
-import { languages, lastLanguage, rememberLanguage, setOpenLanguage } from "./languages";
+import { languages, lastLanguage, rememberLanguage } from "./languages";
 
 /** Cards drawn under the top one; the pile's shadow stands in for the rest. */
 const SHOWN = 6;
 
 type Rating = ReviewPayload["rating"];
-/** What a handful on a finished pile deals: more cards, all of a sticker's words, or today's cards again. */
-type Deal = "more" | "all" | "again";
+/** What a handful on a finished pile deals: more words not done today, or all of a sticker's left. */
+type Deal = "more" | "rest";
 /** Where a card goes: -1 Again (left), 1 Got it (right), 2 Easy (up). */
 type Dir = -1 | 1 | 2;
 const RATING: Record<Dir, Rating> = { [-1]: 1, 1: 3, 2: 4 };
@@ -161,6 +164,8 @@ class Table {
   readonly el: HTMLElement;
   private readonly pile: HTMLElement;
   private readonly pileShadow = h("div", { class: "pile-shadow" });
+  /** Today's cards from this pile, crosswise under it. */
+  private readonly crossed: Crossed;
   private readonly status: HTMLElement;
   private readonly recall: HTMLElement;
   private readonly controls: HTMLElement;
@@ -180,6 +185,8 @@ class Table {
     this.status = h("span", { class: "small" });
     this.recall = h("span", { class: "small recall" });
     this.pile = h("div", { class: "pile" }, this.pileShadow);
+    this.crossed = new Crossed(this.pile, this.seed);
+    this.pile.prepend(this.crossed.el);
     this.controls = h("div", { class: "controls" });
     this.el = h(
       "section",
@@ -193,8 +200,15 @@ class Table {
     // Tilt light (startTilt) is off: the phone's motion sensor isn't read.
   }
 
+  /** Today's cards have been laid crosswise under the pile. */
+  private laid = false;
+
   next(): void {
     if (!this.el.isConnected) return; // closed while an answer was saving
+    if (!this.laid) {
+      this.laid = true;
+      this.crossed.show(this.crossCards());
+    }
     const n = this.s.next();
     if (!n) {
       this.finish(); // finished now, or opened from its finished spot
@@ -206,57 +220,70 @@ class Table {
 
   /**
    * The pile is finished (just now, or when opened from its spot on the
-   * table): its check is drawn where it lay, the way out is the big button,
-   * and what else there is lies aside as handfuls: more cards, all of a
-   * sticker's words (when there are more than the handful), today's cards from
-   * this pile once more. Nothing left to learn: Add words. Every handful
-   * finished draws the bonus check, ×N from the second.
+   * table): its check is drawn where it lay, and today's cards, crosswise
+   * under the pile until now, move into the room under it: a tap gathers them
+   * up and goes through them again. Beside them lie handfuls of words not done
+   * today: more, and on a sticker with more than that left, all of them. The
+   * way out is the big button. Every handful finished draws the bonus check,
+   * ×N from the second.
    */
   private finish(): void {
     const s = this.s;
     const rounds = s.rounds();
-    const doneIds = s.doneToday();
-    const done = doneIds.length;
+    const done = s.doneToday().length;
+    const crossed = s.crossed();
     this.left = 0;
     this.sayUp = null;
     this.syncPile();
     this.status.textContent = "";
     this.recall.textContent = "";
-    const fresh = s.answered > 0; // finished just now: the check is drawn in
-    const fin = h(
-      "div",
-      { class: "finish" },
-      done ? checks(rounds, fresh, this.seed) : null,
-      h("div", { class: "finish-title" }, !done ? "Nothing due" : rounds ? "Bonus done" : "Done for today"),
-      done ? h("div", { class: "finish-count" }, `${done} ${done === 1 ? "card" : "cards"} today`) : null,
-    );
+    const fresh = s.answered > 0; // finished just now: the check is drawn in, the cards move over
+    const title = h("div", { class: "finish-title" }, !done ? "Nothing due" : rounds ? "Bonus done" : "Done for today");
+    const fin = h("div", { class: "finish" }, done ? checks(rounds, fresh, this.seed) : null, title);
+    // Words not done today: more, and all of them on a sticker that has more than that left.
     const more = s.moreCount();
-    const all = s.allCount();
-    const offers: { kind: Deal; cards: string; note: string; long: string }[] = [];
-    if (more) offers.push({ kind: "more", cards: `+${more}`, note: `${more} more`, long: rounds ? `another ${more}?` : `tap for ${more} more` });
-    if (more && all > more) offers.push({ kind: "all", cards: `${all}`, note: `all ${all}`, long: `all ${all}` });
-    if (done) offers.push({ kind: "again", cards: `${done}`, note: done === 1 ? "today's card" : `today's ${done}`, long: done === 1 ? "today's card again" : `today's ${done} again` });
+    const rest = s.restCount();
+    const offers: { kind: Deal; cards: string; note: string }[] = [];
+    if (more) {
+      const all = s.label !== undefined && rest <= more;
+      offers.push({ kind: "more", cards: `+${more}`, note: all ? `all ${more} left` : rest > more ? `${more} more` : rounds ? `another ${more}?` : `tap for ${more} more` });
+    }
+    if (more && rest > more) offers.push({ kind: "rest", cards: `${rest}`, note: `all ${rest} left` });
+    let hands: HTMLElement | null = null;
     if (offers.length) {
-      const hands = offers.map((o) => {
-        const hand: HTMLElement = h(
-          "button",
-          { class: `handful ${o.kind}`, onclick: () => void this.handful(hand, o.kind, doneIds) },
-          h("span", { class: "handful-cards", "aria-hidden": "true" }, o.cards),
-          h("span", { class: "handful-note" }, offers.length === 1 ? o.long : o.note),
-        );
-        return hand;
-      });
-      fin.append(h("div", { class: "handfuls" }, ...hands));
+      hands = h(
+        "div",
+        { class: "handfuls" },
+        ...offers.map((o) => {
+          const hand: HTMLElement = h(
+            "button",
+            { class: `handful ${o.kind}`, onclick: () => void this.handful(hand, o.kind) },
+            h("span", { class: "handful-cards", "aria-hidden": "true" }, o.cards),
+            h("span", { class: "handful-note" }, o.note),
+          );
+          return hand;
+        }),
+      );
+      fin.append(hands);
     }
     this.pile.append(fin);
+    if (crossed.length) {
+      // Today's cards move into the room between the title and the handfuls.
+      const box = this.pile.getBoundingClientRect();
+      const top = title.getBoundingClientRect().bottom - box.top;
+      const bottom = hands ? hands.getBoundingClientRect().top - box.top - 18 : box.height - 40;
+      const at = this.crossed.fit(top, bottom);
+      this.crossed.moveTo(at.dy, at.s, !fresh);
+      const y = box.height / 2 + at.dy - at.h / 2;
+      const n = crossed.length;
+      const tap = h("button", { class: "cross-tap", "aria-label": n === 1 ? "Today's card again" : `Today's ${n} again`, onclick: () => void this.again(crossed) });
+      Object.assign(tap.style, { left: `${(box.width - at.w) / 2}px`, top: `${y}px`, width: `${at.w}px`, height: `${at.h}px` });
+      const note = h("div", { class: "cross-note" }, n === 1 ? "tap for today's card again" : `tap for today's ${n} again`);
+      note.style.top = `${y + at.h + 10}px`;
+      fin.append(tap, note);
+    }
     if (fresh && done) setTimeout(() => haptic("double"), CHECK_DRAWN);
-    const back = h("button", { class: "primary wide big", onclick: () => go.home() }, "Back to the table");
-    const lang = s.lang;
-    const addWords =
-      lang !== undefined && !more && !s.unseenLeft()
-        ? h("button", { class: "secondary wide", onclick: () => (setOpenLanguage(lang), go.add()) }, "Add words")
-        : null;
-    this.controls.replaceChildren(...(addWords ? [h("div", { class: "finish-controls" }, addWords, back)] : [back]));
+    this.controls.replaceChildren(h("button", { class: "primary wide big", onclick: () => go.home() }, "Back to the table"));
     setKeys((e) => {
       if (e.key !== "Enter") return;
       e.preventDefault();
@@ -266,14 +293,13 @@ class Table {
 
   private dealing = false;
 
-  /** A handful is taken: dealt onto the table where it lay, and studying goes on. */
-  private async handful(from: HTMLElement, kind: Deal, done: EntityId[]): Promise<void> {
+  /** A handful is taken: dealt onto the table where it lay (today's cards go back under it), and studying goes on. */
+  private async handful(from: HTMLElement, kind: Deal): Promise<void> {
     if (this.dealing) return;
     this.dealing = true;
     const at = from.getBoundingClientRect();
     try {
-      if (kind === "again") this.s.againThese(done);
-      else await (kind === "all" ? this.s.all() : this.s.more());
+      await (kind === "rest" ? this.s.rest() : this.s.more());
     } catch (e) {
       toast(`Could not deal: ${errorText(e)}`);
       return;
@@ -282,14 +308,51 @@ class Table {
     }
     if (!this.el.isConnected) return;
     this.pile.querySelector(".finish")?.remove();
+    this.crossed.tuck();
     this.shown = false; // the pile comes whole
     this.next();
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    // Moved and turned only, never scaled (the pile's many layers lag on Android).
+    // The new pile comes from the handful, moved and turned only, never scaled (the pile's many layers
+    // lag on Android); today's cards stay where they lie, so the pile's cards move, not the pile.
     const box = this.pile.getBoundingClientRect();
     const dx = at.left + at.width / 2 - (box.left + box.width / 2), dy = at.top + at.height / 2 - (box.top + box.height / 2);
-    this.pile.animate([{ transform: `translate(${dx}px, ${dy}px) rotate(-6deg)` }, { transform: "none" }], { duration: 420, easing: "cubic-bezier(.25,.8,.35,1)" });
+    for (const el of this.pile.children as HTMLCollectionOf<HTMLElement>) {
+      if (el === this.crossed.el) continue;
+      el.animate([{ translate: `${dx}px ${dy}px`, rotate: "-6deg" }, { translate: "0 0", rotate: "0deg" }], { duration: 420, easing: "cubic-bezier(.25,.8,.35,1)" });
+    }
     window.setTimeout(() => haptic("thud"), 380);
+  }
+
+  /** Today's cards tapped: they stand up into the pile and are gone through again. */
+  private async again(cards: EntityId[]): Promise<void> {
+    if (this.dealing) return;
+    this.dealing = true;
+    this.pile.querySelector(".finish")?.remove();
+    haptic("tick");
+    await this.crossed.gather();
+    this.dealing = false;
+    if (!this.el.isConnected) return;
+    this.s.againThese(cards);
+    this.shown = false; // the pile comes whole
+    this.next();
+  }
+
+  /** How an answered card lies crosswise: the side that was up when it was answered (its answer side). */
+  private crossCard(id: EntityId): CrossCard | null {
+    const card = app.store.col.cards.get(id);
+    const note = card && app.store.col.notes.get(card.note_id);
+    if (!card || !note) return null;
+    const forward = card.template === "forward";
+    return { known: forward, text: forward ? note.fields.back : note.fields.front, lang: forward ? note.lang_pair.to : note.lang_pair.from };
+  }
+
+  /** Today's cards as they lie crosswise, the latest last. */
+  private crossCards(): CrossCard[] {
+    return this.s
+      .crossed()
+      .reverse()
+      .map((id) => this.crossCard(id))
+      .filter((c): c is CrossCard => c !== null);
   }
 
   /**
@@ -421,6 +484,7 @@ class Table {
     body.render();
     this.syncPile();
     this.showPeek();
+    requestAnimationFrame(() => this.crossed.settle()); // the pile's size, now its buttons are in
 
     // Back from the card editor: still turned over, the editing not counted.
     const spent = s.takeTurned(card.id);
@@ -541,13 +605,19 @@ class Table {
           });
           setTimeout(() => haptic("tick"), 260); // it lands under the pile
         }, 230);
-      } else if (dir === 2) body.fly(clamp(vx, -0.5, 0.5), Math.min(vy, -2.2), (Math.random() - 0.5) * 0.08, body.w * 2.2, () => el.remove(), 0);
-      else body.fly(dir * Math.max(Math.abs(vx), 1.5), clamp(vy, -0.6, 0.6), dir * (0.12 + Math.random() * 0.1), body.w * 2.2, () => el.remove());
+      } else {
+        if (dir === 2) body.fly(clamp(vx, -0.5, 0.5), Math.min(vy, -2.2), (Math.random() - 0.5) * 0.08, body.w * 2.2, () => el.remove(), 0);
+        else body.fly(dir * Math.max(Math.abs(vx), 1.5), clamp(vy, -0.6, 0.6), dir * (0.12 + Math.random() * 0.1), body.w * 2.2, () => el.remove());
+        // Done for the day: it leaves the screen, then comes back in from there, crosswise, under the pile.
+        const crossed = this.crossCard(card.id);
+        if (crossed) setTimeout(() => this.el.isConnected && this.crossed.land(crossed, dir === 2 ? "top" : "right"), 230);
+      }
 
       try {
         await s.answer(card, RATING[dir], duration);
       } catch (e) {
         toast(`Could not save: ${errorText(e)}`);
+        this.crossed.show(this.crossCards()); // it isn't done after all
         this.show(pick, left); // nothing was saved: the same card again
         return;
       }

@@ -731,6 +731,27 @@ header.top.sub .back svg {
   max-height: 100%;
   object-fit: contain;
 }
+/* today's cards, crosswise under the pile (home.ts crossed), its edges as thick as they are many */
+.spot-cross {
+  position: absolute;
+  left: -7px;
+  right: -7px;
+  top: 50%;
+  aspect-ratio: 4 / 3;
+  translate: 0 -50%;
+  z-index: -1;
+  border-radius: 3px;
+  background-color: var(--card-known);
+  background-image: var(--grain, none);
+  --cross-edge: color-mix(in srgb, var(--card-known) 85%, rgb(var(--shadow)));
+}
+.spot.finished .spot-cross {
+  z-index: 0;
+}
+.spot.finished .checks {
+  position: relative;
+  z-index: 1;
+}
 /* a sticker with no words: its spot printed empty; the new pile: a plus */
 .spot.new-pile {
   display: grid;
@@ -1003,7 +1024,8 @@ header.top.sub .back svg {
   .checks.fresh svg,
   .checks.fresh path,
   .checks.fresh .times,
-  .finish .handful {
+  .finish .handful,
+  .cross-note {
     animation: none;
   }
   .fleck {
@@ -1141,8 +1163,8 @@ header.top.sub .back svg {
 .title-row .auto-read {
   margin-top: 6px;
 }
-/* a finished pile, on the study table (study.ts finish): its checks, then a
-   handful of more cards lying aside */
+/* a finished pile, on the study table (study.ts finish): its checks, today's
+   cards crosswise under them, then handfuls of more cards lying aside */
 .finish {
   position: absolute;
   inset: 0;
@@ -1150,21 +1172,42 @@ header.top.sub .back svg {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding-top: 8vh;
+  padding-top: 5vh;
   color: var(--on-table);
   text-align: center;
 }
 .finish .checks {
-  --check: 84px;
-  margin-bottom: 6px;
+  --check: 72px;
+  margin-bottom: 4px;
 }
 .finish-title {
   font-size: 26px;
   font-weight: 700;
 }
-.finish-count {
-  color: var(--on-table-muted);
-  font-variant-numeric: tabular-nums;
+/* today's cards, lying crosswise there: tapped, they are gathered up again */
+.cross-tap {
+  position: absolute;
+  padding: 0;
+  background: none;
+  border-radius: 4px;
+}
+.cross-tap:focus-visible {
+  outline: 2px solid var(--on-table);
+  outline-offset: 6px;
+}
+.cross-note {
+  position: absolute;
+  left: 0;
+  right: 0;
+  font-size: 14px;
+  font-style: italic;
+  pointer-events: none;
+  animation: cross-note-in 0.4s 0.5s backwards;
+}
+@keyframes cross-note-in {
+  from {
+    opacity: 0;
+  }
 }
 .handfuls {
   margin-top: auto;
@@ -1208,11 +1251,8 @@ header.top.sub .back svg {
 .handful + .handful {
   animation-delay: 1.25s;
 }
-.handful + .handful + .handful {
-  animation-delay: 1.4s;
-}
-/* all the sticker's words: a thicker handful */
-.handful.all .handful-cards {
+/* all of a sticker's words left: a thicker handful */
+.handful.rest .handful-cards {
   rotate: 5deg;
   box-shadow:
     0 1.5px 0 var(--edge-known),
@@ -1257,6 +1297,46 @@ header.top.sub .back svg {
 .flashcard {
   position: absolute;
   inset: 0;
+}
+/* today's cards, crosswise under the pile (src/ui/crossed.ts): turned and
+   shrunk by their transform, only the top one's face drawn */
+.crossed {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.cross-sheet {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  border-radius: 3px;
+  background-color: var(--card);
+  background-image: var(--grain, none);
+  color: var(--ink);
+  text-align: center;
+  will-change: transform;
+  box-shadow:
+    0 1.5px 0 color-mix(in srgb, var(--card) 88%, rgb(var(--shadow))),
+    0 2px 1px rgb(var(--shadow) / 0.18),
+    0 3px 8px rgb(var(--shadow) / 0.14);
+}
+.cross-sheet.known {
+  background-color: var(--card-known);
+  box-shadow:
+    0 1.5px 0 color-mix(in srgb, var(--card-known) 88%, rgb(var(--shadow))),
+    0 2px 1px rgb(var(--shadow) / 0.18),
+    0 3px 8px rgb(var(--shadow) / 0.14);
+}
+.cross-face {
+  font-size: clamp(28px, 8vw, 36px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.cross-sheet:not(.top) .cross-face {
+  visibility: hidden;
 }
 .under {
   pointer-events: none;
@@ -1618,11 +1698,6 @@ header.top.sub .back svg {
 }
 .rate.hot.r3 {
   transform: translateY(-4px) rotate(1.5deg);
-}
-.finish-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 .controls .big {
   height: 56px;

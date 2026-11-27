@@ -279,16 +279,32 @@ export class StudySession {
     if (n > 0) await this.deal(v.today, n, true);
   }
 
-  /** A sticker pile's words, all of them: what "All N" deals. */
+  /** A sticker pile's words, all of them (none: its spot is printed empty). */
   allCount(): number {
     return this.label === undefined ? 0 : this.store.col.labelNotes(this.label).length;
   }
 
-  /** "All N": every word of the sticker once more, one face each. */
-  async all(): Promise<void> {
+  /** A sticker's words not done today, all of them: what "all N left" deals (0 for a language's pile, whose words are hundreds). */
+  restCount(): number {
+    return this.label === undefined ? 0 : this.view(true).available();
+  }
+
+  /** "All N left": deal every word of the sticker not done today. */
+  async rest(): Promise<void> {
     this.screen.again = null;
-    const n = this.allCount();
-    if (n > 0) await this.deal(this.view().today, n, true, true);
+    const v = this.view(true);
+    const n = v.available();
+    if (n > 0) await this.deal(v.today, n, true);
+  }
+
+  /**
+   * Today's cards lying crosswise under the pile, latest first: done today
+   * from it, less those gathered up again and still to go through.
+   */
+  crossed(): EntityId[] {
+    const done = this.doneToday();
+    const replay = this.replay();
+    return replay ? done.filter((id) => !replay.includes(id)) : done;
   }
 
   /** Go through these cards once more, exactly those: this sitting's, or the given ones. */

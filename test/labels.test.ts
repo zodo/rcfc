@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { Collection, EventFactory } from "../src/domain/collection";
 import type { AppEvent, LabelColored, LabelCreated, LabelDeleted, LabelRenamed, NotesLabeled } from "../src/domain/events";
 import { LABEL_COLORS, labelColor, labelIdFor, labelName, labelPile, nameKey } from "../src/domain/labels";
-import { pileSize } from "../src/domain/piles";
+import { MORE as MORE_N, pileSize } from "../src/domain/piles";
 import { StudySession } from "../src/session";
 import { Clock, DAY, Device } from "./support/harness";
 
@@ -201,23 +201,41 @@ describe("sticker piles", () => {
     expect(await run(s)).toEqual(["palabra 0", "palabra 1"]);
   });
 
-  it("All N deals every word once, those done today too, and doesn't grow tomorrow's pile", async () => {
+  it("all N left deals every word not done today, never today's; then they lie crosswise too", async () => {
     const clock = new Clock();
     const d = await Device.open(clock);
-    const w = await words(d, 6);
-    const s = await sticker(d, "kitchen", w.es.slice(0, 3));
+    const w = await words(d, 40);
+    const s = await sticker(d, "kitchen", w.es);
     await s.start();
-    expect(await run(s)).toHaveLength(3);
-    expect(s.allCount()).toBe(3);
+    const first = await run(s);
+    expect(first.length).toBeGreaterThan(0);
+    const done = s.crossed().length;
+    expect(done).toBeGreaterThan(0);
+    const left = s.restCount();
+    expect(left).toBeGreaterThan(MORE_N);
+    expect(s.moreCount()).toBe(MORE_N);
     clock.advance(2 * HOUR);
-    await s.all();
+    await s.rest();
     await s.prepare();
-    expect(s.next()!.left).toBe(3);
-    const again = await run(s);
-    expect(new Set(again.map((x) => x.replace("'", "")))).toEqual(new Set(["palabra 0", "palabra 1", "palabra 2"]));
-    expect(s.next()).toBeNull();
-    clock.advance(DAY);
-    expect(pileSize(d.store.col, s.pile, d.store.clock())).toBe(20);
+    expect(s.next()!.left).toBe(left);
+    const rest = await run(s);
+    expect(rest.filter((x) => first.includes(x))).toEqual([]); // none of today's again
+    expect(s.restCount()).toBe(0);
+    expect(s.crossed().length).toBe(done + left);
+  });
+
+  it("today's cards gathered up again leave the crosswise ones as they are answered", async () => {
+    const d = await Device.open();
+    const w = await words(d, 3);
+    const s = await sticker(d, "kitchen", w.es);
+    await s.start();
+    await run(s);
+    const today = s.crossed();
+    expect(today.length).toBeGreaterThan(0);
+    s.againThese(today);
+    expect(s.crossed()).toEqual([]);
+    await run(s);
+    expect(new Set(s.crossed())).toEqual(new Set(today));
   });
 
   it("a word on top of one pile is not on top of another", async () => {

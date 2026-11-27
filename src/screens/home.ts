@@ -81,16 +81,17 @@ function spot(s: StudySession, label: string): { el: HTMLElement; key: string } 
   }
   s.settle();
   const n = s.next();
+  const crossedN = s.crossed().length;
   if (!n) {
     const done = s.doneToday().length;
     const rounds = s.rounds();
-    const b = h("button", { class: "spot finished", "aria-label": `${label}: more cards`, onclick: () => open(s) }, done ? checks(rounds) : null);
-    return { el: h("div", { class: "pile-cell" }, askew(b, seed), name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due")), key: `finished:${done}:${rounds}` };
+    const b = h("button", { class: "spot finished", "aria-label": `${label}: more cards`, onclick: () => open(s) }, crossed(crossedN, seed), done ? checks(rounds) : null);
+    return { el: h("div", { class: "pile-cell" }, askew(b, seed), name, h("div", { class: "pile-count" }, done ? "done for today" : "nothing due")), key: `finished:${done}:${rounds}:${crossedN}` };
   }
   const coming = s.upcoming(AHEAD);
   void app.pictures.ahead(coming);
   void app.speech.ahead(coming);
-  const pile = h("span", { class: "pile-stack" });
+  const pile = h("span", { class: "pile-stack" }, crossed(crossedN, seed));
   const faces = s.faces(Math.min(EDGES, n.left - 1));
   const r = seeded(seed);
   for (let i = faces.length; i >= 1; i--) {
@@ -106,7 +107,20 @@ function spot(s: StudySession, label: string): { el: HTMLElement; key: string } 
   };
   const b = h("button", { class: "spot", "aria-label": `Study ${label}`, onclick: study }, pile);
   b.style.setProperty("--thick", `${Math.round(faces.length * CARD_PX)}px`);
-  return { el: h("div", { class: "pile-cell" }, askew(b, seed), name, h("div", { class: "pile-count" }, `${n.left} ${n.left === 1 ? "card" : "cards"}`)), key: `${n.pick.card}:${n.left}:${faces.join(",")}` };
+  return { el: h("div", { class: "pile-cell" }, askew(b, seed), name, h("div", { class: "pile-count" }, `${n.left} ${n.left === 1 ? "card" : "cards"}`)), key: `${n.pick.card}:${n.left}:${faces.join(",")}:${crossedN}` };
+}
+
+/** Today's cards from a pile, crosswise under it as in study (src/ui/crossed.ts): one card, its edges as thick as they are many. */
+function crossed(count: number, seed: number): HTMLElement | null {
+  if (!count) return null;
+  const el = h("span", { class: "spot-cross", "aria-hidden": "true" });
+  const edges = Math.min(count, 12);
+  const shadow: string[] = [];
+  for (let i = 1; i < edges; i++) shadow.push(`0 ${(i * 1.2).toFixed(1)}px 0 ${i % 2 ? "var(--cross-edge)" : "var(--card)"}`);
+  shadow.push(`0 ${(edges * 1.2 + 2).toFixed(1)}px 6px rgb(var(--shadow) / 0.2)`);
+  el.style.boxShadow = shadow.join(",");
+  el.style.rotate = `${((seeded(seed + 11)() - 0.5) * 3).toFixed(2)}deg`;
+  return el;
 }
 
 /** A spot's outline, printed a little askew: 0.7–1.9°, either way, the same every time. */
