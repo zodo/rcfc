@@ -531,7 +531,7 @@ Header exactly:
 ${IMPORT_HEADER}
 - word: dictionary form, with the article for nouns where the language has one
 - translation: short
-- example: one short natural sentence using the word, in the word's language
+- example: one short natural sentence that holds the word, in the word's language. The app also shows it with the word blanked out, to recall the word from its translation, so make it a sentence where only this word fits (most of all for small grammar words)
 - lang, to: ISO 639-1 codes of this row's word and translation
 - note, translation_note: optional tip of a few words shown on the word / translation side, written in that side's language (irregular form, false friend, reading), else empty
 - picture: usually empty. Only when the word has another meaning that could be drawn instead, say which to draw ("money bank, not a bench")

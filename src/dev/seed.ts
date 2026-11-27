@@ -6,15 +6,21 @@ import type { AppEvent, DeckCreatedPayload, NoteCreatedPayload, Review } from ".
 import type { EntityId } from "../domain/ids";
 import { localTzOffsetMin } from "../domain/rows";
 
-const WORDS: [string, string][] = [
-  ["casa", "house"], ["perro", "dog"], ["gato", "cat"], ["agua", "water"], ["libro", "book"],
-  ["mesa", "table"], ["silla", "chair"], ["ventana", "window"], ["puerta", "door"], ["calle", "street"],
-  ["ciudad", "city"], ["árbol", "tree"], ["flor", "flower"], ["cielo", "sky"], ["nube", "cloud"],
-  ["lluvia", "rain"], ["sol", "sun"], ["luna", "moon"], ["estrella", "star"], ["mar", "sea"],
-  ["río", "river"], ["montaña", "mountain"], ["camino", "road"], ["coche", "car"], ["tren", "train"],
-  ["pan", "bread"], ["queso", "cheese"], ["leche", "milk"], ["manzana", "apple"], ["naranja", "orange"],
-  ["rojo", "red"], ["verde", "green"], ["azul", "blue"], ["blanco", "white"], ["negro", "black"],
-  ["hablar", "to speak"], ["comer", "to eat"], ["beber", "to drink"], ["dormir", "to sleep"], ["leer", "to read"],
+const WORDS: [string, string, string][] = [
+  ["casa", "house", "Mi casa es pequeña."], ["perro", "dog", "El perro duerme en el sofá."], ["gato", "cat", "Tengo dos gatos negros."],
+  ["agua", "water", "Bebo agua fría."], ["libro", "book", "Leo un libro cada mes."], ["mesa", "table", "La comida está en la mesa."],
+  ["silla", "chair", "Siéntate en esta silla."], ["ventana", "window", "Abre la ventana, por favor."], ["puerta", "door", "Cierra la puerta."],
+  ["calle", "street", "Vivo en una calle tranquila."], ["ciudad", "city", "Madrid es una ciudad grande."], ["árbol", "tree", "Hay un árbol en el jardín."],
+  ["flor", "flower", "Te compré una flor."], ["cielo", "sky", "El cielo está azul."], ["nube", "cloud", "No hay ni una nube."],
+  ["lluvia", "rain", "Me gusta la lluvia."], ["sol", "sun", "Hace sol hoy."], ["luna", "moon", "La luna está llena."],
+  ["estrella", "star", "Veo una estrella."], ["mar", "sea", "Nadamos en el mar."], ["río", "river", "El río es muy largo."],
+  ["montaña", "mountain", "Subimos la montaña."], ["camino", "road", "El camino es largo."], ["coche", "car", "Mi coche es rojo."],
+  ["tren", "train", "El tren sale a las ocho."], ["pan", "bread", "Compro pan cada día."], ["queso", "cheese", "Me encanta el queso."],
+  ["leche", "milk", "Quiero café con leche."], ["manzana", "apple", "Como una manzana."], ["naranja", "orange", "Esta naranja es dulce."],
+  ["rojo", "red", "Llevo un vestido rojo."], ["verde", "green", "La hierba es verde."], ["azul", "blue", "Mi color favorito es el azul."],
+  ["blanco", "white", "La nieve es blanca."], ["negro", "black", "Tengo un gato negro."], ["hablar", "to speak", "Hablamos español."],
+  ["comer", "to eat", "Comemos a las dos."], ["beber", "to drink", "No bebo café."], ["dormir", "to sleep", "Duermo ocho horas."],
+  ["leer", "to read", "Me gusta leer."],
 ];
 
 const DAY = 86_400_000;
@@ -44,9 +50,9 @@ export function seedEvents(opts: { deviceId: string; presetId: EntityId; words: 
   const reviews: Review[] = [];
   for (let i = 0; i < opts.words; i++) {
     t += 1000;
-    const [es, en] = WORDS[i % WORDS.length];
+    const [es, en, example] = WORDS[i % WORDS.length];
     const round = Math.floor(i / WORDS.length);
-    const evs = f.note(deckId, { front: round ? `${es} ${round + 1}` : es, back: round ? `${en} ${round + 1}` : en }, { from: "es", to: "en" });
+    const evs = f.note(deckId, { front: round ? `${es} ${round + 1}` : es, back: round ? `${en} ${round + 1}` : en, example }, { from: "es", to: "en" });
     out.push(...evs);
     if (rand() > 0.6) continue;
     const noteId = (evs[0].payload as NoteCreatedPayload).note_id;

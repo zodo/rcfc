@@ -14,11 +14,12 @@ import { appendEvents, loadEvents, type SqlDb, type WireEvent } from "./sync";
 /** device_id of the events the connector writes. */
 export const MCP_DEVICE = "claude";
 
-const INSTRUCTIONS = `rcfc is the user's flashcard app for learning languages. Each word is one card: the word in the studied language on one side (with an example sentence), its translation on the other, and a picture the app draws by itself. Words can wear stickers (topics like "Kitchen" or "Trip to Rome"); every sticker is a pile the user can study. Status: new (never studied), learning, known.
+const INSTRUCTIONS = `rcfc is the user's flashcard app for learning languages. Each word is one card, studied both ways: the word in the studied language on one side (with an example sentence), its translation on the other, and a picture the app draws by itself. Words can wear stickers (topics like "Kitchen" or "Trip to Rome"); every sticker is a pile the user can study. Status: new (never studied), learning, known.
 
 How to use these tools:
 - Call overview first to see the languages and stickers.
 - Add words in their dictionary form, nouns with their article where the language has one ("el perro", "der Hund"), the translation short (a word or two, the common meaning), and an example sentence in the studied language that shows the word in use. Don't add a word the user already has; add_words skips exact repeats by itself.
+- The example is also a fill-in-the-blank: the word is studied both ways, and when the user sees the translation and recalls the word, the app shows the example with the word blanked out ("никакой" + "No tengo ___ problema." → ningún). So write an example that holds the word itself, in this or another regular form, where the translation and the sentence together leave only this word: they pin down which word, and the sentence pins down which form. That matters most for grammar words (ningún, por, sich). The app finds the word by its letters, so a form spelt differently (fue for ir) means that side shows no sentence. A fill-in-the-blank card is never a separate card: add the word with such an example.
 - Ids come from find_words or add_words. Act on the words the user means; ask before deleting many.
 - The app picks up changes on its next sync, usually within a minute while it's open.`;
 
@@ -31,7 +32,7 @@ const newWord = z.object({
   translation: z.string().min(1).max(200).describe("Its translation, short"),
   language: language.describe("The studied language (the word's)"),
   translation_language: language.optional().describe("The translation's language; default: the one this language's words already use"),
-  example: z.string().max(400).optional().describe("An example sentence in the studied language"),
+  example: z.string().max(400).optional().describe("An example sentence in the studied language that holds the word; shown blanked out (\"No tengo ___ problema.\") when the user recalls the word from its translation, so only this word should fit"),
   note: z.string().max(400).optional().describe("A note shown on the word side (gender, irregular forms…)"),
   translation_note: z.string().max(400).optional().describe("A note shown on the translation side"),
   picture: z.string().max(200).optional().describe("What the picture should show, only when the word alone is ambiguous"),
@@ -108,7 +109,7 @@ export function wordsServer(db: SqlDb, code: string): McpServer {
         id: z.number().int().positive(),
         word: z.string().max(200).optional(),
         translation: z.string().max(200).optional(),
-        example: z.string().max(400).optional(),
+        example: z.string().max(400).optional().describe("A sentence that holds the word (blanked out when recalled from the translation)"),
         note: z.string().max(400).optional(),
         translation_note: z.string().max(400).optional(),
       }),

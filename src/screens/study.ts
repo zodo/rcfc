@@ -15,6 +15,7 @@
 import { app, errorText, fullScreen, go, setKeys } from "../app";
 import type { Card, Note } from "../domain/collection";
 import type { ReviewPayload } from "../domain/events";
+import { gapped } from "../domain/gap";
 import type { EntityId } from "../domain/ids";
 import { pileLabel } from "../domain/labels";
 import type { Draw } from "../domain/piles";
@@ -108,7 +109,8 @@ interface Faces {
 /**
  * One card per word, like a real one: the studied language on the white side
  * (word, pronunciation, example), the known language and the picture on the
- * cream side. A forward card lies white side up, a reverse card cream side up.
+ * cream side, and on a reverse card the example with the word blanked out.
+ * A forward card lies white side up, a reverse card cream side up.
  * `covered`: the card under the top one (its picture, if it comes now, is put
  * in place, not brought in over the top card).
  */
@@ -130,7 +132,16 @@ function faces(card: Card, note: Note, picTilt: "l" | "r", covered = false): Fac
     example ? h("div", { class: "example", lang: lang.from }, example, speakBtn("Say the example", () => void app.speech.say(example, lang.from), "speak small")) : null,
     memo(note.fields.memo_target, lang.from),
   ];
-  const known = [note.picture ? cutout(note.picture.key, picTilt) : note.noPicture ? null : livePicture(note.id, picTilt, covered), h("div", { class: "face", lang: lang.to }, note.fields.back), memo(note.fields.memo_known, lang.to)];
+  // A reverse card's cream side also gets the example with the word blanked out (a cloze):
+  // the translation says which word, the sentence which form. The white side shows it whole.
+  const gaps = forward ? null : gapped(note.fields.front, example, lang.from);
+  const cloze = gaps ? h("div", { class: "example cloze", lang: lang.from }, ...gaps.flatMap((p, i) => (i ? [h("span", { class: "gap" }), p] : [p]))) : null;
+  const known = [
+    note.picture ? cutout(note.picture.key, picTilt) : note.noPicture ? null : livePicture(note.id, picTilt, covered),
+    h("div", { class: "face", lang: lang.to }, note.fields.back),
+    cloze,
+    memo(note.fields.memo_known, lang.to),
+  ];
   const up = forward ? target : known;
   up.find((e) => e?.classList.contains("face"))!.classList.add("prompt");
   // The word's notes are tiny print on the answer side, whichever side that is (not physical:

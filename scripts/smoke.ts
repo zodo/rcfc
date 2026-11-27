@@ -412,7 +412,25 @@ async function run(s: Browser, url: string) {
   await shot(s, "table");
   if (pile > 1 && !(edges > 0 && edges <= Math.min(30, pile - 1))) throw new Error(`a pile of ${pile} shows ${edges} card edges`);
   await s.click("button.spot");
-  await answerUntilDone(s, 6);
+  log("a card lying translation side up shows its example with the word blanked out; turned, the whole example");
+  let cloze = "";
+  for (let n = 0; n < 6; n++) {
+    const state = await s.until<string>("a card or the end", `document.querySelector(".flashcard:not(.leaving)") ? "card" : document.querySelector(".finish") ? "done" : ""`);
+    if (state === "done") break;
+    const gap = cloze ? "" : await s.js<string>(`return document.querySelector(".flashcard:not(.leaving) .side.front.known .cloze")?.textContent ?? "";`);
+    if (gap) {
+      cloze = gap;
+      const word = await s.js<string>(`return document.querySelector(".flashcard:not(.leaving) .side.back .face")?.textContent ?? "";`);
+      if (cloze.toLowerCase().includes(word.toLowerCase())) throw new Error(`the blanked example "${cloze}" gives "${word}" away`);
+      if (process.env.RCFC_SHOTS) await s.js(`await new Promise((r) => setTimeout(r, 1500));`); // the pile is brought in
+      await shot(s, "study-cloze");
+    }
+    await s.click("button", "Show answer");
+    if (gap) await s.until("the whole example on the word side", `document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden) .example:not(.cloze)")`);
+    await s.click("button.rate", n % 4 === 3 ? "Again" : "Got it"); // as answerUntilDone: later steps expect these answers
+    await s.until("next screen", `!document.querySelector(".flashcard:not(.leaving) .answer:not(.hidden)")`);
+  }
+  if (!cloze) throw new Error("no reverse card with a blanked example among the first 6 cards");
   await s.click("button[aria-label=Close]");
   await s.until("home", `document.querySelector(".pile-name")`);
 

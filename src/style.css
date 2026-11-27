@@ -1504,6 +1504,15 @@ header.top.sub .back svg {
   white-space: pre-wrap;
   max-width: 32ch;
 }
+/* the blank in a reverse card's example: a pencil line where the word goes */
+.cloze .gap {
+  display: inline-block;
+  width: 3.2em;
+  height: 1em;
+  margin: 0 0.15em;
+  border-bottom: 1.5px solid currentColor;
+  vertical-align: -0.1em;
+}
 .speak {
   padding: 6px;
   color: var(--muted);
