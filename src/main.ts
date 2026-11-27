@@ -7,7 +7,6 @@ import { app, go, reloadWhenSafe, requestPersistence, setBack, setHold, type Scr
 import { router } from "./router";
 import { add } from "./screens/add";
 import { home } from "./screens/home";
-import { importScreen } from "./screens/import";
 import { settings } from "./screens/settings";
 import { study } from "./screens/study";
 import { addLanguage, edit, words } from "./screens/words";
@@ -24,7 +23,7 @@ import { clear, h } from "./ui/h";
 import { setupInstallPrompt } from "./ui/install";
 import { setupUpdates } from "./ui/update";
 
-const screens: Screens = { home, study, words, add, import: importScreen, edit, addLanguage, settings };
+const screens: Screens = { home, study, words, add, edit, addLanguage, settings };
 
 async function boot() {
   const { root } = app;

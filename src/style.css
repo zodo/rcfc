@@ -24,6 +24,8 @@
   --highlight: rgb(247 212 70 / 0.55);
   --rule: #c3d4e4;
   --margin-rule: #e7a49a;
+  /* pencil on card stock: corrections, notes */
+  --pencil: #4f5d6b;
   /* lines printed on the table (pile spots) */
   --printed: rgb(38 54 42 / 0.42);
   /* cream card edges in a pile on the table: stronger than --card-known, a 1.5 px sliver must read as cream */
@@ -61,6 +63,7 @@
     --muted: #636961;
     --highlight: rgb(240 200 50 / 0.5);
     --rule: #aebdcc;
+    --pencil: #3e4954;
     --printed: rgb(238 240 234 / 0.32);
     --edge-known: #cdb98a;
     --st-yellow: #c9b264;
@@ -2904,21 +2907,141 @@ html.sum-zoom body {
   color: var(--muted);
 }
 
-/* ---------- Import from anything ---------- */
+/* ---------- Your AI (src/screens/yourai.ts) ---------- */
+/* the slip on the Words title line: cream paper, the chats' marks cut from paper on it */
+.title-line {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.your-ai {
+  --c: var(--card-known);
+  --tex: var(--fibre, none);
+  --cut: var(--cut-3);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  padding: 7px 13px 7px 9px;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  rotate: -1.2deg;
+}
+.marks {
+  display: flex;
+  align-items: center;
+}
+.marks canvas {
+  display: block;
+}
+.marks canvas + canvas {
+  margin-left: -8px;
+}
+.ya-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ya {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ya-part {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ya-part h3 {
+  margin: 0;
+  font-size: 17px;
+}
+.ya-part p {
+  margin: 0;
+}
+.ya-act {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ya-act button {
+  padding: 10px 16px;
+}
+.ya-after {
+  flex: 1;
+  min-width: 120px;
+}
+.ya-pick {
+  display: flex;
+  justify-content: flex-end;
+}
+.ya-part:last-child {
+  padding-top: 12px;
+  border-top: 1.5px dashed rgb(0 0 0 / 0.14);
+}
+.ya-addr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ya-addr code {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  background: var(--slot);
+}
+.ya-addr button {
+  padding: 7px 12px;
+  font-size: 14px;
+}
+/* a reply on the list: pencil corrections */
+.pen {
+  color: var(--pencil);
+}
+.pv-count {
+  font-size: 16px;
+  color: var(--on-table);
+}
+.word.pv s {
+  color: var(--muted);
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: var(--pencil);
+}
+.word.pv-gone > * {
+  color: var(--muted);
+}
+.word.pv-sub {
+  grid-template-columns: 1fr;
+  padding-left: 30px;
+  font-size: 14.5px;
+}
+.word.pv-sub.pv-why .pen {
+  color: var(--danger-ink);
+}
+.word.pv-refused > .w-front {
+  color: var(--muted);
+}
+.pv-note {
+  margin: 0 4px;
+  color: var(--on-table-muted);
+}
+.ya-langs {
+  margin: 0 4px;
+  color: var(--on-table-muted);
+}
+
+/* ---------- the prompt and paste boxes ---------- */
 .import-paste,
 .import-prompt {
   font-size: 14px;
   line-height: 1.4;
-}
-.import-groups,
-.import-sample {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 4px;
-}
-.import-sample {
-  font-size: 14.5px;
-  overflow-wrap: anywhere;
 }

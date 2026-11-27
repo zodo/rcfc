@@ -23,6 +23,7 @@ import { cutout, cutoutReady } from "../ui/picture";
 import { SketchNote } from "../ui/sketch";
 import { languageOfText } from "../domain/script";
 import { deckFor, languageForm, languages, lastLanguage, openLabel, rememberLanguage, rememberTranslation, translationFor } from "./languages";
+import { openYourAi } from "./yourai";
 import { stickersSheet, stickerTag, type StickerTarget } from "./stickers";
 
 /** How long typing must pause before the card is filled in and its picture drawn. */
@@ -886,7 +887,7 @@ function open(note?: Note, over?: { leave: () => void }): void {
   const foldHint = h("p", { class: "ed-fold-hint", hidden: true }, "the other side, tap to turn it up");
   cream.append(foldHint);
   subPage("words", editing ? "Edit card" : "Add a card", () => leave(), root, hint, editing ? null : addedList,
-    editing ? null : h("p", { class: "small center" }, h("button", { class: "link", type: "button", onclick: () => go.import() }, "Import from anything")),
+    editing ? null : h("p", { class: "small center" }, h("button", { class: "link", type: "button", onclick: () => openYourAi() }, "Add many with your AI")),
   );
 
   // The bar stays at the top: Add on a new card, the bin on a saved one.

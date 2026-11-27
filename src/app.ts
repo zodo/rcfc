@@ -23,7 +23,6 @@ export interface Screens {
   words(): void;
   /** Add a word to the last language used (languages.ts `lastLanguage`). */
   add(): void;
-  import(): void;
   edit(noteId: EntityId): void;
   addLanguage(): void;
   settings(): void;

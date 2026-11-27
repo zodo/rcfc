@@ -663,13 +663,18 @@ async function run(s: Browser, url: string) {
   await s.click("button[aria-label=Back]");
   await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
 
-  log("Import from anything: the prompt copies; an AI's reply previews; its words come in with their sticker and progress");
-  await s.click("button.add-btn");
-  await s.click("button.link", "Import from anything");
-  await s.until("Import screen", `document.querySelector("header.sub h1")?.textContent === "Import from anything"`);
-  await s.click("button.primary", "Copy prompt for your AI chat");
+  log("Your AI: Copy prompt copies; a chat's reply lies on the list in pencil; Apply adds its words with their sticker and progress");
+  const paste = async (text: string) => {
+    await s.click("button.your-ai");
+    await s.until("the Your AI sheet", `document.querySelector(".pile-sheet .ya")`);
+    await s.js(`const t = document.querySelector(".ya textarea.import-paste"); t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event("input"));`);
+  };
+  await s.click("button.your-ai");
+  await s.until("the Your AI sheet", `document.querySelector(".pile-sheet .ya")`);
+  await s.click(".ya button.primary", "Copy prompt");
   // Headless Chromium may refuse the clipboard: then the prompt is shown to copy by hand.
-  await s.until("copied", `document.querySelector("button.primary")?.textContent === "Copied" || document.querySelector("textarea.import-prompt")?.value.includes("word,translation,example")`);
+  await s.until("copied", `document.querySelector(".ya button.primary")?.textContent === "Copied" || document.querySelector(".ya textarea.import-prompt")?.value.includes("id,word,translation")`);
+  await s.js(`document.querySelector(".sheet-backdrop").click();`);
   const reply = [
     "Here are your cards:",
     "",
@@ -680,13 +685,13 @@ async function run(s: Browser, url: string) {
     "il cane,dog,Il cane corre.,it,en,,,,Smoke,new",
     "```",
     "",
-    "Copy the block, then paste it in the app under Words → Add → Import from anything.",
+    "Copy the block, then paste it in the app under Words → Your AI → Its reply.",
   ].join("\n");
-  await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ${JSON.stringify(reply)}; t.dispatchEvent(new Event("input"));`);
-  await s.until("preview", `document.querySelector(".import-preview strong")?.textContent === "3 words" && document.querySelector(".import-groups")?.textContent.includes("Italian → English: 3 (new language)") && document.querySelector(".import-preview")?.textContent.includes("1 known, 1 learning")`);
-  await shot(s, "import-preview");
-  await s.click("button.primary", "Add 3 words");
-  await s.until("Words on the Smoke sticker, 3 words", `!document.querySelector("header.sub") && document.querySelector(".chip.on")?.textContent.includes("Smoke") && document.querySelectorAll(".list button.word").length === 3`);
+  await paste(reply);
+  await s.until("the reply in pencil on the list", `document.querySelector(".pv-count")?.textContent === "3 new" && document.querySelectorAll(".pv-list .pv-new").length === 3 && document.querySelector(".pv-list").textContent.includes("new language: Italian")`);
+  await shot(s, "ai-preview");
+  await s.click(".pv-actions button.primary", "Apply");
+  await s.until("Words on the Smoke sticker, 3 words", `!document.querySelector(".pv-list") && document.querySelector(".chip.on")?.textContent.includes("Smoke") && document.querySelectorAll(".list button.word").length === 3 && document.getElementById("slip")?.textContent.startsWith("3 words added")`);
   log("an imported word opened draws its picture at once; it stays the card's when left unsaved, by the back gesture too");
   await s.click("button.word", "il cane");
   await s.until("its picture on the card", `document.querySelector("header.sub h1")?.textContent === "Edit card" && document.querySelector(".ed-pic .pic img")?.naturalWidth > 0`, 90_000);
@@ -697,29 +702,35 @@ async function run(s: Browser, url: string) {
   await s.until("the picture kept", `document.querySelector("header.sub h1")?.textContent === "Edit card" && document.querySelector(".ed-pic .pic img") && !document.querySelector(".ed-pic.busy")`, 600);
   await s.js(`history.back();`);
   await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
-  log("the same reply again adds nothing");
-  await s.click("button.add-btn");
-  await s.click("button.link", "Import from anything");
-  await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ${JSON.stringify(reply)}; t.dispatchEvent(new Event("input"));`);
-  await s.until("nothing new", `document.querySelector(".import-preview")?.textContent.includes("3 already in your words") && document.querySelector(".import-preview button.primary")?.disabled`);
+  log("the same reply again changes nothing; back throws it away");
+  await paste(reply);
+  await s.until("nothing to change", `document.querySelector(".pv-count")?.textContent === "Nothing in this reply changes your words" && document.querySelector(".pv-actions button.primary")?.disabled`);
+  await s.js(`history.back();`);
+  await s.until("thrown away", `!document.querySelector(".pv-list") && document.querySelector(".list button.word")`);
   log("again with another sticker: the words there get it, nothing added");
-  const restuck = reply.replace(/,Smoke,/g, ",Smoke;Pets,");
-  await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ${JSON.stringify(restuck)}; t.dispatchEvent(new Event("input"));`);
-  await s.until("they get the sticker", `document.querySelector(".import-preview")?.textContent.includes("3 already in your words. They get new stickers.") && !document.querySelector(".import-preview button.primary")?.disabled`);
-  await s.click(".import-preview button.primary", "Update 3 words");
-  await s.until("updated, Words open on the sticker with those 3", `document.getElementById("toast")?.textContent === "Updated 3" && document.querySelector(".list button.word")`);
+  await paste(reply.replace(/,Smoke,/g, ",Smoke;Pets,"));
+  await s.until("3 words get Pets", `document.querySelector(".pv-count")?.textContent === "3 changes" && document.querySelector(".pv-list").textContent.includes("+Pets")`);
+  await s.click(".pv-actions button.primary", "Apply");
+  await s.until("updated", `document.getElementById("slip")?.textContent.startsWith("3 changed") && document.querySelector(".list button.word")`);
   const pets = await s.js<string[]>(`return [...document.querySelectorAll(".list button.word .w-front")].map((e) => e.textContent).sort();`);
   if (pets.join() !== "il cane,il gatto,la casa") throw new Error(`the Pets sticker shows ${pets.join(", ")}`);
-  await s.click("button.add-btn");
-  await s.click("button.link", "Import from anything");
+  log("a change by id: translated into Russian on the list, applied, then undone");
+  const gatto = await s.js<number>(`return window.rcfc.store.col.liveNotes().find((n) => n.fields.front === "il gatto").id;`);
+  await paste("```\nid,word,translation,example,lang,to,note,translation_note,picture,stickers,status\n" + gatto + ",,кошка,,,ru,,,,,\n```");
+  await s.until("crossed out, in pencil", `document.querySelector(".pv-count")?.textContent === "1 change" && document.querySelector(".pv-list s")?.textContent === "cat" && document.querySelector(".pv-list").textContent.includes("English → Russian")`);
+  await s.click(".pv-actions button.primary", "Apply");
+  await s.until("translated", `[...document.querySelectorAll(".list button.word")].some((w) => w.textContent.includes("кошка")) && document.getElementById("slip")`);
+  await s.click("#slip button", "Undo");
+  await s.until("put back", `document.getElementById("toast")?.textContent === "Put back" && window.rcfc.store.col.notes.get(${gatto}).fields.back === "cat" && window.rcfc.store.col.notes.get(${gatto}).lang_pair.to === "en"`);
   log("a raw Duocards export picked as a file: its language from the file name");
-  await s.js(`const t = document.querySelector("textarea.import-paste"); t.value = ""; t.dispatchEvent(new Event("input"));`);
+  await s.click("button.your-ai");
+  await s.until("the Your AI sheet", `document.querySelector(".pile-sheet .ya")`);
   const { root } = await s.send<{ root: { nodeId: number } }>("DOM.getDocument", {});
-  const { nodeId } = await s.send<{ nodeId: number }>("DOM.querySelector", { nodeId: root.nodeId, selector: "input[type=file]" });
+  const { nodeId } = await s.send<{ nodeId: number }>("DOM.querySelector", { nodeId: root.nodeId, selector: ".ya input[type=file]" });
   await s.send("DOM.setFileInputFiles", { nodeId, files: [new URL("../test/fixtures/import/duocards_es_export.csv", import.meta.url).pathname] });
-  await s.until("Duocards preview in Spanish", `document.querySelector(".import-paste").value.includes("front,back,hint") && document.querySelector(".import-preview select[name=from]")?.value === "es" && document.querySelector(".import-groups")?.textContent.startsWith("Spanish → English")`);
-  await s.click("button[aria-label=Back]");
-  await s.until("Words again", `document.querySelector(".list button.word") && !document.querySelector("header.sub")`);
+  await s.until("Duocards words in Spanish", `document.querySelector(".ya-langs select[name=from]")?.value === "es" && document.querySelectorAll(".pv-list .pv-new").length > 0`);
+  await s.click(".pv-actions button.secondary", "Throw away");
+  await s.until("Words again", `!document.querySelector(".pv-list") && document.querySelector(".list button.word")`);
 
   log("a sticker's pile: answered cards go crosswise under it; finished, the words left lie aside as one handful, all of them");
   await s.click(".chip.new-sticker");

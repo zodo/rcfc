@@ -41,7 +41,7 @@ class FakeHistory implements HistoryLike, PopTarget {
 function setup(h = new FakeHistory()) {
   const shown: string[] = [];
   const screen = (name: string) => (...args: unknown[]) => void shown.push(args.length ? `${name}(${args.join(",")})` : name);
-  const screens = { home: screen("home"), study: screen("study"), words: screen("words"), add: screen("add"), import: screen("import"), edit: screen("edit"), addLanguage: screen("addLanguage"), settings: screen("settings") } as Screens;
+  const screens = { home: screen("home"), study: screen("study"), words: screen("words"), add: screen("add"), edit: screen("edit"), addLanguage: screen("addLanguage"), settings: screen("settings") } as Screens;
   const { go, hold, back } = router(screens, h, h);
   return { h, go, hold, back, shown, last: () => shown[shown.length - 1] };
 }
@@ -94,7 +94,7 @@ describe("router", () => {
   it("from a sub-page straight to another tab: up one level, then sideways", async () => {
     const { h, go, last } = setup();
     go.words();
-    go.import();
+    go.add();
     go.settings();
     await tick();
     expect(last()).toBe("settings");

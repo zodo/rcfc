@@ -5,7 +5,7 @@
 // show the words as they are now.
 //
 // It writes the same events the app does (Add, Save, the bin, stickers, "I
-// know" / "Don't know", Import from anything), so the app needs nothing new:
+// know" / "Don't know", Your AI), so the app needs nothing new:
 // the events arrive on its next sync like another device's. Changing the
 // translation's language (note_lang_changed) needs an app from Nov 2026 on;
 // an older one keeps the event and ignores it until it updates.

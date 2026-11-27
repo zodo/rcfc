@@ -30,7 +30,7 @@ export interface NoteFields {
 
 /** Where a note came from, when it was not typed in this app. */
 export interface NoteSource {
-  /** "import": Import from anything; "duocards": the old Duocards importer (older logs). */
+  /** "import": Your AI (once Import from anything); "duocards": the old Duocards importer (older logs). */
   kind: "import" | "duocards";
   /** Original creation time in the source app, ISO 8601. */
   created_at?: string;

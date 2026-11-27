@@ -5,7 +5,7 @@
 //
 //   home (Study tab)                      depth 0: back leaves the app
 //   ├─ words, settings, study             depth 1: back goes to Study
-//   │  └─ add, import, edit, addLanguage  depth 2: back goes to Words
+//   │  └─ add, edit, addLanguage          depth 2: back goes to Words
 //
 // Going deeper pushes an entry, sideways (tab to tab) replaces it, going up
 // goes back in history (so the gesture and the buttons stay in step), and a
@@ -22,7 +22,7 @@ export interface Route {
   args: unknown[];
 }
 
-const DEPTH: Record<RouteName, number> = { home: 0, words: 1, settings: 1, study: 1, add: 2, import: 2, edit: 2, addLanguage: 2 };
+const DEPTH: Record<RouteName, number> = { home: 0, words: 1, settings: 1, study: 1, add: 2, edit: 2, addLanguage: 2 };
 
 /** The slice of `window.history` and `window` the router uses (tests pass a fake). */
 export interface HistoryLike {

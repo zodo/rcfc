@@ -1,4 +1,4 @@
-// Import from anything: words an AI chat (or a person) wrote as a table, pasted
+// Your AI's data side: words an AI chat (or a person) wrote as a table, pasted
 // or picked as a file. The prompt the app copies (`importPrompt`) asks for one
 // exact CSV header; the reader takes much more than it asks for, without saying
 // so: the whole chat reply around the code block, several blocks, tab or

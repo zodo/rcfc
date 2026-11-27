@@ -3,20 +3,21 @@
 // for all. Search, add (+), select words to stick stickers on, mark them known
 // / not known or delete them, tap one to edit. With a sticker open, Edit lists
 // every word and each tap sticks it on or peels it off. The whole list is
-// there, rendered in chunks while scrolling.
+// there, rendered in chunks while scrolling. The Your AI slip on the title
+// line opens its sheet (yourai.ts); a reply pasted there shows here as pencil
+// corrections on the list until Apply or Throw away.
 import { app, errorText, go, hold, page, subPage } from "../app";
 import type { Note } from "../domain/collection";
 import type { EntityId } from "../domain/ids";
 import { labelPile, pileLabel } from "../domain/labels";
-import { KNOWN_HORIZON_MS, wordStatus } from "../domain/scheduler";
+import { refreshStatuses, statusOf } from "../statuses";
 import { append, clear, h, ICON_PEN, langName, toast } from "../ui/h";
 import { editSticker, languageForm, languages, openChip, rememberLanguage, setOpenChip, takeEditNext } from "./languages";
 import { newStickerSheet, paint, pencilSheet, stickersSheet, wordsTarget } from "./stickers";
+import { applyProposal, fallbackPickers, openYourAi, previewRows, proposal, proposalCount, proposalNotes, throwAway, yourAiSlip, type Proposal } from "./yourai";
 
 /** Rows added at a time as the list scrolls into view. */
 const CHUNK = 150;
-/** P(recall) a week ahead per studied card, kept between visits so the list shows at once. */
-const weekAhead = new Map<EntityId, number>();
 
 const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
@@ -31,7 +32,12 @@ interface Row {
 /** The list as it is used: looked through, words selected, or a sticker stuck on and peeled off (Edit). */
 type Mode = "list" | "select" | "edit";
 
+/** The title line: Words, and the Your AI slip. */
+const titleLine = () => h("div", { class: "title-line" }, h("h1", {}, "Words"), yourAiSlip());
+
 export function words(): void {
+  const p = proposal();
+  if (p) return preview(p);
   const { store } = app;
   const { col } = store;
   const langs = languages();
@@ -90,17 +96,15 @@ export function words(): void {
     for (const b of [stickBtn, knowBtn, unknownBtn, delBtn]) b.disabled = on || selected.size === 0;
   };
 
-  const status = (n: Note) => wordStatus((col.cardsByNote.get(n.id) ?? []).map((id) => col.cards.get(id)!), weekAhead);
   const showStatus = (n: Note, st: HTMLElement) => {
-    const s = status(n);
+    const s = statusOf(n);
     st.className = `w-p small st-${s ?? "pending"}`;
     st.textContent = s ?? "";
   };
 
   /** Re-predict a week ahead for the words listed, then update the statuses shown. */
   const refresh = async () => {
-    const cards = col.liveCards().filter((c) => !openLang || col.notes.get(c.note_id)!.lang_pair.from === openLang);
-    for (const [id, p] of await store.predictAt(cards, Date.now() + KNOWN_HORIZON_MS)) weekAhead.set(id, p);
+    await refreshStatuses(openLang);
     for (const [id, r] of rows) showStatus(col.notes.get(id)!, r.st);
   };
 
@@ -255,7 +259,7 @@ export function words(): void {
         { class: "card-box center" },
         h("p", {}, "No words yet."),
         h("button", { class: "primary", onclick: () => go.add() }, "Add a word"),
-        h("button", { class: "secondary", onclick: () => go.import() }, "Import from anything"),
+        h("button", { class: "secondary", onclick: () => openYourAi() }, "Use your AI"),
       );
   // + adds to the open language, else to the last one used; with a sticker open, the word gets it.
   const addWord = () => (openLang && rememberLanguage(openLang), go.add());
@@ -295,7 +299,7 @@ export function words(): void {
   // Edit's dot stickers take the open sticker's colour.
   const openSticker = labelId === undefined ? undefined : col.liveLabel(labelId);
   if (openSticker) paint(list, openSticker);
-  page("words", "Words", empty ? null : chips, empty ?? tools, empty ? null : info, list);
+  page("words", titleLine(), empty ? null : chips, empty ?? tools, empty ? null : info, list);
   app.root.appendChild(actions);
   if (labelId !== undefined && takeEditNext()) setMode("edit");
   else {
@@ -305,6 +309,33 @@ export function words(): void {
   const on = stickRow.querySelector<HTMLElement>(".on");
   if (on) stickRow.scrollLeft = on.offsetLeft - 40;
   void refresh();
+}
+
+/**
+ * A reply from Your AI, on the list as pencil corrections: new words written
+ * in at the top, changed places crossed out with the new text over them,
+ * deleted words struck through, refused rows with why. Back throws it away.
+ */
+function preview(p: Proposal): void {
+  const count = proposalCount(p);
+  const info = h("div", { class: "select-info" }, h("span", { class: "pen pv-count" }, count || "Nothing in this reply changes your words"));
+  const list = h("div", { class: "list pv-list" }, ...previewRows(p));
+  const notes = proposalNotes(p).map((t) => h("p", { class: "muted small pv-note" }, t));
+  const away = h("button", { class: "secondary", type: "button", onclick: () => (throwAway(), go.words()) }, "Throw away");
+  const apply = h("button", { class: "primary", type: "button", disabled: !count }, "Apply");
+  apply.addEventListener("click", async () => {
+    apply.disabled = away.disabled = true;
+    try {
+      await applyProposal(p);
+    } catch (e) {
+      toast(`Could not save: ${errorText(e)}`);
+    }
+    go.words();
+  });
+  page("words", h("div", { class: "title-line" }, h("h1", {}, "Words")), info, fallbackPickers(p, () => go.words()), list, ...notes);
+  document.querySelector("nav.nav:not(.select-actions)")?.classList.add("hidden");
+  app.root.appendChild(h("div", { class: "nav select-actions pv-actions" }, away, apply));
+  hold(() => (throwAway(), go.words()));
 }
 
 function svg(markup: string): Element {
